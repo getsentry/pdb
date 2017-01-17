@@ -1,0 +1,202 @@
+extern crate pdb;
+use pdb::FallibleIterator;
+
+use std::collections::HashMap;
+
+fn setup<F>(func: F) where F: FnOnce(&pdb::TypeInformation) -> () {
+    let file = if let Ok(filename) = std::env::var("PDB_FILE") {
+        std::fs::File::open(filename)
+    } else {
+        std::fs::File::open("fixtures/self/foo.pdb")
+    }.expect("opening file");
+
+    let mut pdb = pdb::PDB::open(file).expect("opening pdb");
+    let type_information = pdb.type_information().expect("type information");
+
+    func(&type_information);
+}
+
+#[test]
+fn iteration() {
+    setup(|type_information| {
+        let len = type_information.len();
+
+        let mut count: usize = 0;
+        let mut last_index: pdb::TypeIndex = 4095;
+        let mut iter = type_information.iter();
+        while let Some(typ) = iter.next().expect("next type") {
+            assert_eq!(typ.type_index(), last_index + 1);
+            last_index = typ.type_index();
+            count += 1;
+        }
+
+        assert_eq!(len, count);
+    });
+}
+
+#[test]
+fn type_finder() {
+    setup(|type_information| {
+        let mut type_finder = type_information.new_type_finder();
+        let mut map: HashMap<pdb::TypeIndex, pdb::Type> = HashMap::new();
+
+        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+
+        // iterate over all the types
+        let mut iter = type_information.iter();
+        while let Some(typ) = iter.next().expect("next type") {
+            assert_eq!(type_finder.max_indexed_type() >> 3, typ.type_index() >> 3);
+
+            // update the type finder
+            type_finder.update(&iter);
+
+            // record this type in our map
+            map.insert(typ.type_index(), typ);
+        }
+
+        // iterate over the map -- which is randomized -- making sure the type finder finds identical types
+        for (type_index, typ) in map.iter() {
+            let found = type_finder.find(*type_index).expect("find");
+            assert_eq!(*typ, found);
+        }
+    })
+}
+
+#[test]
+fn find_classes() {
+    setup(|type_information| {
+        let mut type_finder = type_information.new_type_finder();
+
+        // iterate over all the types
+        let mut iter = type_information.iter();
+        while let Some(typ) = iter.next().expect("next type") {
+            // update the type finder
+            type_finder.update(&iter);
+
+            // parse the type record
+            match typ.parse() {
+                Ok(pdb::TypeData::Class { name, fields: Some(fields), .. }) => {
+                    // this Type describes a class-like type with fields
+                    println!("class {} (type {}):", name, typ.type_index());
+
+                    // fields is presently a TypeIndex
+                    // find and parse the list of fields
+                    match type_finder.find(fields).expect("find fields").parse() {
+                        Ok(pdb::TypeData::FieldList { fields, continuation }) => {
+                            for field in fields {
+                                println!("  - {:?}", field);
+                            }
+
+                            if let Some(c) = continuation {
+                                println!("TODO: follow to type {}", c);
+                            }
+                        }
+                        Ok(value) => {
+                            println!("expected a field list, got {:?}", value);
+                            assert!(false);
+                        },
+                        Err(e) => {
+                            println!("field parse error: {}", e);
+                        }
+                    }
+                },
+                Ok(pdb::TypeData::Enumeration { name, fields, .. }) => {
+                    println!("enum {} (type {}):", name, fields);
+
+                    // fields is presently a TypeIndex
+                    match type_finder.find(fields).expect("find fields").parse() {
+                        Ok(pdb::TypeData::FieldList { fields, continuation }) => {
+                            for field in fields {
+                                println!("  - {:?}", field);
+                            }
+
+                            if let Some(c) = continuation {
+                                println!("TODO: follow to type {}", c);
+                            }
+                        }
+                        Ok(value) => {
+                            println!("expected a field list, got {:?}", value);
+                            assert!(false);
+                        },
+                        Err(e) => {
+                            println!("field parse error: {}", e);
+                        }
+                    }
+                },
+                Ok(pdb::TypeData::FieldList { .. }) => {
+                    // ignore, since we find these by class
+                }
+                Ok(data) => {
+                    //println!("type: {:?}", data);
+                },
+                Err(pdb::Error::UnimplementedTypeKind(kind)) => {
+                    println!("unimplemented: 0x{:04x}", kind);
+                    // TODO: parse everything
+                    // ignore for now
+                },
+                Err(e) => {
+                    // other parse error
+                    println!("other parse error on type {} (raw type {:04x}): {}", typ.type_index(), typ.raw_kind(), e);
+                    panic!("dying due to parse error");
+                }
+            }
+        }
+
+        // hooah!
+    })
+}
+
+/*
+#[bench]
+fn bench_type_finder(b: &mut test::Bencher) {
+    setup(|type_information| {
+        let mut type_finder = type_information.new_type_finder();
+
+        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+
+        // iterate over all the types
+        let mut iter = type_information.iter();
+        while let Some(typ) = iter.next().expect("next type") {
+            assert_eq!(type_finder.max_indexed_type() >> 3, typ.type_index() >> 3);
+            type_finder.update(&iter);
+        }
+
+        let mut rng = rand::thread_rng();
+        let count: pdb::TypeIndex = type_information.len() as pdb::TypeIndex;
+        let base: pdb::TypeIndex = 4096;
+
+        // time how long it takes to build a map
+        b.iter(|| {
+            let lucky = rng.gen_range(base, base + count);
+            let found = type_finder.find(lucky).expect("find");
+            test::black_box(&found);
+        });
+    })
+}
+*/
+
+/*
+#[test]
+fn type_length_histogram() {
+    setup(|type_information| {
+        let mut lens: Vec<usize> = Vec::new();
+        lens.resize(1025, 0);
+
+        // iterate over all the types
+        let mut iter = type_information.iter();
+        while let Some(typ) = iter.next().expect("next type") {
+            let mut len = typ.len() + 2;
+            if len > 1024 {
+                len = 1024;
+            }
+            lens[len] += 1;
+        }
+
+        for (len, count) in lens.as_slice().iter().enumerate() {
+            println!("{}\t{}", len, count);
+        }
+
+        assert!(false);
+    })
+}
+*/
