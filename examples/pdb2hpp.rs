@@ -97,6 +97,8 @@ struct Class<'p> {
     name: pdb::RawString<'p>,
     base_classes: Vec<BaseClass>,
     fields: Vec<Field<'p>>,
+    instance_methods: Vec<Method<'p>>,
+    static_methods: Vec<Method<'p>>,
 }
 
 impl<'p> Class<'p> {
@@ -137,6 +139,38 @@ impl<'p> Class<'p> {
                 });
             },
 
+            &pdb::TypeData::Method { attributes, method_type, ref name, .. } => {
+                let method = Method::find(name.clone(), attributes, type_finder, method_type, needed_types)?;
+                if attributes.is_static() {
+                    self.static_methods.push(method);
+                } else {
+                    self.instance_methods.push(method);
+                }
+            },
+
+            &pdb::TypeData::OverloadedMethod { method_list, ref name, .. } => {
+                // this just means we have more than one method with the same name
+                // find the method list
+                match type_finder.find(method_list)?.parse()? {
+                    pdb::TypeData::MethodList { method_list } => {
+                        let mut iter = method_list.into_iter();
+                        while let Some(pdb::MethodListEntry { attributes, method_type, .. }) = iter.next() {
+                            // hooray
+                            let method = Method::find(name.clone(), attributes, type_finder, method_type, needed_types)?;
+                            if attributes.is_static() {
+                                self.static_methods.push(method);
+                            } else {
+                                self.instance_methods.push(method);
+                            }
+                        }
+                    }
+                    other => {
+                        println!("processing OverloadedMethod, expected MethodList, got {} -> {:?}", method_list, other);
+                        panic!("unexpected type in Class::add_field()");
+                    }
+                }
+            },
+
             &pdb::TypeData::BaseClass { base_class, offset, .. } => {
                 self.base_classes.push(BaseClass{
                     type_name: type_name(type_finder, base_class, needed_types)?,
@@ -151,7 +185,8 @@ impl<'p> Class<'p> {
                 })
             },
 
-            _ => {
+            other => {
+                //println!("ignoring {:?}", other);
                 // ignore everything else even though that's sad
             }
         }
@@ -188,6 +223,30 @@ impl<'p> fmt::Display for Class<'p> {
             writeln!(f, "\t/* offset {:3} */ {} {};", field.offset, field.type_name, field.name.to_string())?;
         }
 
+        if !self.instance_methods.is_empty() {
+            writeln!(f, "\t")?;
+            for method in self.instance_methods.iter() {
+                writeln!(f, "\t{}{} {}({});",
+                         if method.is_virtual { "virtual " } else { "" },
+                         method.return_type_name,
+                         method.name.to_string(),
+                         method.arguments.join(", ")
+                )?;
+            }
+        }
+
+        if !self.static_methods.is_empty() {
+            writeln!(f, "\t")?;
+            for method in self.static_methods.iter() {
+                writeln!(f, "\t{}static {} {}({});",
+                         if method.is_virtual { "virtual " } else { "" },
+                         method.return_type_name,
+                         method.name.to_string(),
+                         method.arguments.join(", ")
+                )?;
+            }
+        }
+
         writeln!(f, "}}")?;
 
         Ok(())
@@ -205,6 +264,53 @@ struct Field<'p> {
     type_name: String,
     name: pdb::RawString<'p>,
     offset: u16,
+}
+
+#[derive(Debug,Clone,PartialEq,Eq)]
+struct Method<'p> {
+    name: pdb::RawString<'p>,
+    return_type_name: String,
+    arguments: Vec<String>,
+    is_virtual: bool,
+}
+
+impl<'p> Method<'p> {
+    fn find(
+        name: pdb::RawString<'p>, attributes: pdb::FieldAttributes,
+        type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet
+    ) -> pdb::Result<Method<'p>>
+    {
+        match type_finder.find(type_index)?.parse()? {
+            pdb::TypeData::MemberFunction { return_type, argument_list: arg_list_type, .. } => {
+                Ok(Method{
+                    name: name,
+                    return_type_name: type_name(type_finder, return_type, needed_types)?,
+                    arguments: argument_list(type_finder, arg_list_type, needed_types)?,
+                    is_virtual: attributes.is_virtual(),
+                })
+            },
+
+            other => {
+                println!("other: {:?}", other);
+                Err(pdb::Error::UnimplementedFeature("that"))
+            }
+        }
+    }
+}
+
+fn argument_list<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<Vec<String>> {
+    match type_finder.find(type_index)?.parse()? {
+        pdb::TypeData::ArgumentList { arguments } => {
+            let mut args: Vec<String> = Vec::new();
+            for arg_type in arguments {
+                args.push(type_name(type_finder, arg_type, needed_types)?);
+            }
+            Ok(args)
+        }
+        _ => {
+            Err(pdb::Error::UnimplementedFeature("argument list of non-argument-list type"))
+        }
+    }
 }
 
 #[derive(Debug,Clone,PartialEq,Eq)]
@@ -359,6 +465,8 @@ impl<'p> Data<'p> {
                     name: name,
                     fields: Vec::new(),
                     base_classes: Vec::new(),
+                    instance_methods: Vec::new(),
+                    static_methods: Vec::new(),
                 };
 
                 if let Some(derived_from) = derived_from {
