@@ -21,7 +21,7 @@ use self::data::*;
 use self::header::*;
 use self::primitive::type_data_for_primitive;
 
-pub use self::data::{TypeData,ClassKind};
+pub use self::data::{TypeData,ClassKind,EnumValue,FieldAttributes,FunctionAttributes};
 pub use self::primitive::{Indirection,PrimitiveType};
 
 /// `TypeInformation` provides zero-copy access to a PDB type data stream.
