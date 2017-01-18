@@ -27,7 +27,7 @@ Design
   [DIA SDK](https://msdn.microsoft.com/en-us/library/x93ctkx8.aspx), or on
   the target's native byte ordering.
 
-Example
+Usage Example
 ---
 
 ```
@@ -54,6 +54,17 @@ fn main() {
     }
 }
 ```
+
+Example Programs
+---
+
+Run with `cargo run --release --example <name>`:
+
+* [`pdb_symbols`](examples/pdb_symbols.rs) is a toy program that prints the name and location of every function and
+  data value defined in the symbol table.
+
+* [`pdb2hpp`](examples/pdb2hpp.rs) is a somewhat larger program that prints an approximation of a C++ header file for
+  a requested type given only a PDB.
 
 License
 ---
