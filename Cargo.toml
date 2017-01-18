@@ -1,6 +1,6 @@
 [package]
 name = "pdb"
-version = "0.1.0"
+version = "0.1.1"
 description = "A parser for Microsoft PDB (Program Database) debugging information"
 repository = "https://github.com/willglynn/pdb"
 authors = ["Will Glynn <will@willglynn.com>"]
@@ -12,5 +12,5 @@ fallible-iterator = "0.1.3"
 byteorder = "1.0.0"
 
 [dev-dependencies]
-# for examples/pdb_symbols
+# for examples/
 getopts = "0.2"
