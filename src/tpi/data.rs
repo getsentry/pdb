@@ -699,8 +699,20 @@ typedef enum CV_methodprop_e {
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
 pub struct FieldAttributes(u16);
 impl FieldAttributes {
+    #[inline]
     pub fn access(&self) -> u8                      {  (self.0 & 0x0003) as u8 }
+    #[inline]
     fn method_properties(&self) -> u8               { ((self.0 & 0x001c) >> 2) as u8 }
+
+    #[inline]
+    pub fn is_static(&self) -> bool {
+        self.method_properties() == 0x02
+    }
+
+    #[inline]
+    pub fn is_virtual(&self) -> bool {
+        self.method_properties() == 0x01
+    }
 
     #[inline]
     fn is_intro_virtual(&self) -> bool {
@@ -792,9 +804,9 @@ impl PointerAttributes {
 
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
 pub struct MethodListEntry {
-    attributes: FieldAttributes,
-    method_type: TypeIndex,
-    vtable_offset: Option<u32>,
+    pub attributes: FieldAttributes,
+    pub method_type: TypeIndex,
+    pub vtable_offset: Option<u32>,
 }
 
 // LF_CLASS, LF_STRUCT, LF_INTERFACE

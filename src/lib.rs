@@ -63,7 +63,7 @@ pub use pdb::PDB;
 pub use source::*;
 pub use symbol::{SymbolTable,Symbol,SymbolData,SymbolIter};
 pub use tpi::{Type,TypeFinder,TypeInformation,TypeIter,TypeData};
-pub use tpi::{ClassKind,EnumValue,FieldAttributes,FunctionAttributes,Indirection,PrimitiveType};
+pub use tpi::{ClassKind,EnumValue,FieldAttributes,FunctionAttributes,MethodListEntry,Indirection,PrimitiveType};
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]
