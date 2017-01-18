@@ -146,6 +146,16 @@ pub enum TypeData<'t> {
         element_type: TypeIndex,
         indexing_type: TypeIndex,
         stride: Option<u32>,
+
+        /// Contains array dimensions as specified in the PDB. This is not what you expect:
+        ///
+        /// * Dimensions are specified in terms of byte sizes, not element accounts.
+        /// * Multidimensional arrays aggregate the lower dimensions into the sizes of the higher
+        ///   dimensions.
+        ///
+        /// Thus a `float[4][4]` has `dimensions: [16, 64]`. Determining array dimensions in terms
+        /// of element counts requires determining the size of the `element_type` and iteratively
+        /// dividing.
         dimensions: Vec<u32>,
     },
 
