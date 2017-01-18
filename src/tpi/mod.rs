@@ -17,7 +17,7 @@ mod data;
 mod header;
 mod primitive;
 
-use self::data::*;
+use self::data::parse_type_data;
 use self::header::*;
 use self::primitive::type_data_for_primitive;
 
