@@ -7,7 +7,7 @@ use std::fmt;
 use std::io::Write;
 
 pub fn type_name<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex) -> pdb::Result<String> {
-    Ok(match type_finder.find(type_index)?.parse()? {
+    let mut name = match type_finder.find(type_index)?.parse()? {
         pdb::TypeData::Primitive { primitive_type, indirection } => {
             let mut name = match primitive_type {
                 pdb::PrimitiveType::Void => "void".to_string(),
@@ -75,7 +75,13 @@ pub fn type_name<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeInd
         },
 
         _ => format!("Type{} /* TODO: figure out how to name it */", type_index)
-    })
+    };
+
+    if name == "std::basic_string<char,std::char_traits<char>,std::allocator<char> >" {
+        name = "std::string".to_string();
+    }
+
+    Ok(name)
 }
 
 #[derive(Debug,Clone,PartialEq,Eq)]
