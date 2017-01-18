@@ -1,7 +1,7 @@
 `pdb`
 ===
 
-[![](https://img.shields.io/crates/v/pdb.svg)](https://crates.io/crates/pdb) [![](https://docs.rs/pdb/badge.svg)](https://docs.rs/pdb/)
+[![](https://img.shields.io/crates/v/pdb.svg)](https://crates.io/crates/pdb) [![](https://docs.rs/pdb/badge.svg)](https://docs.rs/pdb/) [![Build Status](https://travis-ci.org/willglynn/pdb.svg?branch=master)](https://travis-ci.org/willglynn/pdb)
 
 This is a Rust library that parses Microsoft PDB (Program Database) files.
 These files contain debugging information produced by most compilers that
