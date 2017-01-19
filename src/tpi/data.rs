@@ -149,7 +149,7 @@ pub enum TypeData<'t> {
 
         /// Contains array dimensions as specified in the PDB. This is not what you expect:
         ///
-        /// * Dimensions are specified in terms of byte sizes, not element accounts.
+        /// * Dimensions are specified in terms of byte sizes, not element counts.
         /// * Multidimensional arrays aggregate the lower dimensions into the sizes of the higher
         ///   dimensions.
         ///
@@ -646,17 +646,22 @@ unsigned short  mocom       :2;     // CV_MOCOM_UDT_e
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
 pub struct TypeProperties(u16);
 impl TypeProperties {
+    /// Indicates if a type is packed via `#pragma pack` or similar.
     pub fn packed(&self) -> bool                 {   self.0 & 0x0001 != 0 }
 
-    /// Indicates if a class has constructors or destructors
+    /// Indicates if a type has constructors or destructors.
     pub fn constructors(&self) -> bool           {   self.0 & 0x0002 != 0 }
 
-    /// Indicates if a class has any overloaded operators
+    /// Indicates if a type has any overloaded operators.
     pub fn overloaded_operators(&self) -> bool   {   self.0 & 0x0004 != 0 }
+
+    /// Indicates if a type is a nested type, e.g. a `union` defined inside a `class`.
     pub fn is_nested_type(&self) -> bool         {   self.0 & 0x0008 != 0 }
+
+    /// Indicates if a type contains nested types.
     pub fn contains_nested_types(&self) -> bool  {   self.0 & 0x0010 != 0 }
 
-    /// Indicates if a class has overloaded the assignment operator
+    /// Indicates if a class has overloaded the assignment operator.
     pub fn overloaded_assignment(&self) -> bool  {   self.0 & 0x0020 != 0 }
     pub fn overloaded_casting(&self) -> bool     {   self.0 & 0x0040 != 0 }
 
@@ -665,6 +670,7 @@ impl TypeProperties {
     /// data structures, but other more common declaration/definition idioms can cause forward
     /// references too.
     pub fn forward_reference(&self) -> bool      {   self.0 & 0x0080 != 0 }
+
     pub fn scoped_definition(&self) -> bool      {   self.0 & 0x0100 != 0 }
     pub fn has_unique_name(&self) -> bool        {   self.0 & 0x0200 != 0 }
     pub fn sealed(&self) -> bool                 {   self.0 & 0x0400 != 0 }

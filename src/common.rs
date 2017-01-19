@@ -20,49 +20,52 @@ pub type TypeIndex = u32;
 /// An error that occurred while reading or parsing the PDB.
 #[derive(Debug)]
 pub enum Error {
-    /// The input data was not recognized as a MSF (PDB) file
+    /// The input data was not recognized as a MSF (PDB) file.
     UnrecognizedFileFormat,
 
-    /// The MSF header specifies an invalid page size
+    /// The MSF header specifies an invalid page size.
     InvalidPageSize(u32),
 
-    /// MSF referred to page number out of range
+    /// MSF referred to page number out of range.
+    ///
+    /// This likely indicates file corruption.
     PageReferenceOutOfRange(u32),
 
-    // The requested stream is not stored in this file
+    // The requested stream is not stored in this file.
     StreamNotFound(u32),
 
-    /// An IO error occurred while reading from the data source
+    /// An IO error occurred while reading from the data source.
     IoError(io::Error),
 
-    /// Unexpectedly reached end of input
+    /// Unexpectedly reached end of input.
     UnexpectedEof,
 
-    /// This data might be understandable, but the code needed to understand it hasn't been written
+    /// This data might be understandable, but the code needed to understand it hasn't been written.
     UnimplementedFeature(&'static str),
 
-    /// A symbol record's length value was impossibly small
+    /// A symbol record's length value was impossibly small.
     SymbolTooShort,
 
-    /// Support for symbols of this kind is not implemented
+    /// Support for symbols of this kind is not implemented.
     UnimplementedSymbolKind(u16),
 
-    /// The type information header was invalid
+    /// The type information header was invalid.
     InvalidTypeInformationHeader(&'static str),
 
-    /// A type record's length value was impossibly small
+    /// A type record's length value was impossibly small.
     TypeTooShort,
 
-    /// Type not found
+    /// Type not found.
     TypeNotFound(TypeIndex),
 
-    /// Type not indexed
+    /// Type not indexed -- the requested type (`.0`) is larger than the maximum `TypeIndex` covered
+    /// by the `TypeFinder` (`.1`).
     TypeNotIndexed(TypeIndex, TypeIndex),
 
-    /// Support for types of this kind is not implemented
+    /// Support for types of this kind is not implemented.
     UnimplementedTypeKind(u16),
 
-    /// Variable-length numeric parsing encountered an unexpected prefix
+    /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
 }
 
