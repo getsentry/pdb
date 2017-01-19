@@ -32,7 +32,18 @@ pub struct PDB<'s, S> {
 }
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
-    /// Create a new PDB from a Source.
+    /// Create a new `PDB` for a `Source`.
+    ///
+    /// `open()` accesses enough of the source file to find the MSF stream table. This usually
+    /// involves reading the header, a block near the end of the file, and finally the stream table
+    /// itself. It does not access or validate any of the contents of the rest of the PDB.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::UnimplementedFeature` if the PDB file predates ~2002
+    /// * `Error::UnrecognizedFileFormat` if the `Source` does not appear to be a PDB file
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange`, `Error::InvalidPageSize` if the PDB file seems corrupt
     pub fn open(source: S) -> Result<PDB<'s, S>> {
         let msf = msf::open_msf(source)?;
 
@@ -43,6 +54,17 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     /// Retrieve the `TypeInformation` for this PDB.
+    ///
+    /// The `TypeInformation` object owns a `SourceView` for the type information ("TPI") stream.
+    /// This is usually the single largest stream of the PDB file.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain the type information stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
+    ///   understood
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
         // The TPI stream is always stream number 2:
         //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbiimpl.h#L67
@@ -57,6 +79,15 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
+    ///
+    /// The `DebugInformation` object owns a `SourceView` for the debug information ("DBI") stream.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a symbol records stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn debug_information(&mut self) -> Result<DebugInformation<'s>> {
         // The DBI stream is always stream number 3:
         //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbiimpl.h#L68
@@ -94,6 +125,25 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     /// Retrieve the global symbol table for this PDB.
+    ///
+    /// The `SymbolTable` object owns a `SourceView` for the symbol records stream. This is usually
+    /// the second-largest stream of the PDB file.
+    ///
+    /// The debug information stream indicates which stream is the symbol records stream, so
+    /// `global_symbols()` accesses the debug information stream to read the header unless
+    /// `debug_information()` was called first.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a symbol records stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    ///
+    /// If `debug_information()` was not already called, `global_symbols()` will additionally read
+    /// the debug information header, in which case it can also return:
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn global_symbols(&mut self) -> Result<SymbolTable<'s>> {
         // the global symbol table is stored in a stream number described by the DBI header
         // so, start by getting the DBI header

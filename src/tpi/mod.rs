@@ -65,35 +65,40 @@ pub use self::primitive::{Indirection,PrimitiveType};
 ///     match typ.parse() {
 ///         Ok(pdb::TypeData::Class{name, properties, fields: Some(fields), ..}) => {
 ///             // this Type describes a class-like type with fields
-///             println!("type {} is a class named {} with fields = {}", typ.type_index(), name, fields);
+///             println!("type {} is a class named {}", typ.type_index(), name);
 ///
-///             // fields is a TypeIndex, so to find information about the fields, find and parse that Type
+///             // `fields` is a TypeIndex which refers to a FieldList
+///             // To find information about the fields, find and parse that Type
 ///             match type_finder.find(fields)?.parse()? {
 ///                 pdb::TypeData::FieldList{ fields, continuation } => {
+///                     // `fields` is a Vec<TypeData>
 ///                     for field in fields {
 ///                         if let pdb::TypeData::Member { offset, name, field_type, .. } = field {
-///                             // follow "field_type" as desired
+///                             // follow `field_type` as desired
 ///                             println!("  - field {} at offset {:x}", name, offset);
 ///                         } else {
-///                             // do stuff with member functions, nested types, etc.
+///                             // handle member functions, nested types, etc.
 ///                         }
 ///                     }
 ///
-///                     // FieldLists can be split across multiple records; follow "continuation" in live code
+///                     if let Some(more_fields) = continuation {
+///                         // A FieldList can be split across multiple records
+///                         // TODO: follow `more_fields` and handle the next FieldList
+///                     }
 ///                 }
 ///                 _ => { }
 ///             }
 ///
 ///         },
 ///         Ok(_) => {
-///             // ignore other types
+///             // ignore everything that's not a class-like type
 ///         },
 ///         Err(pdb::Error::UnimplementedTypeKind(_)) => {
-///             // TODO: parse everything
-///             // ignore for now
+///             // found an unhandled type record
+///             // this probably isn't fatal in most use cases
 ///         },
 ///         Err(e) => {
-///             // other parse error
+///             // other error, probably is worth failing
 ///             return Err(e);
 ///         }
 ///     }
@@ -329,7 +334,6 @@ impl<'t> TypeFinder<'t> {
     ///
     /// # Errors
     ///
-    /// * `Error::UnimplementedFeature("primitive types") -- TODO
     /// * `Error::TypeNotFound(type_index)` if you ask for a type that doesn't exist
     /// * `Error::TypeNotIndexed(type_index, max_indexed_type)` if you ask for a type that is known
     ///   to exist but is not currently known by this `TypeFinder`.

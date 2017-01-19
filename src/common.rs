@@ -313,8 +313,9 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
     }
 }
 
-/// RawString refers to a &[u8] that physically resides somewhere inside a PDB data structure. It
-/// may not be valid UTF-8.
+/// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
+///
+/// A `RawString` may not be valid UTF-8.
 #[derive(Clone,PartialEq,Eq)]
 pub struct RawString<'b>(&'b [u8]);
 
@@ -331,13 +332,13 @@ impl<'b> fmt::Display for RawString<'b> {
 }
 
 impl<'b> RawString<'b> {
-    /// Return the raw bytes of this string
+    /// Return the raw bytes of this string, as found in the PDB file.
     #[inline]
     pub fn as_bytes(&self) -> &'b [u8] {
         self.0
     }
 
-    /// Return the length in bytes of this string
+    /// Return the length of this string in bytes.
     #[inline]
     pub fn len(&self) -> usize {
         self.0.len()
@@ -345,8 +346,10 @@ impl<'b> RawString<'b> {
 
     /// Returns a UTF-8 `String`, substituting in replacement characters as needed.
     ///
-    /// This uses `String::from_utf8_lossy()` and thus avoids copying in all cases where the
-    /// original string was valid UTF-8.
+    /// This uses [`String::from_utf8_lossy()`](https://doc.rust-lang.org/std/string/struct.String.html#method.from_utf8_lossy)
+    /// and thus avoids copying in cases where the original string was valid UTF-8. This is the
+    /// expected case for strings that appear in PDB files, since they are almost always composed of
+    /// printable 7-bit ASCII characters.
     #[inline]
     pub fn to_string(&self) -> Cow<'b, str> {
         String::from_utf8_lossy(self.0)

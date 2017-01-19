@@ -9,26 +9,40 @@ use std::fmt;
 use std::io;
 
 /// Represents an offset + size of the source file.
+///
+/// The multi-stream file implementation (used by `pdb::PDB`) determines which byte ranges it needs
+/// to satisfy its requests, and it describes those requests as a `&[SourceSlice]`.
 #[derive(Debug,Clone,Copy,Eq,PartialEq)]
 pub struct SourceSlice {
     pub offset: u64,
     pub size: usize,
 }
 
-/// `Source` provides raw access to a PDB.
+/// The `pdb` crate accesses PDB files via the `pdb::Source` trait.
 ///
 /// This library is written with zero-copy in mind. `Source`s provide `SourceView`s which need not
 /// outlive their parent, supporting implementations of e.g. memory mapped files.
 ///
 /// PDB files are "multi-stream files" (MSF) under the hood. MSFs have various layers of
-/// indirection, but ultimately the MSF code asks a `Source` to view a series of { offset, size }
-/// records (each a `SourceSlice`) as a contiguous `&[u8]` (provided by `SourceView`).
+/// indirection, but ultimately the MSF code asks a `Source` to view a series of
+/// [`{ offset, size }` records](struct.SourceSlice.html), which the `Source` provides as a
+/// contiguous `&[u8]`.
+///
+/// # Default
+///
+/// There is a default `Source` implementation for `std::io::Read` + `std::io::Seek` +
+/// `std::fmt::Debug`, allowing a `std::fs::File` to be treated as `pdb::Source`. This
+/// implementation provides views by allocating a buffer, seeking, and reading the contents into
+/// that buffer.
+///
+/// # Alignment
 ///
 /// The requested offsets will always be aligned to the MSF's page size, which is always a power of
 /// two and is usually (but not always) 4 KiB. The requested sizes will also be multiples of the
-/// page size, except for the size of the final `SourceSlice`, which may be smaller. PDB files are
-/// specified as always being a multiple of the page size, so `Source` implementations are free to
-/// e.g. map whole pages and return a sub-slice of the requested length.
+/// page size, except for the size of the final `SourceSlice`, which may be smaller.
+///
+/// PDB files are specified as always being a multiple of the page size, so `Source` implementations
+/// are free to e.g. map whole pages and return a sub-slice of the requested length.
 ///
 pub trait Source<'s> : fmt::Debug {
     /// Provides a contiguous view of the source file composed of the requested position(s).

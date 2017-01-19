@@ -10,6 +10,10 @@
 //! information produced by most compilers that target Windows, including information about symbols,
 //! types, modules, and so on.
 //!
+//! # Usage
+//!
+//! PDB files are accessed via the [`pdb::PDB` object](struct.PDB.html).
+//!
 //! # Example
 //!
 //! ```

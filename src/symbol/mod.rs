@@ -18,6 +18,9 @@ use self::constants::*;
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
+/// The `SymbolTable` holds a `SourceView` referencing the symbol table inside the PDB file. All the
+/// data structures returned by a `SymbolTable` refer to that buffer.
+///
 /// # Example
 ///
 /// ```
@@ -71,11 +74,13 @@ impl<'t> SymbolTable<'t> {
     }
 }
 
-/// Represents a Symbol from the symbol table. A Symbol is been minimally processed, and may not be
-/// correctly formed or even understood by this library.
+/// Represents a symbol from the symbol table.
+///
+/// A `Symbol` is represented internally as a `&[u8]`, and in general the bytes inside are not
+/// inspected in any way before calling any of the accessor methods.
 ///
 /// To avoid copying, `Symbol`s exist as references to data owned by the parent `SymbolTable`.
-/// Therefore, a `Symbol` may not outlive its parent table.
+/// Therefore, a `Symbol` may not outlive its parent `SymbolTable`.
 #[derive(Copy,Clone,PartialEq)]
 pub struct Symbol<'t>(&'t [u8]);
 
@@ -145,7 +150,8 @@ impl<'t> Symbol<'t> {
         Ok(&self.0[2..(data_length+2)])
     }
 
-    /// Returns the name of the symbol. Note that the underlying buffer is owned by the SymbolTable.
+    /// Returns the name of the symbol. Note that the underlying buffer is owned by the
+    /// `SymbolTable`.
     pub fn name(&self) -> Result<RawString<'t>> {
         // figure out how long the data is
         let data_length = self.data_length()?;
