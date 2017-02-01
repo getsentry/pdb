@@ -38,8 +38,7 @@ pub enum TypeData<'t> {
         /// Type index which describes the shape of the vtable for this class, if any
         vtable_shape: Option<TypeIndex>,
 
-        /// TODO: what is this?
-        data_length: u16,
+        size: u16,
 
         name: RawString<'t>,
     },
@@ -233,7 +232,7 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
                 fields: parse_optional_type_index(&mut buf)?,
                 derived_from: parse_optional_type_index(&mut buf)?,
                 vtable_shape: parse_optional_type_index(&mut buf)?,
-                data_length: buf.parse_u16()?,
+                size: parse_unsigned(&mut buf)? as u16,
                 name: parse_string(leaf, buf)?,
             })
         },
@@ -243,7 +242,7 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
             Ok(TypeData::Member {
                 attributes: FieldAttributes(buf.parse_u16()?),
                 field_type: buf.parse_u32()? as TypeIndex,
-                offset: buf.parse_u16()?,
+                offset: parse_unsigned(&mut buf)? as u16,
                 name: parse_string(leaf, &mut buf)?,
             })
         },
