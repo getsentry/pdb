@@ -59,7 +59,7 @@ pub struct SymbolTable<'t> {
     stream: Stream<'t>,
 }
 
-pub fn new_symbol_table<'s>(s: Stream<'s>) -> SymbolTable<'s> {
+pub fn new_symbol_table(s: Stream) -> SymbolTable {
     SymbolTable{
         stream: s,
     }
@@ -67,7 +67,7 @@ pub fn new_symbol_table<'s>(s: Stream<'s>) -> SymbolTable<'s> {
 
 impl<'t> SymbolTable<'t> {
     /// Returns an iterator that can traverse the symbol table in sequential order.
-    pub fn iter<'b>(&'b self) -> SymbolIter<'b> {
+    pub fn iter(&self) -> SymbolIter {
         SymbolIter{
             buf: self.stream.parse_buffer(),
         }
@@ -273,7 +273,7 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
     }
 }
 
-/// SymbolData contains the information parsed from a symbol record.
+/// `SymbolData` contains the information parsed from a symbol record.
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
 pub enum SymbolData {
     // S_PUB32 (0x110e) | S_PUB32_ST (0x1009)
