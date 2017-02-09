@@ -38,7 +38,7 @@ pub struct SourceSlice {
 /// # Alignment
 ///
 /// The requested offsets will always be aligned to the MSF's page size, which is always a power of
-/// two and is usually (but not always) 4 KiB. The requested sizes will also be multiples of the
+/// two and is usually (but not always) 4096 bytes. The requested sizes will also be multiples of the
 /// page size, except for the size of the final `SourceSlice`, which may be smaller.
 ///
 /// PDB files are specified as always being a multiple of the page size, so `Source` implementations
@@ -54,7 +54,7 @@ pub trait Source<'s> : fmt::Debug {
 
 /// An owned, droppable, read-only view of the source file which can be referenced as a byte slice.
 pub trait SourceView<'s>: Drop + fmt::Debug {
-    fn as_slice<'v>(&'v self) -> &'v [u8];
+    fn as_slice(&self) -> &[u8];
 }
 
 #[derive(Clone)]
@@ -69,12 +69,12 @@ impl<'v> fmt::Debug for ReadView {
 }
 
 impl<'s> SourceView<'s> for ReadView {
-    fn as_slice<'v>(&'v self) -> &'v [u8] {
+    fn as_slice(&self) -> &[u8] {
         self.bytes.as_slice()
     }
 }
 
-impl<'v> Drop for ReadView {
+impl<'s> Drop for ReadView {
     fn drop(&mut self) {
         // no-op
     }
@@ -83,7 +83,7 @@ impl<'v> Drop for ReadView {
 impl<'s, T> Source<'s> for T where T: io::Read + io::Seek + fmt::Debug + 's {
     fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<SourceView<'s>>, io::Error> {
         let len = slices.iter()
-            .fold(0 as usize, |acc,ref s| acc + s.size);
+            .fold(0 as usize, |acc,s| acc + s.size);
 
         let mut v = ReadView{
             bytes: Vec::with_capacity(len)

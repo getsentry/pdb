@@ -14,7 +14,7 @@ use std::result;
 
 use byteorder::{ByteOrder,LittleEndian};
 
-/// TypeIndex refers to a type somewhere in `PDB.type_information()`.
+/// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
 
 /// An error that occurred while reading or parsing the PDB.
@@ -345,6 +345,12 @@ impl<'b> RawString<'b> {
     #[inline]
     pub fn len(&self) -> usize {
         self.0.len()
+    }
+
+    /// Returns a boolean indicating if this string is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.0.len() == 0
     }
 
     /// Returns a UTF-8 `String`, substituting in replacement characters as needed.

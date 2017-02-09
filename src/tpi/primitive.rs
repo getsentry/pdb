@@ -215,7 +215,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         _ => { return Err(Error::TypeNotFound(index)); }
     };
 
-    return Ok(TypeData::Primitive{
+    Ok(TypeData::Primitive{
         indirection: indirection,
         primitive_type: primitive_type,
     })

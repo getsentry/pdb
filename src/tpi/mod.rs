@@ -118,7 +118,7 @@ pub struct TypeInformation<'t> {
 
 impl<'t> TypeInformation<'t> {
     /// Returns an iterator that can traverse the type table in sequential order.
-    pub fn iter<'b>(&'b self) -> TypeIter<'b> {
+    pub fn iter(&self) -> TypeIter {
         // get a parse buffer
         let mut buf = self.stream.parse_buffer();
 
@@ -148,7 +148,7 @@ impl<'t> TypeInformation<'t> {
     }
 }
 
-pub fn new_type_information<'t>(stream: Stream<'t>) -> Result<TypeInformation<'t>> {
+pub fn new_type_information(stream: Stream) -> Result<TypeInformation> {
     let h;
 
     {
@@ -185,7 +185,7 @@ impl<'t> Type<'t> {
     ///
     /// Types are prefixed by length, which is not included in this count.
     pub fn len(&self) -> usize {
-        return self.1.len();
+        self.1.len()
     }
 
     /// Returns the kind of type identified by this `Type`.

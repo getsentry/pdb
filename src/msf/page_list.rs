@@ -8,8 +8,8 @@
 use msf::PageNumber;
 use source::SourceSlice;
 
-/// Represents a list of PageNumbers, which are likely (but not certainly) sequential, and which
-/// will be presented as a slice of SourceSlices.
+/// Represents a list of `PageNumbers`, which are likely (but not certainly) sequential, and which
+/// will be presented as a slice of `SourceSlice`s.
 #[derive(Debug)]
 pub struct PageList {
     page_size: usize,
@@ -89,7 +89,7 @@ impl PageList {
     /// Return the total length of this PageList.
     pub fn len(&self) -> usize {
         self.source_slices.iter()
-            .fold(0 as usize, |acc,ref s| acc + s.size)
+            .fold(0 as usize, |acc,s| acc + s.size)
     }
 
     /// Return a slice of SourceSlices.

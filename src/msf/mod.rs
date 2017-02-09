@@ -83,9 +83,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
         }
 
         let page_size = header.parse_u32()?;
-        if page_size.count_ones() != 1 {
-            return Err(Error::InvalidPageSize(page_size));
-        } else if page_size < 0x100 || page_size > (128 * 0x10000) {
+        if page_size.count_ones() != 1 || page_size < 0x100 || page_size > (128 * 0x10000) {
             return Err(Error::InvalidPageSize(page_size));
         }
 
@@ -130,7 +128,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
     fn find_stream_table(&mut self) -> Result<()> {
         let mut new_stream_table: Option<StreamTable> = None;
 
-        if let &StreamTable::HeaderOnly { size_in_bytes, ref stream_table_location_location } = &self.stream_table {
+        if let StreamTable::HeaderOnly { size_in_bytes, ref stream_table_location_location } = self.stream_table {
             // the header indicated we need to read size_in_pages page numbers from the
             // specified PageList.
 
@@ -162,13 +160,13 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
 
     fn make_stream_table_available(&mut self) -> Result<()> {
         // do the initial read if we must
-        if let &StreamTable::HeaderOnly { .. } = &self.stream_table {
+        if let StreamTable::HeaderOnly { .. } = self.stream_table {
             self.find_stream_table()?;
         }
 
         // do we need to map the stream table itself?
         let mut new_stream_table: Option<StreamTable> = None;
-        if let &StreamTable::TableFound { ref stream_table_location } = &self.stream_table {
+        if let StreamTable::TableFound { ref stream_table_location } = self.stream_table {
             // yep
             // ask the source to view it
             let stream_table_view = view(&mut self.source, stream_table_location)?;
@@ -202,7 +200,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
         let bytes_in_stream: u32;
         let page_list: PageList;
 
-        if let &StreamTable::Available { ref stream_table_view } = &self.stream_table {
+        if let StreamTable::Available { ref stream_table_view } = self.stream_table {
             let stream_table_slice = stream_table_view.as_slice();
             let mut stream_table = ParseBuffer::from(stream_table_slice);
 
@@ -267,7 +265,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
         }
 
         // done!
-        return Ok(page_list);
+        Ok(page_list)
     }
 }
 
@@ -289,7 +287,7 @@ impl<'s, S: Source<'s>> MSF<'s, S> for BigMSF<'s, S> {
             source_view: view,
         };
 
-        return Ok(stream);
+        Ok(stream)
     }
 }
 
@@ -305,7 +303,7 @@ pub struct Stream<'s> {
 
 impl<'s> Stream<'s> {
     #[inline]
-    pub fn parse_buffer<'a>(&'a self) -> ParseBuffer<'a> {
+    pub fn parse_buffer(&self) -> ParseBuffer {
         let slice = self.source_view.as_slice();
         ParseBuffer::from(slice)
     }
@@ -318,11 +316,7 @@ pub trait MSF<'s, S> : fmt::Debug {
 }
 
 fn header_matches(actual: &[u8], expected: &[u8]) -> bool {
-    if actual.len() >= expected.len() && &actual[0..expected.len()] == expected {
-        true
-    } else {
-        false
-    }
+    actual.len() >= expected.len() && &actual[0..expected.len()] == expected
 }
 
 pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<MSF<'s, S> + 's>> {

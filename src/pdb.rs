@@ -75,7 +75,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let type_info = tpi::new_type_information(stream)?;
 
         // Return
-        return Ok(type_info);
+        Ok(type_info)
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
@@ -101,7 +101,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         self.dbi_header = Some(dbi::get_header(&debug_info));
 
         // Return
-        return Ok(debug_info);
+        Ok(debug_info)
     }
 
     fn dbi_header(&mut self) -> Result<dbi::Header> {
@@ -152,6 +152,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         // open the appropriate stream
         let stream: Stream = self.msf.get(dbi_header.symbol_records_stream as u32, None)?;
 
-        return Ok(symbol::new_symbol_table(stream));
+        Ok(symbol::new_symbol_table(stream))
     }
 }

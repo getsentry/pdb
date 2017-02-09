@@ -192,15 +192,15 @@ pub enum TypeData<'t> {
 impl<'t> TypeData<'t> {
     /// Return the name of this TypeData, if any
     pub fn name(&self) -> Option<RawString<'t>> {
-        let name = match self {
-            &TypeData::Class { ref name, .. } => name,
-            &TypeData::Member { ref name, .. } => name,
-            &TypeData::OverloadedMethod { ref name, .. } => name,
-            &TypeData::StaticMember { ref name, .. } => name,
-            &TypeData::NestedType { ref name, .. } => name,
-            &TypeData::Enumeration { ref name, .. } => name,
-            &TypeData::Enumerate { ref name, .. } => name,
-            &TypeData::Union { ref name, .. } => name,
+        let name = match *self {
+            TypeData::Class { ref name, .. } |
+            TypeData::Member { ref name, .. } |
+            TypeData::OverloadedMethod { ref name, .. } |
+            TypeData::StaticMember { ref name, .. } |
+            TypeData::NestedType { ref name, .. } |
+            TypeData::Enumeration { ref name, .. } |
+            TypeData::Enumerate { ref name, .. } |
+            TypeData::Union { ref name, .. } => name,
             _ => { return None }
         };
 
@@ -208,7 +208,7 @@ impl<'t> TypeData<'t> {
     }
 }
 
-/// Parse a type out of a ParseBuffer.
+/// Parse a type out of a `ParseBuffer`.
 pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>> {
     let leaf = buf.parse_u16()?;
 

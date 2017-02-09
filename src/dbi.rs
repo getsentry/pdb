@@ -22,7 +22,7 @@ pub struct DebugInformation<'s> {
     header: Header,
 }
 
-pub fn new_debug_information<'s>(stream: Stream<'s>) -> Result<DebugInformation<'s>> {
+pub fn new_debug_information(stream: Stream) -> Result<DebugInformation> {
     let header;
 
     {
@@ -37,7 +37,7 @@ pub fn new_debug_information<'s>(stream: Stream<'s>) -> Result<DebugInformation<
 }
 
 pub fn get_header(dbi: &DebugInformation) -> Header {
-    dbi.header.clone()
+    dbi.header
 }
 
 #[derive(Debug,Copy,Clone)]
@@ -63,7 +63,7 @@ impl From<u32> for HeaderVersion {
     }
 }
 
-/// A DBI header -- NewDBIHdr, really -- parsed from a stream.
+/// A DBI header -- `NewDBIHdr`, really -- parsed from a stream.
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
 #[derive(Debug,Copy,Clone)]
