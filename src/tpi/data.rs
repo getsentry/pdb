@@ -805,6 +805,24 @@ typedef enum CV_ptrmode_e {
 pub struct PointerAttributes(u32);
 impl PointerAttributes {
     // TODO
+
+    /// Indicates the type of pointer.
+    pub fn pointer_type(&self) -> u8 {
+        (self.0 & 0x1f) as u8
+    }
+
+    /// The size of the pointer in bytes.
+    pub fn size(&self) -> u8 {
+        let size = ((self.0 >> 13) & 0x3f) as u8;
+        if size != 0 {
+            return size;
+        }
+        match self.pointer_type() {
+            0x0a => 4,
+            0x0c => 8,
+            _ => 0
+        }
+    }
 }
 
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
