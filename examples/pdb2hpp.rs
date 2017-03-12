@@ -185,8 +185,7 @@ impl<'p> Class<'p> {
                 })
             },
 
-            other => {
-                //println!("ignoring {:?}", other);
+            _ => {
                 // ignore everything else even though that's sad
             }
         }

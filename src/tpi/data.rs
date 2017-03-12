@@ -730,6 +730,7 @@ impl FieldAttributes {
     // TODO
 }
 
+#[allow(dead_code)]
 #[repr(u8)]
 pub enum Access {
     None = 0x00,

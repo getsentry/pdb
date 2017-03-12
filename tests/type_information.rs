@@ -126,7 +126,7 @@ fn find_classes() {
                 Ok(pdb::TypeData::FieldList { .. }) => {
                     // ignore, since we find these by class
                 }
-                Ok(data) => {
+                Ok(_) => {
                     //println!("type: {:?}", data);
                 },
                 Err(pdb::Error::UnimplementedTypeKind(kind)) => {
