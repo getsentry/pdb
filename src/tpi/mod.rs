@@ -136,7 +136,7 @@ impl<'t> TypeInformation<'t> {
     ///
     /// Note that primitive types are not stored in the PDB file, so the number of distinct types
     /// reachable via this `TypeInformation` will be higher than `len()`.
-    pub fn len(&self) -> usize() {
+    pub fn len(&self) -> usize {
         (self.header.maximum_type_index - self.header.minimum_type_index) as usize
     }
 
