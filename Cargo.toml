@@ -15,3 +15,8 @@ uuid = "0.5.0"
 [dev-dependencies]
 # for examples/
 getopts = "0.2"
+
+[package.metadata.release]
+pre-release-commit-message = "Release {{version}}"
+tag-message = "Release {{version}}"
+no-dev-version = true
