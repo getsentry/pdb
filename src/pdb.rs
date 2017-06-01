@@ -9,6 +9,7 @@ use dbi;
 use msf;
 use symbol;
 use tpi;
+use pdbi;
 
 use common::*;
 use dbi::DebugInformation;
@@ -16,6 +17,7 @@ use source::Source;
 use msf::{MSF, Stream};
 use symbol::SymbolTable;
 use tpi::TypeInformation;
+use pdbi::PDBInformation;
 
 /// `PDB` provides access to the data within a PDB file.
 ///
@@ -51,6 +53,19 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             msf: msf,
             dbi_header: None,
         })
+    }
+
+    pub fn pdb_information(&mut self) -> Result<PDBInformation> {
+        // The PDB info stream is always stream number 1:
+        //   http://llvm.org/docs/PDB/index.html
+        // Open that stream
+        let stream: Stream = self.msf.get(1, None)?;
+
+        // Parse it
+        let pdb_info = pdbi::new_pdb_information(stream)?;
+
+        // Return
+        Ok(pdb_info)
     }
 
     /// Retrieve the `TypeInformation` for this PDB.

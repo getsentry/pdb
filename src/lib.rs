@@ -50,6 +50,7 @@
 
 extern crate byteorder;
 extern crate fallible_iterator;
+extern crate uuid;
 
 // modules
 mod common;
@@ -59,10 +60,12 @@ mod pdb;
 mod source;
 mod symbol;
 mod tpi;
+mod pdbi;
 
 // exports
 pub use common::{Error,Result,TypeIndex,RawString};
 pub use dbi::{DebugInformation};
+pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;
 pub use symbol::{SymbolTable,Symbol,SymbolData,SymbolIter};
