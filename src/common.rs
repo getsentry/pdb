@@ -319,7 +319,7 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
 ///
 /// A `RawString` may not be valid UTF-8.
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone,PartialEq,Eq,Hash,PartialOrd,Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
 impl<'b> fmt::Debug for RawString<'b> {
