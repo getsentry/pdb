@@ -298,6 +298,28 @@ impl<'b> ParseBuffer<'b> {
             Err(Error::UnexpectedEof)
         }
     }
+
+    pub fn parse_variant(&mut self) -> Result<Variant> {
+        let leaf = self.parse_u16()?;
+        if leaf < ::tpi::constants::LF_NUMERIC {
+            // the u16 directly encodes a value
+            return Ok(Variant::U16(leaf));
+        }
+
+        match leaf {
+            ::tpi::constants::LF_CHAR =>      { Ok(Variant::U8 (self.parse_u8()? )) },
+            ::tpi::constants::LF_SHORT =>     { Ok(Variant::I16(self.parse_i16()?)) },
+            ::tpi::constants::LF_LONG =>      { Ok(Variant::I32(self.parse_i32()?)) },
+            ::tpi::constants::LF_QUADWORD =>  { Ok(Variant::I64(self.parse_i64()?)) },
+            ::tpi::constants::LF_USHORT =>    { Ok(Variant::U16(self.parse_u16()?)) },
+            ::tpi::constants::LF_ULONG =>     { Ok(Variant::U32(self.parse_u32()?)) },
+            ::tpi::constants::LF_UQUADWORD => { Ok(Variant::U64(self.parse_u64()?)) },
+            _ => {
+                debug_assert!(false);
+                Err(Error::UnexpectedNumericPrefix(leaf))
+            }
+        }
+    }
 }
 
 impl<'b> From<&'b [u8]> for ParseBuffer<'b> {
@@ -314,6 +336,18 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
         }
         write!(f, "\").as_bytes() at offset {}", self.1)
     }
+}
+
+#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+pub enum Variant {
+    U8(u8),
+    U16(u16),
+    U32(u32),
+    U64(u64),
+    I8(i8),
+    I16(i16),
+    I32(i32),
+    I64(i64),
 }
 
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.

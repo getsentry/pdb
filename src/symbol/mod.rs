@@ -249,7 +249,7 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
         S_CONSTANT | S_CONSTANT_ST => {
             Ok(SymbolData::Constant {
                 type_index: buf.parse_u32()?,
-                leaf: buf.parse_u16()?, // TODO: is this tpi::parse_enum_value()?
+                value: buf.parse_u16()?,
             })
         }
 
@@ -294,7 +294,7 @@ pub enum SymbolData {
     AnnotationReference { sum_name: u32, symbol_index: u32, module: u16 },
 
     //  S_CONSTANT (0x1107) | S_CONSTANT_ST (0x1002)
-    Constant { type_index: TypeIndex, leaf: u16 },
+    Constant { type_index: TypeIndex, value: u16 },
 
     //       S_UDT (0x1108) | S_UDT_ST (0x1003)
     UserDefinedType { type_index: TypeIndex },
@@ -388,7 +388,7 @@ mod tests {
             let buf = &[7, 17, 201, 18, 0, 0, 1, 0, 95, 95, 73, 83, 65, 95, 65, 86, 65, 73, 76, 65, 66, 76, 69, 95, 83, 83, 69, 50, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1107);
-            assert_eq!(data, SymbolData::Constant { type_index: 4809, leaf: 1 });
+            assert_eq!(data, SymbolData::Constant { type_index: 4809, value: 1 });
             assert_eq!(name, "__ISA_AVAILABLE_SSE2");
         }
 

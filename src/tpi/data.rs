@@ -137,7 +137,7 @@ pub enum TypeData<'t> {
 
     Enumerate {
         attributes: FieldAttributes,
-        value: EnumValue,
+        value: Variant,
         name: RawString<'t>,
     },
 
@@ -388,7 +388,7 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
         LF_ENUMERATE | LF_ENUMERATE_ST => {
             Ok(TypeData::Enumerate {
                 attributes: FieldAttributes(buf.parse_u16()?),
-                value: parse_enum_value(&mut buf)?,
+                value: buf.parse_variant()?,
                 name: parse_string(leaf, &mut buf)?,
             })
         }
@@ -595,28 +595,6 @@ fn parse_unsigned<'t>(buf: &mut ParseBuffer<'t>) -> Result<u64> {
         LF_USHORT =>    { Ok(buf.parse_u16()? as u64) },
         LF_ULONG =>     { Ok(buf.parse_u32()? as u64) },
         LF_UQUADWORD => { Ok(buf.parse_u64()? as u64) },
-        _ => {
-            debug_assert!(false);
-            Err(Error::UnexpectedNumericPrefix(leaf))
-        }
-    }
-}
-
-fn parse_enum_value<'t>(buf: &mut ParseBuffer<'t>) -> Result<EnumValue> {
-    let leaf = buf.parse_u16()?;
-    if leaf < LF_NUMERIC {
-        // the u16 directly encodes a value
-        return Ok(EnumValue::U16(leaf));
-    }
-
-    match leaf {
-        LF_CHAR =>      { Ok(EnumValue::U8 (buf.parse_u8()? )) },
-        LF_SHORT =>     { Ok(EnumValue::I16(buf.parse_i16()?)) },
-        LF_LONG =>      { Ok(EnumValue::I32(buf.parse_i32()?)) },
-        LF_QUADWORD =>  { Ok(EnumValue::I64(buf.parse_i64()?)) },
-        LF_USHORT =>    { Ok(EnumValue::U16(buf.parse_u16()?)) },
-        LF_ULONG =>     { Ok(EnumValue::U32(buf.parse_u32()?)) },
-        LF_UQUADWORD => { Ok(EnumValue::U64(buf.parse_u64()?)) },
         _ => {
             debug_assert!(false);
             Err(Error::UnexpectedNumericPrefix(leaf))
@@ -839,18 +817,6 @@ pub struct MethodListEntry {
 /// Used by `TypeData::Class` to distinguish class-like concepts.
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
 pub enum ClassKind { Class, Struct, Interface }
-
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
-pub enum EnumValue {
-    U8(u8),
-    U16(u16),
-    U32(u32),
-    U64(u64),
-    I8(i8),
-    I16(i16),
-    I32(i32),
-    I64(i64),
-}
 
 /*
 // arrays:

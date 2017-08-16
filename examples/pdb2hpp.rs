@@ -365,14 +365,14 @@ impl<'p> fmt::Display for Enum<'p> {
 
         for value in &self.values {
             writeln!(f, "\t{} = {},", value.name.to_string(), match value.value {
-                pdb::EnumValue::U8(v) => format!("0x{:02x}", v),
-                pdb::EnumValue::U16(v) => format!("0x{:04x}", v),
-                pdb::EnumValue::U32(v) => format!("0x{:08x}", v),
-                pdb::EnumValue::U64(v) => format!("0x{:16x}", v),
-                pdb::EnumValue::I8(v) => format!("{}", v),
-                pdb::EnumValue::I16(v) => format!("{}", v),
-                pdb::EnumValue::I32(v) => format!("{}", v),
-                pdb::EnumValue::I64(v) => format!("{}", v),
+                pdb::Variant::U8(v) => format!("0x{:02x}", v),
+                pdb::Variant::U16(v) => format!("0x{:04x}", v),
+                pdb::Variant::U32(v) => format!("0x{:08x}", v),
+                pdb::Variant::U64(v) => format!("0x{:16x}", v),
+                pdb::Variant::I8(v) => format!("{}", v),
+                pdb::Variant::I16(v) => format!("{}", v),
+                pdb::Variant::I32(v) => format!("{}", v),
+                pdb::Variant::I64(v) => format!("{}", v),
             })?;
         }
         writeln!(f, "}}")?;
@@ -384,7 +384,7 @@ impl<'p> fmt::Display for Enum<'p> {
 #[derive(Debug,Clone,PartialEq,Eq)]
 struct EnumValue<'p> {
     name: pdb::RawString<'p>,
-    value: pdb::EnumValue,
+    value: pdb::Variant,
 }
 
 #[derive(Debug,Clone,PartialEq,Eq)]

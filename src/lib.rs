@@ -63,14 +63,14 @@ mod tpi;
 mod pdbi;
 
 // exports
-pub use common::{Error,Result,TypeIndex,RawString};
+pub use common::{Error,Result,TypeIndex,RawString,Variant};
 pub use dbi::{DebugInformation};
 pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;
 pub use symbol::{SymbolTable,Symbol,SymbolData,SymbolIter};
 pub use tpi::{Type,TypeFinder,TypeInformation,TypeIter,TypeData};
-pub use tpi::{ClassKind,EnumValue,FieldAttributes,FunctionAttributes,MethodListEntry,TypeProperties};
+pub use tpi::{ClassKind,FieldAttributes,FunctionAttributes,MethodListEntry,TypeProperties};
 pub use tpi::{Indirection,PrimitiveType};
 
 // re-export FallibleIterator for convenience
