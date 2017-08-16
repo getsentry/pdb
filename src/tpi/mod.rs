@@ -12,7 +12,7 @@ use common::*;
 use msf::Stream;
 use FallibleIterator;
 
-mod constants;
+pub mod constants;
 mod data;
 mod header;
 mod primitive;

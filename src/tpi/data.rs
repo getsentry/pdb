@@ -53,7 +53,7 @@ pub enum TypeData<'t> {
     MemberFunction {
         return_type: TypeIndex,
         class_type: TypeIndex,
-        this_pointer_type: TypeIndex,
+        this_pointer_type: Option<TypeIndex>,
         attributes: FunctionAttributes,
         parameter_count: u16,
         argument_list: TypeIndex,
@@ -109,7 +109,7 @@ pub enum TypeData<'t> {
     },
 
     Procedure {
-        return_type: TypeIndex,
+        return_type: Option<TypeIndex>,
         attributes: FunctionAttributes,
         parameter_count: u16,
         argument_list: TypeIndex,
@@ -275,7 +275,7 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
             Ok(TypeData::MemberFunction {
                 return_type: buf.parse_u32()? as TypeIndex,
                 class_type: buf.parse_u32()? as TypeIndex,
-                this_pointer_type: buf.parse_u32()? as TypeIndex,
+                this_pointer_type: parse_optional_type_index(&mut buf)?,
                 attributes: FunctionAttributes(buf.parse_u16()?),
                 parameter_count: buf.parse_u16()?,
                 argument_list: buf.parse_u32()? as TypeIndex,
@@ -351,7 +351,7 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1775-L1782
         LF_PROCEDURE => {
             Ok(TypeData::Procedure {
-                return_type: buf.parse_u32()? as TypeIndex,
+                return_type: parse_optional_type_index(&mut buf)?,
                 attributes: FunctionAttributes(buf.parse_u16()?),
                 parameter_count: buf.parse_u16()?,
                 argument_list: buf.parse_u32()? as TypeIndex,
@@ -698,7 +698,12 @@ impl FieldAttributes {
     }
 
     #[inline]
-    fn is_intro_virtual(&self) -> bool {
+    pub fn is_pure_virtual(&self) -> bool {
+        self.method_properties() == 0x05
+    }
+
+    #[inline]
+    pub fn is_intro_virtual(&self) -> bool {
         match self.method_properties() {
             0x04 | 0x06 => true,
             _ => false,
@@ -788,6 +793,17 @@ impl PointerAttributes {
     /// Indicates the type of pointer.
     pub fn pointer_type(&self) -> u8 {
         (self.0 & 0x1f) as u8
+    }
+
+    /// Indicates if this pointer is `const`.
+    pub fn is_const(&self) -> bool { (self.0 & 0x40) != 0 }
+
+    /// Is this a C++ reference, as opposed to a C pointer?
+    pub fn is_reference(&self) -> bool {
+        match (self.0 >> 5) & 0x07 {
+            0x01 | 0x04 => true,
+            _ => false,
+        }
     }
 
     /// The size of the pointer in bytes.
