@@ -116,6 +116,8 @@ pub enum PrimitiveType {
 
     /// 16-bit boolean value
     Bool64,
+
+    HRESULT,
 }
 
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
@@ -163,6 +165,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
     // this groups "short" and "16-bit integer" together, but... right? *scratches head*
     let primitive_type = match index & 0xff {
         0x03 => PrimitiveType::Void,
+        0x08 => PrimitiveType::HRESULT,
 
         0x10 => PrimitiveType::Char,
         0x20 => PrimitiveType::UChar,

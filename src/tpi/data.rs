@@ -467,6 +467,12 @@ pub fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>
             Err(Error::UnimplementedTypeKind(leaf))
         },
 
+        // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1825-L1837
+        LF_VFTABLE => {
+            // TODO
+            Err(Error::UnimplementedTypeKind(leaf))
+        }
+
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2521-L2528
         LF_VBCLASS | LF_IVBCLASS => {
             Ok(TypeData::VirtualBaseClass{
