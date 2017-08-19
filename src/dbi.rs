@@ -7,32 +7,69 @@
 
 // DBI = "Debug Information"
 
+use std::borrow::Cow;
+use std::result;
+
 use common::*;
 use msf::*;
+use FallibleIterator;
 
 /// Provides access to the "DBI" stream inside the PDB.
 ///
 /// This is only minimally implemented; it's really just so `PDB` can find the global symbol table.
 ///
-/// `DebugInformation` should be able to tell you about all the modules that are present in this
-/// PDB.
+/// # Example
+///
+/// ```
+/// # use pdb::FallibleIterator;
+/// #
+/// # fn test() -> pdb::Result<usize> {
+/// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+/// let mut pdb = pdb::PDB::open(file)?;
+///
+/// let dbi = pdb.debug_information()?;
+
+///
+/// # let mut count: usize = 0;
+/// let mut modules = dbi.modules()?;
+/// while let Some(module) = modules.next()? {
+///     println!("module name: {}, object file name: {}",
+///              module.module_name(), module.object_file_name());
+/// #   count += 1;
+/// }
+///
+/// # Ok(count)
+/// # }
+/// # assert!(test().expect("test") == 194);
 #[derive(Debug)]
 pub struct DebugInformation<'s> {
     stream: Stream<'s>,
     header: Header,
+    header_len: usize,
+}
+
+impl<'s> DebugInformation<'s> {
+    /// Returns an iterator that can traverse the modules list in sequential order.
+    pub fn modules(&self) -> Result<ModuleIter> {
+        let mut buf = self.stream.parse_buffer();
+        // drop the header
+        buf.take(self.header_len)?;
+        let modules_buf = buf.take(self.header.module_list_size as usize)?;
+        Ok(ModuleIter { buf: modules_buf.into() })
+    }
 }
 
 pub fn new_debug_information(stream: Stream) -> Result<DebugInformation> {
-    let header;
-
-    {
+    let (header, len) = {
         let mut buf = stream.parse_buffer();
-        header = parse_header(&mut buf)?;
-    }
+        let header = parse_header(&mut buf)?;
+        (header, buf.pos())
+    };
 
     Ok(DebugInformation{
         stream: stream,
         header: header,
+        header_len: len,
     })
 }
 
@@ -162,4 +199,150 @@ pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
     }
 
     Ok(header)
+}
+
+/// Information about a module's contribution to a section.
+/// `struct SC` in Microsoft's code:
+/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
+#[derive(Debug, Copy, Clone)]
+pub struct DBISectionContribution {
+    /// The index of the section.
+    section: u16,
+    _padding1: u16,
+    /// The offset within the section.
+    offset: u32,
+    /// The size of the contribution, in bytes.
+    size: u32,
+    /// The characteristics, which map to the `Characteristics` field of
+    /// the [`IMAGE_SECTION_HEADER`][1] field in binaries.
+    /// [1]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
+    characteristics: u32,
+    /// The index of the module.
+    module: u16,
+    _padding2: u16,
+    /// CRC of the contribution(?)
+    data_crc: u32,
+    /// CRC of relocations(?)
+    reloc_crc: u32,
+}
+
+/// Information about a module parsed from the DBI stream. Named `MODI` in
+/// the Microsoft PDB source:
+/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197
+#[derive(Debug, Copy, Clone)]
+pub struct DBIModuleInfo {
+    /// Currently open module.
+    opened: u32,
+    /// This module's first section contribution.
+    section: DBISectionContribution,
+    /// Flags, expressed as bitfields in the C struct:
+    /// written, EC enabled, unused, tsm
+    /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1201-L1204
+    flags: u16,
+    /// Stream number of module debug info (syms, lines, fpo).
+    stream: u16,
+    /// Size of local symbols debug info in `stream`.
+    symbols_size: u32,
+    /// Size of line number debug info in `stream`.
+    lines_size: u32,
+    /// Size of C13 style line number info in `stream`.
+    c13_lines_size: u32,
+    /// Number of files contributing to this module.
+    files: u16,
+    _padding: u16,
+    /// Used as a pointer into an array of filename indicies in the Microsoft code.
+    filename_offsets: u32,
+    /// Source file name index.
+    source: u32,
+    /// Path to compiler PDB name index.
+    compiler: u32,
+}
+
+fn parse_module_info(buf: &mut ParseBuffer) -> Result<DBIModuleInfo> {
+    Ok(DBIModuleInfo {
+        opened: buf.parse_u32()?,
+        section: parse_section_contribution(buf)?,
+        flags: buf.parse_u16()?,
+        stream: buf.parse_u16()?,
+        symbols_size: buf.parse_u32()?,
+        lines_size: buf.parse_u32()?,
+        c13_lines_size: buf.parse_u32()?,
+        files: buf.parse_u16()?,
+        _padding: buf.parse_u16()?,
+        filename_offsets: buf.parse_u32()?,
+        source: buf.parse_u32()?,
+        compiler: buf.parse_u32()?,
+    })
+}
+
+fn parse_section_contribution(buf: &mut ParseBuffer) -> Result<DBISectionContribution> {
+    Ok(DBISectionContribution {
+        section: buf.parse_u16()?,
+        _padding1: buf.parse_u16()?,
+        offset: buf.parse_u32()?,
+        size: buf.parse_u32()?,
+        characteristics: buf.parse_u32()?,
+        module: buf.parse_u16()?,
+        _padding2: buf.parse_u16()?,
+        data_crc: buf.parse_u32()?,
+        reloc_crc: buf.parse_u32()?,
+    })
+}
+
+/// Represents a module from the DBI stream.
+///
+/// A `Module` is a single item that contributes to the binary, such as an
+/// object file or import library.
+#[derive(Debug, Clone)]
+pub struct Module<'m> {
+    info: DBIModuleInfo,
+    module_name: RawString<'m>,
+    object_file_name: RawString<'m>,
+}
+
+impl<'m> Module<'m> {
+    /// The `DBIModuleInfo` from the module info substream in the DBI stream.
+    pub fn info(&self) -> &DBIModuleInfo { &self.info }
+    /// The module name.
+    ///
+    /// Usually either a full path to an object file or a string of the form `Import:<dll name>`.
+    pub fn module_name(&self) -> Cow<'m, str> {
+        self.module_name.to_string()
+    }
+    /// The object file name.
+    ///
+    /// May be the same as `module_name` for object files passed directly
+    /// to the linker. For modules from static libraries, this is usually
+    /// the full path to the archive.
+    pub fn object_file_name(&self) -> Cow<'m, str> {
+        self.object_file_name.to_string()
+    }
+}
+
+/// A `ModuleIter` iterates over the modules in the DBI section, producing `Module`s.
+#[derive(Debug)]
+pub struct ModuleIter<'m> {
+    buf: ParseBuffer<'m>,
+}
+
+impl<'m> FallibleIterator for ModuleIter<'m> {
+    type Item = Module<'m>;
+    type Error = Error;
+
+    fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
+        // see if we're at EOF
+        if self.buf.len() == 0 {
+            return Ok(None);
+        }
+
+        let info = parse_module_info(&mut self.buf)?;
+        let module_name = self.buf.parse_cstring()?;
+        let object_file_name = self.buf.parse_cstring()?;
+        self.buf.align(4)?;
+        Ok(Some(Module {
+            info,
+            module_name,
+            object_file_name,
+        }))
+    }
 }

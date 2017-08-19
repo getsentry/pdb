@@ -64,7 +64,7 @@ mod pdbi;
 
 // exports
 pub use common::{Error,Result,TypeIndex,RawString,Variant};
-pub use dbi::{DebugInformation};
+pub use dbi::{DebugInformation, Module, ModuleIter};
 pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;

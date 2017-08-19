@@ -138,6 +138,20 @@ impl<'b> ParseBuffer<'b> {
         self.1
     }
 
+    /// Align the current position to the next multiple of `alignment` bytes.
+    #[doc(hidden)]
+    #[inline]
+    pub fn align(&mut self, alignment: usize) -> Result<()> {
+        let diff = self.1 % alignment;
+        if diff > 0 {
+            if self.len() < diff {
+                return Err(Error::UnexpectedEof);
+            }
+            self.1 += alignment - diff;
+        }
+        Ok(())
+    }
+
     /// Parse a `u8` from the input.
     #[doc(hidden)]
     #[inline]
