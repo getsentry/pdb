@@ -6,13 +6,15 @@
 // copied, modified, or distributed except according to those terms.
 
 use dbi;
+use module_info;
 use msf;
 use symbol;
 use tpi;
 use pdbi;
 
 use common::*;
-use dbi::DebugInformation;
+use dbi::{DebugInformation, Module};
+use module_info::ModuleInfo;
 use source::Source;
 use msf::{MSF, Stream};
 use symbol::SymbolTable;
@@ -168,5 +170,50 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream: Stream = self.msf.get(dbi_header.symbol_records_stream as u32, None)?;
 
         Ok(symbol::new_symbol_table(stream))
+    }
+
+    /// Retrieve the module info stream for a specific `Module`.
+    ///
+    /// Some information for each module is stored in a separate stream per-module.
+    /// `Module`s can be retrieved from the `PDB` by first calling [`debug_information`] to
+    /// get the debug information stream, and then calling [`modules`] on that.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain this module info stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnimplementedFeature` if the module information stream is an unsupported
+    ///   version
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pdb::FallibleIterator;
+    /// #
+    /// # fn test() -> pdb::Result<()> {
+    /// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+    /// let mut pdb = pdb::PDB::open(file)?;
+    /// let dbi = pdb.debug_information()?;
+    /// let mut modules = dbi.modules()?;
+    /// if let Some(module) = modules.next()? {
+    ///     println!("module name: {}, object file name: {}",
+    ///              module.module_name(), module.object_file_name());
+    ///     let info = pdb.module_info(&module)?;
+    ///     println!("contains {} symbols", info.symbols()?.count()?);
+    /// }
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// [`debug_information`]: #method.debug_information
+    /// [`modules`]: struct.DebugInformation.html#method.modules
+    pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
+        let res = {
+            let stream: Stream = self.msf.get(module.info().stream as u32, None)?;
+            module_info::new_module_info(stream, module)
+        };
+        res
     }
 }

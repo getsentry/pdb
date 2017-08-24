@@ -232,30 +232,30 @@ pub struct DBISectionContribution {
 #[derive(Debug, Copy, Clone)]
 pub struct DBIModuleInfo {
     /// Currently open module.
-    opened: u32,
+    pub opened: u32,
     /// This module's first section contribution.
-    section: DBISectionContribution,
+    pub section: DBISectionContribution,
     /// Flags, expressed as bitfields in the C struct:
     /// written, EC enabled, unused, tsm
     /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1201-L1204
-    flags: u16,
+    pub flags: u16,
     /// Stream number of module debug info (syms, lines, fpo).
-    stream: u16,
+    pub stream: u16,
     /// Size of local symbols debug info in `stream`.
-    symbols_size: u32,
+    pub symbols_size: u32,
     /// Size of line number debug info in `stream`.
-    lines_size: u32,
+    pub lines_size: u32,
     /// Size of C13 style line number info in `stream`.
-    c13_lines_size: u32,
+    pub c13_lines_size: u32,
     /// Number of files contributing to this module.
-    files: u16,
+    pub files: u16,
     _padding: u16,
     /// Used as a pointer into an array of filename indicies in the Microsoft code.
-    filename_offsets: u32,
+    pub filename_offsets: u32,
     /// Source file name index.
-    source: u32,
+    pub source: u32,
     /// Path to compiler PDB name index.
-    compiler: u32,
+    pub compiler: u32,
 }
 
 fn parse_module_info(buf: &mut ParseBuffer) -> Result<DBIModuleInfo> {
@@ -293,6 +293,11 @@ fn parse_section_contribution(buf: &mut ParseBuffer) -> Result<DBISectionContrib
 ///
 /// A `Module` is a single item that contributes to the binary, such as an
 /// object file or import library.
+///
+/// Much of the useful information for a `Module` is stored in a separate stream in the PDB.
+/// It can be retrieved by calling [`PDB::module_info`] with a specific module.
+///
+/// [`PDB::module_info`]: struct.PDB.html#method.module_info
 #[derive(Debug, Clone)]
 pub struct Module<'m> {
     info: DBIModuleInfo,

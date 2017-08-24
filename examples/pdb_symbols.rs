@@ -31,10 +31,9 @@ fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
     Ok(())
 }
 
-fn walk_symbols(symbol_table: &pdb::SymbolTable) -> pdb::Result<()> {
+fn walk_symbols(mut symbols: pdb::SymbolIter) -> pdb::Result<()> {
     println!("segment\toffset\tkind\tname");
 
-    let mut symbols = symbol_table.iter();
     while let Some(symbol) = symbols.next()? {
         match print_symbol(&symbol) {
             Ok(_) => {}
@@ -52,7 +51,17 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
     let file = std::fs::File::open(filename)?;
     let mut pdb = pdb::PDB::open(file)?;
     let symbol_table = pdb.global_symbols()?;
-    walk_symbols(&symbol_table)?;
+    println!("Global symbols:");
+    walk_symbols(symbol_table.iter())?;
+
+    println!("Module private symbols:");
+    let dbi = pdb.debug_information()?;
+    let mut modules = dbi.modules()?;
+    while let Some(module) = modules.next()? {
+        println!("Module: {}", module.object_file_name());
+        let info = pdb.module_info(&module)?;
+        walk_symbols(info.symbols()?)?;
+    }
     Ok(())
 }
 
