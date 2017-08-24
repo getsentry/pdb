@@ -68,9 +68,7 @@ pub fn new_symbol_table(s: Stream) -> SymbolTable {
 impl<'t> SymbolTable<'t> {
     /// Returns an iterator that can traverse the symbol table in sequential order.
     pub fn iter(&self) -> SymbolIter {
-        SymbolIter{
-            buf: self.stream.parse_buffer(),
-        }
+        SymbolIter::new(self.stream.parse_buffer())
     }
 }
 
@@ -314,6 +312,12 @@ pub struct SymbolIter<'t> {
     buf: ParseBuffer<'t>,
 }
 
+impl<'t> SymbolIter<'t> {
+    pub fn new(buf: ParseBuffer<'t>) -> SymbolIter {
+        SymbolIter { buf }
+    }
+}
+
 impl<'t> FallibleIterator for SymbolIter<'t> {
     type Item = Symbol<'t>;
     type Error = Error;
@@ -328,7 +332,7 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
         let symbol_length = self.buf.parse_u16()? as usize;
 
         // validate
-        if symbol_length <= 2 {
+        if symbol_length < 2 {
             // this can't be correct
             return Err(Error::SymbolTooShort);
         }

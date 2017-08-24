@@ -55,6 +55,7 @@ extern crate uuid;
 // modules
 mod common;
 mod dbi;
+mod module_info;
 mod msf;
 mod pdb;
 mod source;
@@ -65,6 +66,7 @@ mod pdbi;
 // exports
 pub use common::{Error,Result,TypeIndex,RawString,Variant};
 pub use dbi::{DebugInformation, Module, ModuleIter};
+pub use module_info::ModuleInfo;
 pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;
