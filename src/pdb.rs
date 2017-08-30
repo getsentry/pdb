@@ -21,6 +21,15 @@ use symbol::SymbolTable;
 use tpi::TypeInformation;
 use pdbi::PDBInformation;
 
+/// Some streams have a fixed stream index.
+/// http://llvm.org/docs/PDB/index.html
+
+const PDB_STREAM: u32 = 1;
+const TPI_STREAM: u32 = 2;
+const DBI_STREAM: u32 = 3;
+#[allow(dead_code)]
+const IPI_STREAM: u32 = 4;
+
 /// `PDB` provides access to the data within a PDB file.
 ///
 /// A PDB file is internally a Multi-Stream File (MSF), composed of multiple independent
@@ -57,11 +66,18 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         })
     }
 
-    pub fn pdb_information(&mut self) -> Result<PDBInformation> {
-        // The PDB info stream is always stream number 1:
-        //   http://llvm.org/docs/PDB/index.html
-        // Open that stream
-        let stream: Stream = self.msf.get(1, None)?;
+    /// Retrieve the `PDBInformation` for this PDB.
+    ///
+    /// The `PDBInformation` object contains the GUID and age fields that can be used to verify
+    /// that a PDB file matches a binary, as well as the stream indicies of named PDB streams.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain the PDB information stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    pub fn pdb_information(&mut self) -> Result<PDBInformation<'s>> {
+        let stream: Stream = self.msf.get(PDB_STREAM, None)?;
 
         // Parse it
         let pdb_info = pdbi::new_pdb_information(stream)?;
@@ -83,10 +99,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
     ///   understood
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
-        // The TPI stream is always stream number 2:
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbiimpl.h#L67
-        // Open that stream
-        let stream: Stream = self.msf.get(2, None)?;
+        let stream: Stream = self.msf.get(TPI_STREAM, None)?;
 
         // Parse it
         let type_info = tpi::new_type_information(stream)?;
@@ -106,10 +119,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn debug_information(&mut self) -> Result<DebugInformation<'s>> {
-        // The DBI stream is always stream number 3:
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbiimpl.h#L68
-        // Open that stream
-        let stream: Stream = self.msf.get(3, None)?;
+        let stream: Stream = self.msf.get(DBI_STREAM, None)?;
 
         // Parse it
         let debug_info = dbi::new_debug_information(stream)?;
@@ -130,8 +140,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let header;
 
         {
-            // get just the first little bit of stream 3
-            let stream: Stream = self.msf.get(3, Some(1024))?;
+            // get just the first little bit of the DBI stream
+            let stream: Stream = self.msf.get(DBI_STREAM, Some(1024))?;
             let mut buf = stream.parse_buffer();
             header = dbi::parse_header(&mut buf)?;
         }
