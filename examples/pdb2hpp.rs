@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 
 type TypeSet = BTreeSet<pdb::TypeIndex>;
 
-pub fn type_name<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<String> {
+pub fn type_name<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet) -> pdb::Result<String> {
     let mut name = match type_finder.find(type_index)?.parse()? {
         pdb::TypeData::Primitive { primitive_type, indirection } => {
             let mut name = match primitive_type {
@@ -107,7 +107,7 @@ impl<'p> Class<'p> {
         Ok(())
     }
 
-    fn add_fields(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<()> {
+    fn add_fields(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet) -> pdb::Result<()> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::FieldList { fields, continuation, .. } => {
                 for ref field in fields {
@@ -128,7 +128,7 @@ impl<'p> Class<'p> {
         Ok(())
     }
 
-    fn add_field(&mut self, type_finder: &pdb::TypeFinder<'p>, field: &pdb::TypeData<'p>, mut needed_types: &mut TypeSet) -> pdb::Result<()> {
+    fn add_field(&mut self, type_finder: &pdb::TypeFinder<'p>, field: &pdb::TypeData<'p>, needed_types: &mut TypeSet) -> pdb::Result<()> {
         match field {
             &pdb::TypeData::Member { field_type, offset, ref name, .. } => {
                 // TODO: attributes (static, virtual, etc.)
@@ -276,7 +276,7 @@ struct Method<'p> {
 impl<'p> Method<'p> {
     fn find(
         name: pdb::RawString<'p>, attributes: pdb::FieldAttributes,
-        type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet
+        type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet
     ) -> pdb::Result<Method<'p>>
     {
         match type_finder.find(type_index)?.parse()? {
@@ -297,7 +297,7 @@ impl<'p> Method<'p> {
     }
 }
 
-fn argument_list<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<Vec<String>> {
+fn argument_list<'p>(type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet) -> pdb::Result<Vec<String>> {
     match type_finder.find(type_index)?.parse()? {
         pdb::TypeData::ArgumentList { arguments } => {
             let mut args: Vec<String> = Vec::new();
@@ -320,7 +320,7 @@ struct Enum<'p> {
 }
 
 impl<'p> Enum<'p> {
-    fn add_fields(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<()> {
+    fn add_fields(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet) -> pdb::Result<()> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::FieldList { fields, continuation, .. } => {
                 for ref field in fields {
@@ -445,7 +445,7 @@ impl<'p> Data<'p> {
         }
     }
 
-    fn add(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, mut needed_types: &mut TypeSet) -> pdb::Result<()> {
+    fn add(&mut self, type_finder: &pdb::TypeFinder<'p>, type_index: pdb::TypeIndex, needed_types: &mut TypeSet) -> pdb::Result<()> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::Class {
                 kind, properties, fields, name, derived_from, ..

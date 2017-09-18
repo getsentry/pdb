@@ -25,7 +25,7 @@ fn count_symbols() {
         let mut iter = global_symbols.iter();
         while let Some(sym) = iter.next().expect("next symbol") {
             let kind = sym.raw_kind();
-            let mut entry = map.entry(kind).or_insert(0);
+            let entry = map.entry(kind).or_insert(0);
 
             if *entry == 0 && is_fixture {
                 // first symbol of this kind seen
