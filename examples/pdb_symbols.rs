@@ -17,11 +17,11 @@ fn print_row<'p>(segment: u16, offset: u32, kind: &'static str, name: pdb::RawSt
 
 fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
     match symbol.parse()? {
-        pdb::SymbolData::PublicSymbol{ function: true, segment, offset, .. } => {
-            print_row(segment, offset, "function", symbol.name()?);
+        pdb::SymbolData::PublicSymbol(data) => {
+            print_row(data.segment, data.offset, "function", symbol.name()?);
         }
-        pdb::SymbolData::DataSymbol{ segment, offset, .. } => {
-            print_row(segment, offset, "data", symbol.name()?);
+        pdb::SymbolData::DataSymbol(data) => {
+            print_row(data.segment, data.offset, "data", symbol.name()?);
         }
         _ => {
             // ignore everything else

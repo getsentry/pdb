@@ -29,14 +29,9 @@
 //! let mut symbols = symbol_table.iter();
 //! while let Some(symbol) = symbols.next()? {
 //!     match symbol.parse() {
-//!     	Ok(pdb::SymbolData::PublicSymbol{
-//!     		function: true,
-//!     		segment,
-//!     		offset,
-//!     		..
-//!     	}) => {
+//!     	Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
 //!     		// we found the location of a function!
-//!     		println!("{:x}:{:08x} is {}", segment, offset, symbol.name()?);
+//!     		println!("{:x}:{:08x} is {}", data.segment, data.offset, symbol.name()?);
 //!             # count += 1;
 //!     	}
 //!     	_ => {}
@@ -70,7 +65,7 @@ pub use module_info::ModuleInfo;
 pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;
-pub use symbol::{SymbolTable,Symbol,SymbolData,SymbolIter};
+pub use symbol::*;
 pub use tpi::{Type,TypeFinder,TypeInformation,TypeIter,TypeData};
 pub use tpi::{ClassKind,FieldAttributes,FunctionAttributes,MethodListEntry,TypeProperties};
 pub use tpi::{Indirection,PrimitiveType};

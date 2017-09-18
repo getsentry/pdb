@@ -36,14 +36,9 @@ use self::constants::*;
 /// let mut symbols = symbol_table.iter();
 /// while let Some(symbol) = symbols.next()? {
 ///     match symbol.parse() {
-///     	Ok(pdb::SymbolData::PublicSymbol{
-///     		function: true,
-///     		segment,
-///     		offset,
-///     		..
-///     	}) => {
+///     	Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
 ///     		// we found the location of a function!
-///     		println!("{:x}:{:08x} is {}", segment, offset, symbol.name()?);
+///     		println!("{:x}:{:08x} is {}", data.segment, data.offset, symbol.name()?);
 ///             # count += 1;
 ///     	}
 ///     	_ => {}
@@ -59,7 +54,7 @@ pub struct SymbolTable<'t> {
     stream: Stream<'t>,
 }
 
-pub fn new_symbol_table(s: Stream) -> SymbolTable {
+pub(crate) fn new_symbol_table(s: Stream) -> SymbolTable {
     SymbolTable{
         stream: s,
     }
@@ -195,76 +190,76 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
     match kind {
         S_PUB32 | S_PUB32_ST => {
             let flags = buf.parse_u32()?;
-            Ok(SymbolData::PublicSymbol {
+            Ok(SymbolData::PublicSymbol(PublicSymbol {
                 code:       flags & CVPSF_CODE != 0,
                 function:   flags & CVPSF_FUNCTION != 0,
                 managed:    flags & CVPSF_MANAGED != 0,
                 msil:       flags & CVPSF_MSIL != 0,
                 offset:     buf.parse_u32()?,
                 segment:    buf.parse_u16()?,
-            })
+            }))
         }
 
         S_LDATA32 | S_LDATA32_ST |
         S_GDATA32 | S_GDATA32_ST |
         S_LMANDATA | S_LMANDATA_ST |
         S_GMANDATA | S_GMANDATA_ST => {
-            Ok(SymbolData::DataSymbol {
+            Ok(SymbolData::DataSymbol(DataSymbol {
                 global: match kind { S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST => true, _ => false },
                 managed: match kind { S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST => true, _ => false },
                 type_index: buf.parse_u32()?,
                 offset:     buf.parse_u32()?,
                 segment:    buf.parse_u16()?,
-            })
+            }))
         }
 
          S_PROCREF | S_PROCREF_ST  |
         S_LPROCREF | S_LPROCREF_ST => {
-             Ok(SymbolData::ProcedureReference {
+             Ok(SymbolData::ProcedureReference(ProcedureReferenceSymbol {
                  global: match kind { S_PROCREF | S_PROCREF_ST => true, _ => false },
                  sum_name: buf.parse_u32()?,
                  symbol_index: buf.parse_u32()?,
                  module: buf.parse_u16()?,
-             })
+             }))
          },
 
         S_DATAREF | S_DATAREF_ST => {
-            Ok(SymbolData::DataReference {
+            Ok(SymbolData::DataReference(DataReferenceSymbol {
                 sum_name: buf.parse_u32()?,
                 symbol_index: buf.parse_u32()?,
                 module: buf.parse_u16()?,
-            })
+            }))
         }
 
         S_ANNOTATIONREF => {
-             Ok(SymbolData::AnnotationReference {
+             Ok(SymbolData::AnnotationReference(AnnotationReferenceSymbol {
                  sum_name: buf.parse_u32()?,
                  symbol_index: buf.parse_u32()?,
                  module: buf.parse_u16()?,
-             })
+             }))
         }
 
         S_CONSTANT | S_CONSTANT_ST => {
-            Ok(SymbolData::Constant {
+            Ok(SymbolData::Constant(ConstantSymbol {
                 type_index: buf.parse_u32()?,
                 value: buf.parse_u16()?,
-            })
+            }))
         }
 
         S_UDT | S_UDT_ST => {
-            Ok(SymbolData::UserDefinedType {
+            Ok(SymbolData::UserDefinedType(UserDefinedTypeSymbol {
                 type_index: buf.parse_u32()?,
-            })
+            }))
         }
 
         S_LTHREAD32 | S_LTHREAD32_ST |
         S_GTHREAD32 | S_GTHREAD32_ST => {
-            Ok(SymbolData::ThreadStorage {
+            Ok(SymbolData::ThreadStorage(ThreadStorageSymbol {
                 global: match kind { S_GTHREAD32 | S_GTHREAD32_ST => true, _ => false },
                 type_index: buf.parse_u32()?,
                 offset: buf.parse_u32()?,
                 segment: buf.parse_u16()?,
-            })
+            }))
         }
 
         _ => Err(Error::UnimplementedSymbolKind(kind))
@@ -275,31 +270,105 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
 pub enum SymbolData {
     // S_PUB32 (0x110e) | S_PUB32_ST (0x1009)
-    PublicSymbol { code: bool, function: bool, managed: bool, msil: bool, offset: u32, segment: u16 },
+    PublicSymbol(PublicSymbol),
 
     //   S_LDATA32 (0x110c) | S_LDATA32_ST (0x1007)
     //   S_GDATA32 (0x110d) | S_GDATA32_ST (0x1008)
     //  S_LMANDATA (0x111c) | S_LMANDATA_ST (0x1020)
     //  S_GMANDATA (0x111d) | S_GMANDATA_ST (0x1021)
-    DataSymbol { global: bool, managed: bool, type_index: TypeIndex, offset: u32, segment: u16 },
+    DataSymbol(DataSymbol),
 
     //   S_PROCREF (0x1125) |  S_PROCREF_ST (0x0400)
-    //   S_DATAREF (0x1126) |  S_DATAREF_ST (0x0401)
     //  S_LPROCREF (0x1127) | S_LPROCREF_ST (0x0403)
+    ProcedureReference(ProcedureReferenceSymbol),
+
+    //   S_DATAREF (0x1126) |  S_DATAREF_ST (0x0401)
+    DataReference(DataReferenceSymbol),
+
     // S_ANNOTATIONREF (0x1128)
-    ProcedureReference { global: bool, sum_name: u32, symbol_index: u32, module: u16 },
-    DataReference { sum_name: u32, symbol_index: u32, module: u16 },
-    AnnotationReference { sum_name: u32, symbol_index: u32, module: u16 },
+    AnnotationReference(AnnotationReferenceSymbol),
 
     //  S_CONSTANT (0x1107) | S_CONSTANT_ST (0x1002)
-    Constant { type_index: TypeIndex, value: u16 },
+    Constant(ConstantSymbol),
 
     //       S_UDT (0x1108) | S_UDT_ST (0x1003)
-    UserDefinedType { type_index: TypeIndex },
+    UserDefinedType(UserDefinedTypeSymbol),
 
     // S_LTHREAD32 (0x1112) | S_LTHREAD32_ST (0x100e)
     // S_GTHREAD32 (0x1113) | S_GTHREAD32_ST (0x100f)
-    ThreadStorage { global: bool, type_index: TypeIndex, offset: u32, segment: u16 },
+    ThreadStorage(ThreadStorageSymbol),
+}
+
+/// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct PublicSymbol {
+    pub code: bool,
+    pub function: bool,
+    pub managed: bool,
+    pub msil: bool,
+    pub offset: u32,
+    pub segment: u16,
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_LDATA32`, `S_LDATA32_ST`, `S_GDATA32`, `S_GDATA32_ST`,
+/// `S_LMANDATA`, `S_LMANDATA_ST`, `S_GMANDATA`, or `S_GMANDATA_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct DataSymbol {
+    pub global: bool,
+    pub managed: bool,
+    pub type_index: TypeIndex,
+    pub offset: u32,
+    pub segment: u16,
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_PROCREF`, `S_PROCREF_ST`, `S_LPROCREF`, or `S_LPROCREF_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ProcedureReferenceSymbol {
+    pub global: bool,
+    pub sum_name: u32,
+    pub symbol_index: u32,
+    pub module: u16,
+}
+
+/// The information parsed from a symbol record with kind `S_DATAREF` or `S_DATAREF_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct DataReferenceSymbol {
+    pub sum_name: u32,
+    pub symbol_index: u32,
+    pub module: u16,
+}
+
+/// The information parsed from a symbol record with kind `S_ANNOTATIONREF`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct AnnotationReferenceSymbol {
+    pub sum_name: u32,
+    pub symbol_index: u32,
+    pub module: u16,
+}
+
+/// The information parsed from a symbol record with kind `S_CONSTANT`, or `S_CONSTANT_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ConstantSymbol {
+    pub type_index: TypeIndex,
+    pub value: u16,
+}
+
+/// The information parsed from a symbol record with kind `S_UDT`, or `S_UDT_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct UserDefinedTypeSymbol {
+    pub type_index: TypeIndex,
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_LTHREAD32`, `S_LTHREAD32_ST`, `S_GTHREAD32`, or `S_GTHREAD32_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ThreadStorageSymbol {
+    pub global: bool,
+    pub type_index: TypeIndex,
+    pub offset: u32,
+    pub segment: u16,
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
@@ -365,7 +434,7 @@ mod tests {
             let buf = &[14, 17, 2, 0, 0, 0, 192, 85, 0, 0, 1, 0, 95, 95, 108, 111, 99, 97, 108, 95, 115, 116, 100, 105, 111, 95, 112, 114, 105, 110, 116, 102, 95, 111, 112, 116, 105, 111, 110, 115, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110e);
-            assert_eq!(data, SymbolData::PublicSymbol { code: false, function: true, managed: false, msil: false, offset: 21952, segment: 1 });
+            assert_eq!(data, SymbolData::PublicSymbol(PublicSymbol { code: false, function: true, managed: false, msil: false, offset: 21952, segment: 1 }));
             assert_eq!(name, "__local_stdio_printf_options");
         }
 
@@ -374,7 +443,7 @@ mod tests {
             let buf = &[37, 17, 0, 0, 0, 0, 108, 0, 0, 0, 1, 0, 66, 97, 122, 58, 58, 102, 95, 112, 117, 98, 108, 105, 99, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1125);
-            assert_eq!(data, SymbolData::ProcedureReference { global: true, sum_name: 0, symbol_index: 108, module: 1 });
+            assert_eq!(data, SymbolData::ProcedureReference(ProcedureReferenceSymbol { global: true, sum_name: 0, symbol_index: 108, module: 1 }));
             assert_eq!(name, "Baz::f_public");
         }
 
@@ -383,7 +452,7 @@ mod tests {
             let buf = &[8, 17, 112, 6, 0, 0, 118, 97, 95, 108, 105, 115, 116, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1108);
-            assert_eq!(data, SymbolData::UserDefinedType { type_index: 1648 });
+            assert_eq!(data, SymbolData::UserDefinedType(UserDefinedTypeSymbol { type_index: 1648 }));
             assert_eq!(name, "va_list");
         }
 
@@ -392,7 +461,7 @@ mod tests {
             let buf = &[7, 17, 201, 18, 0, 0, 1, 0, 95, 95, 73, 83, 65, 95, 65, 86, 65, 73, 76, 65, 66, 76, 69, 95, 83, 83, 69, 50, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1107);
-            assert_eq!(data, SymbolData::Constant { type_index: 4809, value: 1 });
+            assert_eq!(data, SymbolData::Constant(ConstantSymbol { type_index: 4809, value: 1 }));
             assert_eq!(name, "__ISA_AVAILABLE_SSE2");
         }
 
@@ -401,7 +470,7 @@ mod tests {
             let buf = &[13, 17, 116, 0, 0, 0, 16, 0, 0, 0, 3, 0, 95, 95, 105, 115, 97, 95, 97, 118, 97, 105, 108, 97, 98, 108, 101, 0, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110d);
-            assert_eq!(data, SymbolData::DataSymbol { global: true, managed: false, type_index: 116, offset: 16, segment: 3 });
+            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: true, managed: false, type_index: 116, offset: 16, segment: 3 }));
             assert_eq!(name, "__isa_available");
         }
 
@@ -410,7 +479,7 @@ mod tests {
             let buf = &[12, 17, 32, 0, 0, 0, 240, 36, 1, 0, 2, 0, 36, 120, 100, 97, 116, 97, 115, 121, 109, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110c);
-            assert_eq!(data, SymbolData::DataSymbol { global: false, managed: false, type_index: 32, offset: 74992, segment: 2 });
+            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: false, managed: false, type_index: 32, offset: 74992, segment: 2 }));
             assert_eq!(name, "$xdatasym");
         }
 
@@ -419,7 +488,7 @@ mod tests {
             let buf = &[39, 17, 0, 0, 0, 0, 128, 4, 0, 0, 182, 0, 99, 97, 112, 116, 117, 114, 101, 95, 99, 117, 114, 114, 101, 110, 116, 95, 99, 111, 110, 116, 101, 120, 116, 0, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1127);
-            assert_eq!(data, SymbolData::ProcedureReference { global: false, sum_name: 0, symbol_index: 1152, module: 182 });
+            assert_eq!(data, SymbolData::ProcedureReference(ProcedureReferenceSymbol { global: false, sum_name: 0, symbol_index: 1152, module: 182 }));
             assert_eq!(name, "capture_current_context");
         }
     }
