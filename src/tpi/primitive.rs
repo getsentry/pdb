@@ -22,8 +22,17 @@ use super::data::TypeData;
 // encoded into the bits of the TypeIndex rather than exploding the matrix like the reference
 // implementations.
 
+/// Represents a primitive type like `void` or `char *`.
 #[derive(Debug,Copy,Clone,PartialEq,Eq)]
-pub enum PrimitiveType {
+pub struct PrimitiveType {
+    pub kind: PrimitiveKind,
+
+    /// What kind of indirection was applied to the underlying type
+    pub indirection: Indirection,
+}
+
+#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+pub enum PrimitiveKind {
     Void,
 
     Char,
@@ -163,63 +172,63 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
 
     // primitive types are stored in the lowest octet
     // this groups "short" and "16-bit integer" together, but... right? *scratches head*
-    let primitive_type = match index & 0xff {
-        0x03 => PrimitiveType::Void,
-        0x08 => PrimitiveType::HRESULT,
+    let kind = match index & 0xff {
+        0x03 => PrimitiveKind::Void,
+        0x08 => PrimitiveKind::HRESULT,
 
-        0x10 => PrimitiveType::Char,
-        0x20 => PrimitiveType::UChar,
-        0x68 => PrimitiveType::I8,
-        0x69 => PrimitiveType::U8,
+        0x10 => PrimitiveKind::Char,
+        0x20 => PrimitiveKind::UChar,
+        0x68 => PrimitiveKind::I8,
+        0x69 => PrimitiveKind::U8,
 
-        0x70 => PrimitiveType::RChar,
-        0x71 => PrimitiveType::WChar,
-        0x7a => PrimitiveType::RChar16,
-        0x7b => PrimitiveType::RChar32,
+        0x70 => PrimitiveKind::RChar,
+        0x71 => PrimitiveKind::WChar,
+        0x7a => PrimitiveKind::RChar16,
+        0x7b => PrimitiveKind::RChar32,
 
-        0x11 => PrimitiveType::I16,
-        0x21 => PrimitiveType::U16,
-        0x72 => PrimitiveType::I16,
-        0x73 => PrimitiveType::U16,
+        0x11 => PrimitiveKind::I16,
+        0x21 => PrimitiveKind::U16,
+        0x72 => PrimitiveKind::I16,
+        0x73 => PrimitiveKind::U16,
 
-        0x12 => PrimitiveType::I32,
-        0x22 => PrimitiveType::U32,
-        0x74 => PrimitiveType::I32,
-        0x75 => PrimitiveType::U32,
+        0x12 => PrimitiveKind::I32,
+        0x22 => PrimitiveKind::U32,
+        0x74 => PrimitiveKind::I32,
+        0x75 => PrimitiveKind::U32,
 
-        0x13 => PrimitiveType::I64,
-        0x23 => PrimitiveType::U64,
-        0x76 => PrimitiveType::I64,
-        0x77 => PrimitiveType::U64,
+        0x13 => PrimitiveKind::I64,
+        0x23 => PrimitiveKind::U64,
+        0x76 => PrimitiveKind::I64,
+        0x77 => PrimitiveKind::U64,
 
-        0x14 => PrimitiveType::I128,
-        0x24 => PrimitiveType::U128,
-        0x78 => PrimitiveType::I128,
-        0x79 => PrimitiveType::U128,
+        0x14 => PrimitiveKind::I128,
+        0x24 => PrimitiveKind::U128,
+        0x78 => PrimitiveKind::I128,
+        0x79 => PrimitiveKind::U128,
 
-        0x46 => PrimitiveType::F16,
-        0x40 => PrimitiveType::F32,
-        0x45 => PrimitiveType::F32PP,
-        0x44 => PrimitiveType::F48,
-        0x41 => PrimitiveType::F64,
-        0x42 => PrimitiveType::F80,
-        0x43 => PrimitiveType::F128,
+        0x46 => PrimitiveKind::F16,
+        0x40 => PrimitiveKind::F32,
+        0x45 => PrimitiveKind::F32PP,
+        0x44 => PrimitiveKind::F48,
+        0x41 => PrimitiveKind::F64,
+        0x42 => PrimitiveKind::F80,
+        0x43 => PrimitiveKind::F128,
 
-        0x50 => PrimitiveType::Complex32,
-        0x51 => PrimitiveType::Complex64,
-        0x52 => PrimitiveType::Complex80,
-        0x53 => PrimitiveType::Complex128,
+        0x50 => PrimitiveKind::Complex32,
+        0x51 => PrimitiveKind::Complex64,
+        0x52 => PrimitiveKind::Complex80,
+        0x53 => PrimitiveKind::Complex128,
 
-        0x30 => PrimitiveType::Bool8,
-        0x31 => PrimitiveType::Bool16,
-        0x32 => PrimitiveType::Bool32,
-        0x33 => PrimitiveType::Bool64,
+        0x30 => PrimitiveKind::Bool8,
+        0x31 => PrimitiveKind::Bool16,
+        0x32 => PrimitiveKind::Bool32,
+        0x33 => PrimitiveKind::Bool64,
 
         _ => { return Err(Error::TypeNotFound(index)); }
     };
 
-    Ok(TypeData::Primitive{
+    Ok(TypeData::Primitive(PrimitiveType {
+        kind: kind,
         indirection: indirection,
-        primitive_type: primitive_type,
-    })
+    }))
 }

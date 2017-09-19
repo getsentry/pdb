@@ -75,19 +75,19 @@ fn find_classes() {
 
             // parse the type record
             match typ.parse() {
-                Ok(pdb::TypeData::Class { name, fields: Some(fields), .. }) => {
+                Ok(pdb::TypeData::Class(pdb::ClassType { name, fields: Some(fields), ..})) => {
                     // this Type describes a class-like type with fields
                     println!("class {} (type {}):", name, typ.type_index());
 
                     // fields is presently a TypeIndex
                     // find and parse the list of fields
                     match type_finder.find(fields).expect("find fields").parse() {
-                        Ok(pdb::TypeData::FieldList { fields, continuation }) => {
-                            for field in fields {
+                        Ok(pdb::TypeData::FieldList(list)) => {
+                            for field in list.fields {
                                 println!("  - {:?}", field);
                             }
 
-                            if let Some(c) = continuation {
+                            if let Some(c) = list.continuation {
                                 println!("TODO: follow to type {}", c);
                             }
                         }
@@ -100,17 +100,17 @@ fn find_classes() {
                         }
                     }
                 },
-                Ok(pdb::TypeData::Enumeration { name, fields, .. }) => {
-                    println!("enum {} (type {}):", name, fields);
+                Ok(pdb::TypeData::Enumeration(data)) => {
+                    println!("enum {} (type {}):", data.name, data.fields);
 
                     // fields is presently a TypeIndex
-                    match type_finder.find(fields).expect("find fields").parse() {
-                        Ok(pdb::TypeData::FieldList { fields, continuation }) => {
-                            for field in fields {
+                    match type_finder.find(data.fields).expect("find fields").parse() {
+                        Ok(pdb::TypeData::FieldList(list)) => {
+                            for field in list.fields {
                                 println!("  - {:?}", field);
                             }
 
-                            if let Some(c) = continuation {
+                            if let Some(c) = list.continuation {
                                 println!("TODO: follow to type {}", c);
                             }
                         }
@@ -123,7 +123,7 @@ fn find_classes() {
                         }
                     }
                 },
-                Ok(pdb::TypeData::FieldList { .. }) => {
+                Ok(pdb::TypeData::FieldList(_)) => {
                     // ignore, since we find these by class
                 }
                 Ok(_) => {

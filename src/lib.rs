@@ -66,9 +66,7 @@ pub use pdbi::{PDBInformation};
 pub use pdb::PDB;
 pub use source::*;
 pub use symbol::*;
-pub use tpi::{Type,TypeFinder,TypeInformation,TypeIter,TypeData};
-pub use tpi::{ClassKind,FieldAttributes,FunctionAttributes,MethodListEntry,TypeProperties};
-pub use tpi::{Indirection,PrimitiveType};
+pub use tpi::*;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]
