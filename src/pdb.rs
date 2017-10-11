@@ -226,4 +226,31 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         };
         res
     }
+
+    /// Retrieve a stream by its index to read its contents as bytes.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain this module info stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # fn test() -> pdb::Result<()> {
+    /// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+    /// let mut pdb = pdb::PDB::open(file)?;
+    /// // This is the index of the "mystream" stream that was added using pdbstr.exe.
+    /// let s = pdb.raw_stream(208)?;
+    /// let mut buf = s.parse_buffer();
+    /// let len = buf.len();
+    /// let bytes = buf.take(len)?;
+    /// assert_eq!(bytes, b"hello world\n");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn raw_stream(&mut self, stream: u32) -> Result<Stream<'s>> {
+        self.msf.get(stream, None)
+    }
 }

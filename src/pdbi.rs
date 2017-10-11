@@ -53,7 +53,7 @@ impl<'s> PDBInformation<'s> {
     /// let names = info.stream_names()?;
     /// let mut v: Vec<_> = names.iter().map(|n| n.name.to_string()).collect();
     /// v.sort();
-    /// assert_eq!(&v, &["/LinkInfo", "/names", "/src/headerblock"]);
+    /// assert_eq!(&v, &["mystream", "/LinkInfo", "/names", "/src/headerblock"]);
     /// # Ok(())
     /// # }
     /// ```
