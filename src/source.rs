@@ -91,7 +91,7 @@ impl<'s, T> Source<'s> for T where T: io::Read + io::Seek + fmt::Debug + 's {
         v.bytes.resize(len, 0);
 
         {
-            let mut bytes = v.bytes.as_mut_slice();
+            let bytes = v.bytes.as_mut_slice();
             let mut output_offset: usize = 0;
             for slice in slices {
                 self.seek(io::SeekFrom::Start(slice.offset))?;

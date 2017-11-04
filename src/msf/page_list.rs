@@ -42,7 +42,7 @@ impl PageList {
         if is_continuous {
             // extend by one page
             debug_assert!(self.source_slices.len() > 0);
-            let mut last_slice = self.source_slices.last_mut().unwrap();
+            let last_slice = self.source_slices.last_mut().unwrap();
             last_slice.size += self.page_size;
         } else {
             self.source_slices.push(SourceSlice{

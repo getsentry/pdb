@@ -12,7 +12,7 @@ use common::*;
 use msf::Stream;
 use FallibleIterator;
 
-pub mod constants;
+pub(crate) mod constants;
 mod data;
 mod header;
 mod primitive;
@@ -21,8 +21,8 @@ use self::data::parse_type_data;
 use self::header::*;
 use self::primitive::type_data_for_primitive;
 
-pub use self::data::{TypeData,ClassKind,FieldAttributes,FunctionAttributes,MethodListEntry,TypeProperties};
-pub use self::primitive::{Indirection,PrimitiveType};
+pub use self::data::*;
+pub use self::primitive::{Indirection,PrimitiveKind,PrimitiveType};
 
 /// `TypeInformation` provides zero-copy access to a PDB type data stream.
 ///
@@ -63,25 +63,25 @@ pub use self::primitive::{Indirection,PrimitiveType};
 ///
 ///     // parse the type record
 ///     match typ.parse() {
-///         Ok(pdb::TypeData::Class{name, properties, fields: Some(fields), ..}) => {
+///         Ok(pdb::TypeData::Class(pdb::ClassType {name, properties, fields: Some(fields), ..})) => {
 ///             // this Type describes a class-like type with fields
 ///             println!("type {} is a class named {}", typ.type_index(), name);
 ///
 ///             // `fields` is a TypeIndex which refers to a FieldList
 ///             // To find information about the fields, find and parse that Type
 ///             match type_finder.find(fields)?.parse()? {
-///                 pdb::TypeData::FieldList{ fields, continuation } => {
+///                 pdb::TypeData::FieldList(list) => {
 ///                     // `fields` is a Vec<TypeData>
-///                     for field in fields {
-///                         if let pdb::TypeData::Member { offset, name, field_type, .. } = field {
-///                             // follow `field_type` as desired
-///                             println!("  - field {} at offset {:x}", name, offset);
+///                     for field in list.fields {
+///                         if let pdb::TypeData::Member(member) = field {
+///                             // follow `member.field_type` as desired
+///                             println!("  - field {} at offset {:x}", member.name, member.offset);
 ///                         } else {
 ///                             // handle member functions, nested types, etc.
 ///                         }
 ///                     }
 ///
-///                     if let Some(more_fields) = continuation {
+///                     if let Some(more_fields) = list.continuation {
 ///                         // A FieldList can be split across multiple records
 ///                         // TODO: follow `more_fields` and handle the next FieldList
 ///                     }
@@ -148,7 +148,7 @@ impl<'t> TypeInformation<'t> {
     }
 }
 
-pub fn new_type_information(stream: Stream) -> Result<TypeInformation> {
+pub(crate) fn new_type_information(stream: Stream) -> Result<TypeInformation> {
     let h;
 
     {
