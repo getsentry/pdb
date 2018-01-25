@@ -46,7 +46,6 @@ pub struct DebugInformation<'s> {
     stream: Stream<'s>,
     header: Header,
     header_len: usize,
-    extra_streams: DBIExtraStreams,
 }
 
 impl<'s> DebugInformation<'s> {
@@ -58,49 +57,24 @@ impl<'s> DebugInformation<'s> {
         let modules_buf = buf.take(self.header.module_list_size as usize)?;
         Ok(ModuleIter { buf: modules_buf.into() })
     }
-}
 
-pub fn new_debug_information(stream: Stream) -> Result<DebugInformation> {
-    let (header, len) = {
-        let mut buf = stream.parse_buffer();
-        let header = parse_header(&mut buf)?;
-        (header, buf.pos())
-    };
+    pub(crate) fn get_header(&self) -> Header {
+        self.header
+    }
 
-    let extra_streams = {
-        // calculate the location of the extra stream information
-        let offset = len + (
-            header.module_list_size
-            + header.section_contribution_size
-            + header.section_map_size
-            + header.file_info_size
-            + header.type_server_map_size
-            + header.mfc_type_server_index
-            + header.ec_substream_size
-        ) as usize;
+    pub(crate) fn new(stream: Stream) -> Result<DebugInformation> {
+        let (header, len) = {
+            let mut buf = stream.parse_buffer();
+            let header = parse_header(&mut buf)?;
+            (header, buf.pos())
+        };
 
-        // seek
-        let mut buf = stream.parse_buffer();
-        buf.take(offset)?;
-
-        // grab that section as bytes
-        let bytes = buf.take(header.debug_header_size as _)?;
-
-        // parse those bytes
-        let mut extra_streams_buf = ParseBuffer::from(bytes);
-        parse_dbi_extra_streams(&mut extra_streams_buf)?
-    };
-
-    Ok(DebugInformation{
-        stream: stream,
-        header: header,
-        header_len: len,
-        extra_streams: extra_streams,
-    })
-}
-
-pub fn get_header(dbi: &DebugInformation) -> Header {
-    dbi.header
+        Ok(DebugInformation {
+            stream: stream,
+            header: header,
+            header_len: len,
+        })
+    }
 }
 
 #[derive(Debug,Copy,Clone)]
@@ -381,7 +355,7 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
 
 /// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
 #[derive(Debug, Copy, Clone)]
-struct DBIExtraStreams {
+pub(crate) struct DBIExtraStreams {
     // The struct itself is defined at:
     //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L250-L274
     // It's just an array of stream numbers; `u16`s where 0xffff means "no stream".
@@ -405,36 +379,6 @@ struct DBIExtraStreams {
     original_section_headers: u16,
 }
 
-fn parse_dbi_extra_streams(buf: &mut ParseBuffer) -> Result<DBIExtraStreams> {
-    // short reads are okay, as are long reads -- this struct is actually an array
-    // what's _not_ okay are
-    if buf.len() % 2 == 1 {
-        return Err(Error::UnimplementedFeature("DbgDataHdr should always be an even number of bytes"))
-    }
-
-    fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
-        match err {
-            Error::UnexpectedEof => Ok(0xffff),
-            other => Err(other)
-        }
-    }
-
-    Ok(DBIExtraStreams {
-        fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        exception: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        fixup: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        omap_to_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        omap_from_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        token_rid_map: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        xdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        pdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        new_fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-        original_section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-    })
-}
-
-
 fn optional_stream_number(sn: u16) -> Option<u16> {
     if sn == 0xffff {
         None
@@ -444,6 +388,60 @@ fn optional_stream_number(sn: u16) -> Option<u16> {
 }
 
 impl DBIExtraStreams {
+    pub(crate) fn new(debug_info: &DebugInformation) -> Result<DBIExtraStreams> {
+        // calculate the location of the extra stream information
+        let header = debug_info.header;
+        let offset = debug_info.header_len + (
+            header.module_list_size
+                + header.section_contribution_size
+                + header.section_map_size
+                + header.file_info_size
+                + header.type_server_map_size
+                + header.mfc_type_server_index
+                + header.ec_substream_size
+        ) as usize;
+
+        // seek
+        let mut buf = debug_info.stream.parse_buffer();
+        buf.take(offset)?;
+
+        // grab that section as bytes
+        let bytes = buf.take(header.debug_header_size as _)?;
+
+        // parse those bytes
+        let mut extra_streams_buf = ParseBuffer::from(bytes);
+        Self::parse(&mut extra_streams_buf)
+    }
+
+    pub(crate) fn parse(buf: &mut ParseBuffer) -> Result<DBIExtraStreams> {
+        // short reads are okay, as are long reads -- this struct is actually an array
+        // what's _not_ okay are
+        if buf.len() % 2 == 1 {
+            return Err(Error::UnimplementedFeature("DbgDataHdr should always be an even number of bytes"))
+        }
+
+        fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
+            match err {
+                Error::UnexpectedEof => Ok(0xffff),
+                other => Err(other)
+            }
+        }
+
+        Ok(DBIExtraStreams {
+            fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            exception: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            fixup: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            omap_to_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            omap_from_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            token_rid_map: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            xdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            pdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            new_fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            original_section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+        })
+    }
+
     pub fn fpo(&self) -> Option<u16> { optional_stream_number(self.fpo) }
     pub fn exception(&self) -> Option<u16> { optional_stream_number(self.exception) }
     pub fn fixup(&self) -> Option<u16> { optional_stream_number(self.fixup) }
@@ -472,7 +470,7 @@ mod tests {
         ];
 
         let mut buf = ParseBuffer::from(bytes.as_slice());
-        let extra_streams = parse_dbi_extra_streams(&mut buf).expect("parse");
+        let extra_streams = DBIExtraStreams::parse(&mut buf).expect("parse");
 
         // check readback
         assert_eq!(extra_streams.fpo(), None);

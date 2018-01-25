@@ -42,6 +42,9 @@ pub struct PDB<'s, S> {
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<dbi::Header>,
+
+    /// Memoize the `dbi::DBIExtraStreams`, since it too contains stream numbers we sometimes need
+    dbi_extra_streams: Option<dbi::DBIExtraStreams>,
 }
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
@@ -63,6 +66,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(PDB{
             msf: msf,
             dbi_header: None,
+            dbi_extra_streams: None,
         })
     }
 
@@ -122,10 +126,13 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream: Stream = self.msf.get(DBI_STREAM, None)?;
 
         // Parse it
-        let debug_info = dbi::new_debug_information(stream)?;
+        let debug_info = dbi::DebugInformation::new(stream)?;
 
         // Grab its header, since we need that for unrelated operations
-        self.dbi_header = Some(dbi::get_header(&debug_info));
+        self.dbi_header = Some(debug_info.get_header());
+
+        // Parse and grab information on extra streams, since we might also need that
+        self.dbi_extra_streams = Some(dbi::DBIExtraStreams::new(&debug_info)?);
 
         // Return
         Ok(debug_info)
