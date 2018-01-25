@@ -8,9 +8,10 @@
 // PDBs contain PE section headers in one or two streams. `pdb::pe` is responsible for parsing them.
 
 use common::*;
+use std::fmt::{self,Debug,DebugStruct};
 
 /// A PE `IMAGE_SECTION_HEADER`, as described in [the Microsoft documentation](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx).
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Copy,Clone,PartialEq,Eq)]
 pub struct ImageSectionHeader {
     /// An 8-byte, null-padded UTF-8 string. There is no terminating null character if the string is
     /// exactly eight characters long. For longer names, this member contains a forward slash (`/`)
@@ -56,7 +57,7 @@ pub struct ImageSectionHeader {
 }
 
 impl ImageSectionHeader {
-    pub fn parse(parse_buffer: &mut ParseBuffer) -> Result<Self> {
+    pub(crate) fn parse(parse_buffer: &mut ParseBuffer) -> Result<Self> {
         let name_bytes = parse_buffer.take(8)?;
 
         Ok(ImageSectionHeader{
@@ -80,6 +81,23 @@ impl ImageSectionHeader {
         let first_nul = self.name.iter().position(|ch| *ch == 0);
         let name_bytes = &self.name[0..first_nul.unwrap_or(self.name.len())];
         RawString::from(name_bytes)
+    }
+}
+
+impl Debug for ImageSectionHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("ImageSectionHeader")
+            .field("name()", &self.name().to_string())
+            .field("physical_address", &format_args!("{:#x}", self.physical_address))
+            .field("virtual_address", &format_args!("{:#x}", self.virtual_address))
+            .field("size_of_raw_data", &self.size_of_raw_data)
+            .field("pointer_to_raw_data", &format_args!("{:#x}", self.pointer_to_raw_data))
+            .field("pointer_to_relocations", &format_args!("{:#x}", self.pointer_to_relocations))
+            .field("pointer_to_line_numbers", &format_args!("{:#x}", self.pointer_to_line_numbers))
+            .field("number_of_relocations", &self.number_of_relocations)
+            .field("number_of_line_numbers", &self.number_of_line_numbers)
+            .field("characteristics", &format_args!("{:#x}", self.characteristics))
+            .finish()
     }
 }
 

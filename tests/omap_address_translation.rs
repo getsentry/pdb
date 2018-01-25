@@ -83,6 +83,11 @@ fn test_omap() {
     assert_eq!(pubsym.segment, 0x000c);
     assert_eq!(pubsym.offset, 0x0004aeb0);
 
+    // read the sections
+    let sections = pdb.sections().expect("sections");
+    assert_eq!(sections[13].name().to_string(), "PAGEVRFY");
+    assert_eq!(sections[13].virtual_address, 0x505000);
+
     // great, good to go
     // find the debug information
     pdb.debug_information().expect("debug_information");

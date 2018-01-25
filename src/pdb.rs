@@ -20,6 +20,7 @@ use msf::{MSF, Stream};
 use symbol::SymbolTable;
 use tpi::TypeInformation;
 use pdbi::PDBInformation;
+use pe::ImageSectionHeader;
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -232,6 +233,50 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             module_info::new_module_info(stream, module)
         };
         res
+    }
+
+    /// Retrieve the executable's section headers, as stored inside this PDB.
+    ///
+    /// The debug information stream indicates which stream contains the section headers, so
+    /// `global_symbols()` accesses the debug information stream to read the header unless
+    /// `debug_information()` was called first.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
+    ///
+    /// If `debug_information()` was not already called, `global_symbols()` will additionally read
+    /// the debug information header, in which case it can also return:
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
+    pub fn sections(&mut self) -> Result<Vec<ImageSectionHeader>> {
+        // Load dbi_extra_streams if needed
+        if self.dbi_extra_streams.is_none() {
+            // DBIExtraStreams is way at the end, so we might as well load and discard a
+            // DebugInformation instead of trying to optimize this path
+            self.debug_information()?;
+        }
+
+        let dbi_extra_streams = self.dbi_extra_streams
+            .expect("dbi_extra_streams must be loaded");
+
+        // Open the appropriate stream
+        let stream_number = dbi_extra_streams.section_headers().map(|s| s as u32)
+            .ok_or(Error::StreamNotFound(0xffff))?;
+        let stream: Stream = self.msf.get(stream_number as u32, None)?;
+
+        // Parse
+        let mut buf = stream.parse_buffer();
+        let mut headers: Vec<ImageSectionHeader> = Vec::with_capacity(buf.len() / 40);
+        while buf.len() > 0 {
+            headers.push(ImageSectionHeader::parse(&mut buf)?);
+        }
+
+        Ok(headers)
     }
 
     /// Retrieve a stream by its index to read its contents as bytes.
