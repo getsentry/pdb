@@ -58,6 +58,7 @@ mod symbol;
 mod tpi;
 mod pdbi;
 mod pe;
+mod omap;
 
 // exports
 pub use common::{Error,Result,TypeIndex,RawString,Variant};

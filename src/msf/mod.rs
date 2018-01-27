@@ -307,6 +307,11 @@ impl<'s> Stream<'s> {
         let slice = self.source_view.as_slice();
         ParseBuffer::from(slice)
     }
+
+    #[inline]
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        self.source_view.as_slice()
+    }
 }
 
 /// Provides access to a "multi-stream file", which is the container format used by PDBs.
