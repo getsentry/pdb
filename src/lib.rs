@@ -43,8 +43,9 @@
 //! # assert!(test().expect("test") > 2000);
 //! ```
 
-extern crate byteorder;
 extern crate fallible_iterator;
+#[macro_use]
+extern crate scroll;
 extern crate uuid;
 
 // modules

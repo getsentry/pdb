@@ -58,7 +58,7 @@ enum StreamTable<'s> {
     Available { stream_table_view: Box<SourceView<'s>> }
 }
 
-const BIG_MSF_HEADER: &'static [u8] = b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00\x00\x00";
+const BIG_MSF_MAGIC: &'static [u8] = b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00\x00\x00";
 
 fn view<'s>(source: &mut Source<'s>, page_list: &PageList) -> Result<Box<SourceView<'s>>> {
     // view it
@@ -73,32 +73,40 @@ fn view<'s>(source: &mut Source<'s>, page_list: &PageList) -> Result<Box<SourceV
     Ok(view)
 }
 
-impl<'s, S: Source<'s>> BigMSF<'s, S> {
-    fn new(source: S, header_view: Box<SourceView>) -> Result<BigMSF<'s, S>> {
-        let mut header = ParseBuffer::from(header_view.as_slice());
+/// The PDB header as stored on disk.
+/// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
+#[derive(Debug, Pread)]
+#[repr(C, packed)]
+struct RawHeader {
+    magic: [u8; 32],
+    page_size: u32,
+    free_page_map: u32,
+    pages_used: u32,
+    directory_size: u32,
+    _reserved: u32,
+}
 
-        let expected_header = header.take(BIG_MSF_HEADER.len())?;
-        if expected_header != BIG_MSF_HEADER {
+impl<'s, S: Source<'s>> BigMSF<'s, S> {
+    pub fn new(source: S, header_view: Box<SourceView>) -> Result<BigMSF<'s, S>> {
+        let mut buf = ParseBuffer::from(header_view.as_slice());
+        let header: RawHeader = buf.parse()?;
+
+        if header.magic != BIG_MSF_MAGIC {
             return Err(Error::UnrecognizedFileFormat);
         }
 
-        let page_size = header.parse_u32()?;
-        if page_size.count_ones() != 1 || page_size < 0x100 || page_size > (128 * 0x10000) {
-            return Err(Error::InvalidPageSize(page_size));
-        }
-
-        let _ = header.parse_u32()?; // free pgae map size
-        let maximum_valid_page_number = header.parse_u32()?;
-        let size_of_stream_table_in_bytes = header.parse_u32()?;
-        let _ = header.parse_u32()?; // reserved
+        if header.page_size.count_ones() != 1 || header.page_size < 0x100
+            || header.page_size > (128 * 0x10000) {
+                return Err(Error::InvalidPageSize(header.page_size));
+            }
 
         let header_object = Header{
-            page_size: page_size as usize,
-            maximum_valid_page_number: maximum_valid_page_number,
+            page_size: header.page_size as usize,
+            maximum_valid_page_number: header.pages_used,
         };
 
         // calculate how many pages are needed to store the stream table
-        let size_of_stream_table_in_pages = header_object.pages_needed_to_store(size_of_stream_table_in_bytes as usize);
+        let size_of_stream_table_in_pages = header_object.pages_needed_to_store(header.directory_size as usize);
 
         // now: how many pages are needed to store the list of pages that store the stream table?
         // each page entry is a u32, so multiply by four
@@ -108,7 +116,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
         // yes, this is a stupid level of indirection
         let mut stream_table_page_list_page_list = PageList::new(header_object.page_size);
         for _ in 0..size_of_stream_table_page_list_in_pages {
-            let n = header.parse_u32()?;
+            let n = buf.parse_u32()?;
             stream_table_page_list_page_list.push(header_object.validate_page_number(n)?);
         }
 
@@ -119,7 +127,7 @@ impl<'s, S: Source<'s>> BigMSF<'s, S> {
             header: header_object,
             source: source,
             stream_table: StreamTable::HeaderOnly {
-                size_in_bytes: size_of_stream_table_in_bytes as usize,
+                size_in_bytes: header.directory_size as usize,
                 stream_table_location_location: stream_table_page_list_page_list,
             },
         })
@@ -291,7 +299,7 @@ impl<'s, S: Source<'s>> MSF<'s, S> for BigMSF<'s, S> {
     }
 }
 
-const SMALL_MSF_HEADER: &'static [u8] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47";
+const SMALL_MSF_MAGIC: &'static [u8] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47";
 
 // TODO: implement SmallMSF
 
@@ -326,13 +334,13 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<MSF<'s, S> 
     let header_view = view(&mut source, &header_location)?;
 
     // see if it's a BigMSF
-    if header_matches(header_view.as_slice(), BIG_MSF_HEADER) {
+    if header_matches(header_view.as_slice(), BIG_MSF_MAGIC) {
         // claimed!
         let bigmsf = BigMSF::new(source, header_view)?;
         return Ok(Box::new(bigmsf))
     }
 
-    if header_matches(header_view.as_slice(), SMALL_MSF_HEADER) {
+    if header_matches(header_view.as_slice(), SMALL_MSF_MAGIC) {
         // sorry
         return Err(Error::UnimplementedFeature("small MSF file format"));
     }
