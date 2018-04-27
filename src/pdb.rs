@@ -8,6 +8,7 @@
 use dbi;
 use module_info;
 use msf;
+use string_table;
 use symbol;
 use tpi;
 use pdbi;
@@ -16,6 +17,7 @@ use common::*;
 use dbi::{DebugInformation, Module};
 use module_info::ModuleInfo;
 use source::Source;
+use string_table::StringTable;
 use msf::{MSF, Stream};
 use symbol::SymbolTable;
 use tpi::TypeInformation;
@@ -263,5 +265,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             }
         }
         Err(Error::StreamNameNotFound)
+    }
+
+    pub fn string_table(&mut self) -> Result<StringTable<'s>>{
+        let names = self.named_stream(b"/names")?;
+        string_table::new_string_table(names)
     }
 }

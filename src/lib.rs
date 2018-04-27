@@ -55,6 +55,7 @@ mod module_info;
 mod msf;
 mod pdb;
 mod source;
+mod string_table;
 mod symbol;
 mod tpi;
 mod pdbi;
