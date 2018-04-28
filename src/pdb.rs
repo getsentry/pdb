@@ -253,4 +253,15 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     pub fn raw_stream(&mut self, stream: u32) -> Result<Stream<'s>> {
         self.msf.get(stream, None)
     }
+
+    pub fn named_stream(&mut self, name: &[u8]) -> Result<Stream<'s>> {
+        let info = self.pdb_information()?;
+        let names = info.stream_names()?;
+        for n in names.iter() {
+            if n.name.as_bytes() == name {
+                return self.raw_stream(n.stream_id);
+            }
+        }
+        Err(Error::StreamNameNotFound)
+    }
 }
