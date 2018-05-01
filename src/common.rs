@@ -73,6 +73,9 @@ pub enum Error {
 
     /// A parse error from scroll.
     ScrollError(scroll::Error),
+
+    /// The lines table is missing.
+    LinesNotFound
 }
 
 impl error::Error for Error {
@@ -94,6 +97,7 @@ impl error::Error for Error {
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
             Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
+            Error::LinesNotFound => "Lines section not found",
             Error::ScrollError(ref e) => e.description(),
         }
     }
