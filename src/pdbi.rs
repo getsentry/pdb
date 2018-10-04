@@ -156,12 +156,7 @@ pub fn new_pdb_information(stream: Stream) -> Result<PDBInformation> {
         let version = From::from(buf.parse_u32()?);
         let signature = buf.parse_u32()?;
         let age = buf.parse_u32()?;
-        let guid = Uuid::from_fields(
-            buf.parse_u32()?,
-            buf.parse_u16()?,
-            buf.parse_u16()?,
-            buf.take(8)?
-            ).unwrap();
+        let guid = Uuid::from_bytes(buf.take(16)?).unwrap();
         let names_size = buf.parse_u32()? as usize;
         let names_offset = buf.pos();
         (version, signature, age, guid, names_size, names_offset)
