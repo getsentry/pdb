@@ -118,6 +118,13 @@ impl<'t> Symbol<'t> {
             S_LTHREAD32 | S_LTHREAD32_ST |
             S_GTHREAD32 | S_GTHREAD32_ST => 10,
 
+            S_LPROC32 | S_LPROC32_ST |
+            S_GPROC32 | S_GPROC32_ST |
+            S_LPROC32_ID |
+            S_GPROC32_ID |
+            S_LPROC32_DPC |
+            S_LPROC32_DPC_ID => 35,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
 
@@ -262,6 +269,27 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             }))
         }
 
+        S_LPROC32 | S_LPROC32_ST |
+        S_GPROC32 | S_GPROC32_ST |
+        S_LPROC32_ID |
+        S_GPROC32_ID |
+        S_LPROC32_DPC |
+        S_LPROC32_DPC_ID => {
+            Ok(SymbolData::Procedure(ProcedureSymbol{
+                global: match kind { S_GPROC32 | S_GPROC32_ST | S_GPROC32_ID => true, _ => false },
+                parent: buf.parse_u32()?,
+                end: buf.parse_u32()?,
+                next: buf.parse_u32()?,
+                len: buf.parse_u32()?,
+                dbg_start_offset: buf.parse_u32()?,
+                dbg_end_offset: buf.parse_u32()?,
+                type_index: buf.parse_u32()?,
+                offset: buf.parse_u32()?,
+                segment: buf.parse_u16()?,
+                flags: ProcedureFlags::new(buf.parse_u8()?)
+            }))
+        }
+
         _ => Err(Error::UnimplementedSymbolKind(kind))
     }
 }
@@ -297,6 +325,15 @@ pub enum SymbolData {
     // S_LTHREAD32 (0x1112) | S_LTHREAD32_ST (0x100e)
     // S_GTHREAD32 (0x1113) | S_GTHREAD32_ST (0x100f)
     ThreadStorage(ThreadStorageSymbol),
+
+    // S_LPROC32 (0x110f) | S_LPROC32_ST (0x100a)
+    // S_GPROC32 (0x1110) | S_GPROC32_ST (0x100b)
+    // S_LPROC32_ID (0x1146) |
+    // S_GPROC32_ID (0x1147) |
+    // S_LPROC32_DPC (0x1155) |
+    // S_LPROC32_DPC_ID (0x1156)
+    Procedure(ProcedureSymbol)
+
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -369,6 +406,62 @@ pub struct ThreadStorageSymbol {
     pub type_index: TypeIndex,
     pub offset: u32,
     pub segment: u16,
+}
+
+// CV_PROCFLAGS:
+const CV_PFLAG_NOFPO: u8 = 0x01;
+const CV_PFLAG_INT: u8 = 0x02;
+const CV_PFLAG_FAR: u8 = 0x04;
+const CV_PFLAG_NEVER: u8 = 0x08;
+const CV_PFLAG_NOTREACHED: u8 = 0x10;
+const CV_PFLAG_CUST_CALL: u8 = 0x20;
+const CV_PFLAG_NOINLINE: u8 = 0x40;
+const CV_PFLAG_OPTDBGINFO: u8 = 0x80;
+
+/// The information parsed from a CV_PROCFLAGS bit field
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ProcedureFlags {
+    pub nofpo: bool,
+    pub int: bool,
+    pub far: bool,
+    pub never: bool,
+    pub notreached: bool,
+    pub cust_call: bool,
+    pub noinline: bool,
+    pub optdbginfo: bool
+}
+
+impl ProcedureFlags {
+    fn new(flags: u8) -> ProcedureFlags {
+        ProcedureFlags{
+            nofpo: flags & CV_PFLAG_NOFPO != 0,
+            int: flags & CV_PFLAG_INT != 0,
+            far: flags & CV_PFLAG_FAR != 0,
+            never: flags & CV_PFLAG_NEVER != 0,
+            notreached: flags & CV_PFLAG_NOTREACHED != 0,
+            cust_call: flags & CV_PFLAG_CUST_CALL != 0,
+            noinline: flags & CV_PFLAG_NOINLINE != 0,
+            optdbginfo: flags & CV_PFLAG_OPTDBGINFO != 0
+        }
+    }
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_GPROC32`, `S_GPROC32_ST`, `S_LPROC32`, `S_LPROC32_ST`
+/// `S_GPROC32_ID`, `S_LPROC32_ID`, `S_LPROC32_DPC`, or `S_LPROC32_DPC_ID`
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ProcedureSymbol {
+    pub global: bool,
+    pub parent: u32,
+    pub end: u32,
+    pub next: u32,
+    pub len: u32,
+    pub dbg_start_offset: u32,
+    pub dbg_end_offset: u32,
+    pub type_index: TypeIndex,
+    pub offset: u32,
+    pub segment: u16,
+    pub flags: ProcedureFlags
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
@@ -490,6 +583,24 @@ mod tests {
             assert_eq!(symbol.raw_kind(), 0x1127);
             assert_eq!(data, SymbolData::ProcedureReference(ProcedureReferenceSymbol { global: false, sum_name: 0, symbol_index: 1152, module: 182 }));
             assert_eq!(name, "capture_current_context");
+        }
+
+        #[test]
+        fn kind_1110() {
+            let buf = &[16, 17, 0, 0, 0, 0, 48, 2, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 7, 16, 0, 0, 64, 85, 0, 0, 1, 0, 0, 66, 97, 122, 58, 58, 102, 95, 112, 114, 111, 116, 101, 99, 116, 101, 100, 0];
+            let (symbol, data, name) = parse(buf).expect("parse");
+            assert_eq!(symbol.raw_kind(), 0x1110);
+            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: true, parent: 0, end: 560, next: 0, len: 6, dbg_start_offset: 5, dbg_end_offset: 5, type_index: 4103, offset: 21824, segment: 1, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: false } }));
+            assert_eq!(name, "Baz::f_protected");
+        }
+
+        #[test]
+        fn kind_110f() {
+            let buf = &[15, 17, 0, 0, 0, 0, 156, 1, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 128, 16, 0, 0, 196, 87, 0, 0, 1, 0, 128, 95, 95, 115, 99, 114, 116, 95, 99, 111, 109, 109, 111, 110, 95, 109, 97, 105, 110, 0, 0, 0];
+            let (symbol, data, name) = parse(buf).expect("parse");
+            assert_eq!(symbol.raw_kind(), 0x110f);
+            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: false, parent: 0, end: 412, next: 0, len: 18, dbg_start_offset: 4, dbg_end_offset: 9, type_index: 4224, offset: 22468, segment: 1, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: true } }));
+            assert_eq!(name, "__scrt_common_main");
         }
     }
 }
