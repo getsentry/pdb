@@ -61,7 +61,7 @@ mod pdbi;
 
 // exports
 pub use common::{Error,Result,TypeIndex,RawString,Variant};
-pub use dbi::{DebugInformation, Module, ModuleIter};
+pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
 pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
 pub use pdb::PDB;
