@@ -126,7 +126,10 @@ impl<'t> Symbol<'t> {
             S_LPROC32_DPC_ID => 35,
 
             S_OBJNAME | S_OBJNAME_ST => 4,
+
             S_COMPILE3 => 22,
+
+            S_UNAMESPACE | S_UNAMESPACE_ST => 0,
 
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
@@ -309,6 +312,10 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             }))
         }
 
+        S_UNAMESPACE | S_UNAMESPACE_ST => {
+            Ok(SymbolData::Namespace(NamespaceSymbol {}))
+        }
+
         _ => Err(Error::UnimplementedSymbolKind(kind))
     }
 }
@@ -358,6 +365,9 @@ pub enum SymbolData {
 
     // S_COMPILE3 (0x113c)
     Compile3(Compile3Symbol),
+
+    // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
+    Namespace(NamespaceSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -504,6 +514,12 @@ pub struct Compile3Symbol {
     pub cpu_type: CPUType,
     pub frontend_version: [u16; 4],
     pub backend_version: [u16; 4],
+}
+  
+/// The information parsed from a symbol record with kind
+/// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct NamespaceSymbol {
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
