@@ -125,6 +125,8 @@ impl<'t> Symbol<'t> {
             S_LPROC32_DPC |
             S_LPROC32_DPC_ID => 35,
 
+            S_COMPILE3 => 22,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
 
@@ -290,6 +292,15 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             }))
         }
 
+        S_COMPILE3 => {
+            Ok(SymbolData::Compile3(Compile3Symbol {
+                language: buf.parse_u8()?.into(),
+                flags: [buf.parse_u8()?, buf.parse_u8()?, buf.parse_u8()?],
+                cpu_type: buf.parse_u16()?.into(),
+                frontend_version: [buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?],
+                backend_version: [buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?],
+            }))
+        }
         _ => Err(Error::UnimplementedSymbolKind(kind))
     }
 }
@@ -332,8 +343,11 @@ pub enum SymbolData {
     // S_GPROC32_ID (0x1147) |
     // S_LPROC32_DPC (0x1155) |
     // S_LPROC32_DPC_ID (0x1156)
-    Procedure(ProcedureSymbol)
+    Procedure(ProcedureSymbol),
 
+
+    // S_COMPILE3 (0x113c)
+    Compile3(Compile3Symbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -462,6 +476,17 @@ pub struct ProcedureSymbol {
     pub offset: u32,
     pub segment: u16,
     pub flags: ProcedureFlags
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_COMPILE3`
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct Compile3Symbol {
+    pub language: SourceLanguage,
+    pub flags: [u8; 3],
+    pub cpu_type: CPUType,
+    pub frontend_version: [u16; 4],
+    pub backend_version: [u16; 4],
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
