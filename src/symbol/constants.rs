@@ -9,7 +9,7 @@
 // from:
 //  https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2735
 
-#![allow(dead_code,non_upper_case_globals)]
+#![allow(dead_code,non_upper_case_globals,non_camel_case_types)]
 
 pub const S_COMPILE       : u16 = 0x0001;  // Compile flags symbol
 pub const S_REGISTER_16t  : u16 = 0x0002;  // Register variable
@@ -264,3 +264,282 @@ pub const S_LDATA_HLSL32    : u16 = 0x1163;
 pub const S_GDATA_HLSL32_EX : u16 = 0x1164;
 pub const S_LDATA_HLSL32_EX : u16 = 0x1165;
 
+
+/// These values correspond to the CV_CPU_TYPE_e enumeration, and are documented
+/// here: https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CPUType {
+    Intel8080 = 0x0,
+    Intel8086 = 0x1,
+    Intel80286 = 0x2,
+    Intel80386 = 0x3,
+    Intel80486 = 0x4,
+    Pentium = 0x5,
+    PentiumPro = 0x6,
+    Pentium3 = 0x7,
+    MIPS = 0x10,
+    MIPS16 = 0x11,
+    MIPS32 = 0x12,
+    MIPS64 = 0x13,
+    MIPSI = 0x14,
+    MIPSII = 0x15,
+    MIPSIII = 0x16,
+    MIPSIV = 0x17,
+    MIPSV = 0x18,
+    M68000 = 0x20,
+    M68010 = 0x21,
+    M68020 = 0x22,
+    M68030 = 0x23,
+    M68040 = 0x24,
+    Alpha = 0x30,
+    Alpha21164 = 0x31,
+    Alpha21164A = 0x32,
+    Alpha21264 = 0x33,
+    Alpha21364 = 0x34,
+    PPC601 = 0x40,
+    PPC603 = 0x41,
+    PPC604 = 0x42,
+    PPC620 = 0x43,
+    PPCFP = 0x44,
+    PPCBE = 0x45,
+    SH3 = 0x50,
+    SH3E = 0x51,
+    SH3DSP = 0x52,
+    SH4 = 0x53,
+    SHMedia = 0x54,
+    ARM3 = 0x60,
+    ARM4 = 0x61,
+    ARM4T = 0x62,
+    ARM5 = 0x63,
+    ARM5T = 0x64,
+    ARM6 = 0x65,
+    ARM_XMAC = 0x66,
+    ARM_WMMX = 0x67,
+    ARM7 = 0x68,
+    ARM64 = 0x69,
+    Omni = 0x70,
+    Ia64 = 0x80,
+    Ia64_2 = 0x81,
+    CEE = 0x90,
+    AM33 = 0xa0,
+    M32R = 0xb0,
+    TriCore = 0xc0,
+    X64 = 0xd0,
+    EBC = 0xe0,
+    Thumb = 0xf0,
+    ARMNT = 0xf4,
+    D3D11_Shader = 0x100,
+}
+
+impl ::std::fmt::Display for CPUType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match *self {
+            CPUType::Intel8080 => write!(f, "Intel8080"),
+            CPUType::Intel8086 => write!(f, "Intel8086"),
+            CPUType::Intel80286 => write!(f, "Intel80286"),
+            CPUType::Intel80386 => write!(f, "Intel80386"),
+            CPUType::Intel80486 => write!(f, "Intel80486"),
+            CPUType::Pentium => write!(f, "Pentium"),
+            CPUType::PentiumPro => write!(f, "PentiumPro"),
+            CPUType::Pentium3 => write!(f, "Pentium3"),
+            CPUType::MIPS => write!(f, "MIPS"),
+            CPUType::MIPS16 => write!(f, "MIPS16"),
+            CPUType::MIPS32 => write!(f, "MIPS32"),
+            CPUType::MIPS64 => write!(f, "MIPS64"),
+            CPUType::MIPSI => write!(f, "MIPSI"),
+            CPUType::MIPSII => write!(f, "MIPSII"),
+            CPUType::MIPSIII => write!(f, "MIPSIII"),
+            CPUType::MIPSIV => write!(f, "MIPSIV"),
+            CPUType::MIPSV => write!(f, "MIPSV"),
+            CPUType::M68000 => write!(f, "M68000"),
+            CPUType::M68010 => write!(f, "M68010"),
+            CPUType::M68020 => write!(f, "M68020"),
+            CPUType::M68030 => write!(f, "M68030"),
+            CPUType::M68040 => write!(f, "M68040"),
+            CPUType::Alpha => write!(f, "Alpha"),
+            CPUType::Alpha21164 => write!(f, "Alpha21164"),
+            CPUType::Alpha21164A => write!(f, "Alpha21164A"),
+            CPUType::Alpha21264 => write!(f, "Alpha21264"),
+            CPUType::Alpha21364 => write!(f, "Alpha21364"),
+            CPUType::PPC601 => write!(f, "PPC601"),
+            CPUType::PPC603 => write!(f, "PPC603"),
+            CPUType::PPC604 => write!(f, "PPC604"),
+            CPUType::PPC620 => write!(f, "PPC620"),
+            CPUType::PPCFP => write!(f, "PPCFP"),
+            CPUType::PPCBE => write!(f, "PPCBE"),
+            CPUType::SH3 => write!(f, "SH3"),
+            CPUType::SH3E => write!(f, "SH3E"),
+            CPUType::SH3DSP => write!(f, "SH3DSP"),
+            CPUType::SH4 => write!(f, "SH4"),
+            CPUType::SHMedia => write!(f, "SHMedia"),
+            CPUType::ARM3 => write!(f, "ARM3"),
+            CPUType::ARM4 => write!(f, "ARM4"),
+            CPUType::ARM4T => write!(f, "ARM4T"),
+            CPUType::ARM5 => write!(f, "ARM5"),
+            CPUType::ARM5T => write!(f, "ARM5T"),
+            CPUType::ARM6 => write!(f, "ARM6"),
+            CPUType::ARM_XMAC => write!(f, "ARM_XMAC"),
+            CPUType::ARM_WMMX => write!(f, "ARM_WMMX"),
+            CPUType::ARM7 => write!(f, "ARM7"),
+            CPUType::ARM64 => write!(f, "ARM64"),
+            CPUType::Omni => write!(f, "Omni"),
+            CPUType::Ia64 => write!(f, "Ia64"),
+            CPUType::Ia64_2 => write!(f, "Ia64_2"),
+            CPUType::CEE => write!(f, "CEE"),
+            CPUType::AM33 => write!(f, "AM33"),
+            CPUType::M32R => write!(f, "M32R"),
+            CPUType::TriCore => write!(f, "TriCore"),
+            CPUType::X64 => write!(f, "X64"),
+            CPUType::EBC => write!(f, "EBC"),
+            CPUType::Thumb => write!(f, "Thumb"),
+            CPUType::ARMNT => write!(f, "ARMNT"),
+            CPUType::D3D11_Shader => write!(f, "D3D11_Shader"),
+        }
+    }
+}
+
+impl From<u16> for CPUType {
+    fn from(value: u16) -> Self {
+        match value {
+            0x0 => CPUType::Intel8080,
+            0x1 => CPUType::Intel8086,
+            0x2 => CPUType::Intel80286,
+            0x3 => CPUType::Intel80386,
+            0x4 => CPUType::Intel80486,
+            0x5 => CPUType::Pentium,
+            0x6 => CPUType::PentiumPro,
+            0x7 => CPUType::Pentium3,
+            0x10 => CPUType::MIPS,
+            0x11 => CPUType::MIPS16,
+            0x12 => CPUType::MIPS32,
+            0x13 => CPUType::MIPS64,
+            0x14 => CPUType::MIPSI,
+            0x15 => CPUType::MIPSII,
+            0x16 => CPUType::MIPSIII,
+            0x17 => CPUType::MIPSIV,
+            0x18 => CPUType::MIPSV,
+            0x20 => CPUType::M68000,
+            0x21 => CPUType::M68010,
+            0x22 => CPUType::M68020,
+            0x23 => CPUType::M68030,
+            0x24 => CPUType::M68040,
+            0x30 => CPUType::Alpha,
+            0x31 => CPUType::Alpha21164,
+            0x32 => CPUType::Alpha21164A,
+            0x33 => CPUType::Alpha21264,
+            0x34 => CPUType::Alpha21364,
+            0x40 => CPUType::PPC601,
+            0x41 => CPUType::PPC603,
+            0x42 => CPUType::PPC604,
+            0x43 => CPUType::PPC620,
+            0x44 => CPUType::PPCFP,
+            0x45 => CPUType::PPCBE,
+            0x50 => CPUType::SH3,
+            0x51 => CPUType::SH3E,
+            0x52 => CPUType::SH3DSP,
+            0x53 => CPUType::SH4,
+            0x54 => CPUType::SHMedia,
+            0x60 => CPUType::ARM3,
+            0x61 => CPUType::ARM4,
+            0x62 => CPUType::ARM4T,
+            0x63 => CPUType::ARM5,
+            0x64 => CPUType::ARM5T,
+            0x65 => CPUType::ARM6,
+            0x66 => CPUType::ARM_XMAC,
+            0x67 => CPUType::ARM_WMMX,
+            0x68 => CPUType::ARM7,
+            0x69 => CPUType::ARM64,
+            0x70 => CPUType::Omni,
+            0x80 => CPUType::Ia64,
+            0x81 => CPUType::Ia64_2,
+            0x90 => CPUType::CEE,
+            0xa0 => CPUType::AM33,
+            0xb0 => CPUType::M32R,
+            0xc0 => CPUType::TriCore,
+            0xd0 => CPUType::X64,
+            0xe0 => CPUType::EBC,
+            0xf0 => CPUType::Thumb,
+            0xf4 => CPUType::ARMNT,
+            0x100 => CPUType::D3D11_Shader,
+            _=> CPUType::Intel8080, // This enum doesn't have an unknown value, so we just force it to Intel8080 since it's 0x0.
+        }
+    }
+}
+
+/// These values correspond to the CV_CFL_LANG enumeration, and are documented
+/// here: https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SourceLanguage {
+    C = 0x00,
+    Cpp = 0x01,
+    Fortran = 0x02,
+    Masm = 0x03,
+    Pascal = 0x04,
+    Basic = 0x05,
+    Cobol = 0x06,
+    Link = 0x07,
+    Cvtres = 0x08,
+    Cvtpgd = 0x09,
+    CSharp = 0x0a,
+    VB = 0x0b,
+    ILAsm = 0x0c,
+    Java = 0x0d,
+    JScript = 0x0e,
+    MSIL = 0x0f,
+    HLSL = 0x10,
+
+    /// The DMD compiler emits 'D' for the CV source language. Microsoft doesn't
+    /// have an enumerator for it yet.
+    D = 0x44,
+}
+
+impl ::std::fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match *self {
+            SourceLanguage::C => write!(f, "C"),
+            SourceLanguage::Cpp => write!(f, "Cpp"),
+            SourceLanguage::Fortran => write!(f, "Fortran"),
+            SourceLanguage::Masm => write!(f, "Masm"),
+            SourceLanguage::Pascal => write!(f, "Pascal"),
+            SourceLanguage::Basic => write!(f, "Basic"),
+            SourceLanguage::Cobol => write!(f, "Cobol"),
+            SourceLanguage::Link => write!(f, "Link"),
+            SourceLanguage::Cvtres => write!(f, "Cvtres"),
+            SourceLanguage::Cvtpgd => write!(f, "Cvtpgd"),
+            SourceLanguage::CSharp => write!(f, "CSharp"),
+            SourceLanguage::VB => write!(f, "VB"),
+            SourceLanguage::ILAsm => write!(f, "ILAsm"),
+            SourceLanguage::Java => write!(f, "Java"),
+            SourceLanguage::JScript => write!(f, "JScript"),
+            SourceLanguage::MSIL => write!(f, "MSIL"),
+            SourceLanguage::HLSL => write!(f, "HLSL"),
+            SourceLanguage::D => write!(f, "D"),
+        }
+    }
+}
+
+impl From<u8> for SourceLanguage {
+    fn from(value: u8) -> Self {
+        match value {
+            0x00 => SourceLanguage::C,
+            0x01 => SourceLanguage::Cpp,
+            0x02 => SourceLanguage::Fortran,
+            0x03 => SourceLanguage::Masm,
+            0x04 => SourceLanguage::Pascal,
+            0x05 => SourceLanguage::Basic,
+            0x06 => SourceLanguage::Cobol,
+            0x07 => SourceLanguage::Link,
+            0x08 => SourceLanguage::Cvtres,
+            0x09 => SourceLanguage::Cvtpgd,
+            0x0a => SourceLanguage::CSharp,
+            0x0b => SourceLanguage::VB,
+            0x0c => SourceLanguage::ILAsm,
+            0x0d => SourceLanguage::Java,
+            0x0e => SourceLanguage::JScript,
+            0x0f => SourceLanguage::MSIL,
+            0x10 => SourceLanguage::HLSL,
+            0x44 => SourceLanguage::D,
+            _ => SourceLanguage::Masm, // There is no unknown, so we just force to Masm as the default.
+        }
+    }
+}
