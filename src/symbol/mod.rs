@@ -108,7 +108,14 @@ impl<'t> Symbol<'t> {
             S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST | S_DATAREF | S_DATAREF_ST
             | S_ANNOTATIONREF => 10,
 
-            S_CONSTANT | S_CONSTANT_ST => 6,
+            S_CONSTANT | S_CONSTANT_ST => {
+                let mut constant_size = 4;
+
+                let mut buf = ParseBuffer::from(&self.0[2 + constant_size..]);
+                constant_size += buf.get_variant_size();
+
+                constant_size
+            }
 
             S_UDT | S_UDT_ST => 4,
 
@@ -255,7 +262,7 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
 
         S_CONSTANT | S_CONSTANT_ST => Ok(SymbolData::Constant(ConstantSymbol {
             type_index: buf.parse_u32()?,
-            value: buf.parse_u16()?,
+            value: buf.parse_variant()?,
         })),
 
         S_UDT | S_UDT_ST => Ok(SymbolData::UserDefinedType(UserDefinedTypeSymbol {
@@ -425,7 +432,7 @@ pub struct AnnotationReferenceSymbol {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ConstantSymbol {
     pub type_index: TypeIndex,
-    pub value: u16,
+    pub value: Variant,
 }
 
 /// The information parsed from a symbol record with kind `S_UDT`, or `S_UDT_ST`.
@@ -648,7 +655,7 @@ mod tests {
                 data,
                 SymbolData::Constant(ConstantSymbol {
                     type_index: 4809,
-                    value: 1
+                    value: Variant::U16(1)
                 })
             );
             assert_eq!(name, "__ISA_AVAILABLE_SSE2");
