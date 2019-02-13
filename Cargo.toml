@@ -6,6 +6,9 @@ repository = "https://github.com/willglynn/pdb"
 authors = ["Will Glynn <will@willglynn.com>"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
+exclude = [
+    "fixtures/*",
+]
 
 [dependencies]
 fallible-iterator = "0.1.3"
