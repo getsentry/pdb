@@ -21,7 +21,7 @@ uuid = "0.5.0"
 getopts = "0.2.15"
 
 # for tests/
-curl = "0.4.11"
+reqwest = "0.9.10"
 
 [package.metadata.release]
 pre-release-commit-message = "Release {{version}}"

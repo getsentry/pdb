@@ -1,9 +1,8 @@
 extern crate pdb;
 extern crate uuid;
-extern crate curl;
+extern crate reqwest;
 
-use std::io::Write;
-use std::path::PathBuf;
+use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Once, ONCE_INIT};
 use pdb::FallibleIterator;
@@ -16,35 +15,15 @@ fn open_file() -> std::fs::File {
     let path = "fixtures/symbol_server/3844dbb920174967be7aa4a2c20430fa2-ntkrnlmp.pdb";
     let url = "https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/3844dbb920174967be7aa4a2c20430fa2/ntkrnlmp.pdb";
 
-    std::fs::File::open(path)
-        .unwrap_or_else(|_| {
-            // download once, even if we're called concurrently
-            DOWNLOADED.call_once(|| {
-                let mut temporary_path = PathBuf::from(path);
-                temporary_path.set_extension("tmp");
+    DOWNLOADED.call_once(|| {
+        if !Path::new(path).exists() {
+            let mut response = reqwest::get(url).expect("GET request");
+            let mut destination = std::fs::File::create(path).expect("create PDB");
+            response.copy_to(&mut destination).expect("download");
+        }
+    });
 
-                {
-                    // download to a temporary file
-                    let mut temporary_file = std::fs::File::create(&temporary_path).unwrap();
-
-                    // ask curl to do the download
-
-                    let mut req = curl::easy::Easy::new();
-                    req.url(url).unwrap();
-                    req.write_function(move |data| {
-                        Ok(temporary_file.write(data).expect("write data"))
-                    }).unwrap();
-                    req.perform().expect("download");
-
-                    // close the temporary file, because Windows
-                }
-
-                // rename and reopen
-                std::fs::rename(temporary_path, path).unwrap();
-            });
-
-            std::fs::File::open(path).expect("open PDB after downloading")
-        })
+    std::fs::File::open(path).expect("open PDB")
 }
 
 #[test]
