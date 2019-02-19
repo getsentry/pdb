@@ -49,6 +49,10 @@ pub struct DebugInformation<'s> {
 }
 
 impl<'s> DebugInformation<'s> {
+    /// Returns the target's machine type (architecture).
+    pub fn machine_type(&self) -> Result<MachineType> {
+        Ok(self.header.machine_type.into())
+    }
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter> {
         let mut buf = self.stream.parse_buffer();
@@ -199,6 +203,93 @@ pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
     }
 
     Ok(header)
+}
+
+/// The target machine's architecture.
+// Reference: https://github.com/llvm-mirror/llvm/blob/8e47a8d1a66b89cd59fbc2fdc7e19dbe7a15c6f8/include/llvm/DebugInfo/PDB/PDBTypes.h#L124
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MachineType {
+    Invalid = 0xffff,
+    Unknown = 0x0,
+    Am33 = 0x13,
+    Amd64 = 0x8664,
+    Arm = 0x1C0,
+    ArmNT = 0x1C4,
+    Ebc = 0xEBC,
+    X86 = 0x14C,
+    Ia64 = 0x200,
+    M32R = 0x9041,
+    Mips16 = 0x266,
+    MipsFpu = 0x366,
+    MipsFpu16 = 0x466,
+    PowerPC = 0x1F0,
+    PowerPCFP = 0x1F1,
+    R4000 = 0x166,
+    SH3 = 0x1A2,
+    SH3DSP = 0x1A3,
+    SH4 = 0x1A6,
+    SH5 = 0x1A8,
+    Thumb = 0x1C2,
+    WceMipsV2 = 0x169,
+}
+
+impl ::std::fmt::Display for MachineType {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match *self {
+            MachineType::Invalid => write!(f, "Invalid"),
+            MachineType::Unknown => write!(f, "Unknown"),
+            MachineType::Am33 => write!(f, "Am33"),
+            MachineType::Amd64 => write!(f, "Amd64"),
+            MachineType::Arm => write!(f, "Arm"),
+            MachineType::ArmNT => write!(f, "ArmNT"),
+            MachineType::Ebc => write!(f, "Ebc"),
+            MachineType::X86 => write!(f, "X86"),
+            MachineType::Ia64 => write!(f, "Ia64"),
+            MachineType::M32R => write!(f, "M32R"),
+            MachineType::Mips16 => write!(f, "Mips16"),
+            MachineType::MipsFpu => write!(f, "MipsFpu"),
+            MachineType::MipsFpu16 => write!(f, "MipsFpu16"),
+            MachineType::PowerPC => write!(f, "PowerPC"),
+            MachineType::PowerPCFP => write!(f, "PowerPCFP"),
+            MachineType::R4000 => write!(f, "R4000"),
+            MachineType::SH3 => write!(f, "SH3"),
+            MachineType::SH3DSP => write!(f, "SH3DSP"),
+            MachineType::SH4 => write!(f, "SH4"),
+            MachineType::SH5 => write!(f, "SH5"),
+            MachineType::Thumb => write!(f, "Thumb"),
+            MachineType::WceMipsV2 => write!(f, "WceMipsV2"),
+        }
+    }
+}
+
+impl From<u16> for MachineType {
+    fn from(value: u16) -> Self {
+        match value {
+            0xffff => MachineType::Invalid,
+            0x0 => MachineType::Unknown,
+            0x13 => MachineType::Am33,
+            0x8664 => MachineType::Amd64,
+            0x1C0 => MachineType::Arm,
+            0x1C4 => MachineType::ArmNT,
+            0xEBC => MachineType::Ebc,
+            0x14C => MachineType::X86,
+            0x200 => MachineType::Ia64,
+            0x9041 => MachineType::M32R,
+            0x266 => MachineType::Mips16,
+            0x366 => MachineType::MipsFpu,
+            0x466 => MachineType::MipsFpu16,
+            0x1F0 => MachineType::PowerPC,
+            0x1F1 => MachineType::PowerPCFP,
+            0x166 => MachineType::R4000,
+            0x1A2 => MachineType::SH3,
+            0x1A3 => MachineType::SH3DSP,
+            0x1A6 => MachineType::SH4,
+            0x1A8 => MachineType::SH5,
+            0x1C2 => MachineType::Thumb,
+            0x169 => MachineType::WceMipsV2,
+            _ => MachineType::Unknown,
+        }
+    }
 }
 
 /// Information about a module's contribution to a section.

@@ -12,7 +12,8 @@ use std::fmt;
 use std::io;
 use std::result;
 
-use byteorder::{ByteOrder,LittleEndian};
+use scroll::{self, Endian, Pread, LE};
+use scroll::ctx::TryFromCtx;
 
 /// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
@@ -67,6 +68,9 @@ pub enum Error {
 
     /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
+
+    /// A parse error from scroll.
+    ScrollError(scroll::Error),
 }
 
 impl error::Error for Error {
@@ -87,6 +91,7 @@ impl error::Error for Error {
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
             Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
+            Error::ScrollError(ref e) => e.description(),
         }
     }
 }
@@ -116,12 +121,42 @@ impl convert::From<io::Error> for Error {
     }
 }
 
+impl convert::From<scroll::Error> for Error {
+    fn from(e: scroll::Error) -> Self {
+        match e {
+            // Convert a couple of scroll errors into EOF.
+            scroll::Error::BadOffset(_) | scroll::Error::TooBig { .. } => Error::UnexpectedEof,
+            _ => Error::ScrollError(e),
+        }
+    }
+}
+
 pub type Result<T> = result::Result<T, Error>;
 
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]
 #[derive(Debug,Clone)]
 pub struct ParseBuffer<'b> (&'b [u8], usize);
+
+macro_rules! def_parse {
+    ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
+        $(#[doc(hidden)]
+          #[inline]
+          pub fn $n(&mut self) -> Result<$t> {
+              Ok(self.parse()?)
+          })*
+    }
+}
+
+macro_rules! def_peek {
+    ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
+        $(#[doc(hidden)]
+          #[inline]
+          pub fn $n(&mut self) -> Result<$t> {
+              Ok(self.0.pread_with(self.1, LE)?)
+          })*
+    }
+}
 
 impl<'b> ParseBuffer<'b> {
     /// Return the remaining length of the buffer.
@@ -152,96 +187,26 @@ impl<'b> ParseBuffer<'b> {
         Ok(())
     }
 
-    /// Parse a `u8` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_u8(&mut self) -> Result<u8> {
-        let input = &self.0[self.1..];
-        if input.len() < 1 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 1;
-            Ok(input[0])
-        }
-    }
-
-    /// Peek at the next u8 without advancing the cursor.
-    #[doc(hidden)]
-    #[inline]
-    pub fn peek_u8(&mut self) -> Result<u8> {
-        let input = &self.0[self.1..];
-        if input.len() < 1 {
-            Err(Error::UnexpectedEof)
-        } else {
-            Ok(input[0])
-        }
-    }
-
-    /// Parse a `u16` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_u16(&mut self) -> Result<u16> {
-        let input = &self.0[self.1..];
-        if input.len() < 2 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 2;
-            Ok(LittleEndian::read_u16(input))
-        }
-    }
-
-    /// Parse an `i16` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_i16(&mut self) -> Result<i16> {
-        let input = &self.0[self.1..];
-        if input.len() < 2 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 2;
-            Ok(LittleEndian::read_i16(input))
-        }
-    }
-
-    /// Peek at the next u16 without advancing the cursor.
-    #[doc(hidden)]
-    #[inline]
-    pub fn peek_u16(&mut self) -> Result<u16> {
-        let input = &self.0[self.1..];
-        if input.len() < 2 {
-            Err(Error::UnexpectedEof)
-        } else {
-            Ok(LittleEndian::read_u16(input))
-        }
-    }
-
-    /// Parse a `u32` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_u32(&mut self) -> Result<u32>
+    pub fn parse<T>(&mut self) -> Result<T>
+        where T: TryFromCtx<'b, Endian, [u8], Error=scroll::Error, Size=usize>,
     {
-        let input = &self.0[self.1..];
-        if input.len() < 4 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 4;
-            Ok(LittleEndian::read_u32(input))
-        }
+        Ok(self.0.gread_with(&mut self.1, LE)?)
     }
 
-    /// Parse an `i32` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_i32(&mut self) -> Result<i32>
-    {
-        let input = &self.0[self.1..];
-        if input.len() < 4 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 4;
-            Ok(LittleEndian::read_i32(input))
-        }
-    }
+    def_parse!(
+        (parse_u8, u8),
+        (parse_u16, u16),
+        (parse_i16, i16),
+        (parse_u32, u32),
+        (parse_i32, i32),
+        (parse_u64, u64),
+        (parse_i64, i64),
+    );
+
+    def_peek!(
+        (peek_u8, u8),
+        (peek_u16, u16),
+    );
 
     /// Parse a NUL-terminated string from the input.
     #[doc(hidden)]
@@ -258,46 +223,12 @@ impl<'b> ParseBuffer<'b> {
         }
     }
 
-    /// Parse a `u64` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_u64(&mut self) -> Result<u64>
-    {
-        let input = &self.0[self.1..];
-        if input.len() < 8 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 8;
-            Ok(LittleEndian::read_u64(input))
-        }
-    }
-
-    /// Parse an `i64` from the input.
-    #[doc(hidden)]
-    #[inline]
-    pub fn parse_i64(&mut self) -> Result<i64>
-    {
-        let input = &self.0[self.1..];
-        if input.len() < 8 {
-            Err(Error::UnexpectedEof)
-        } else {
-            self.1 += 8;
-            Ok(LittleEndian::read_i64(input))
-        }
-    }
-
     /// Parse a u8-length-prefixed string from the input.
     #[doc(hidden)]
     #[inline]
     pub fn parse_u8_pascal_string(&mut self) -> Result<RawString<'b>> {
         let length = self.parse_u8()? as usize;
-        let input = &self.0[self.1..];
-        if input.len() >= length {
-            self.1 += length;
-            Ok(RawString::from(&input[..length]))
-        } else {
-            Err(Error::UnexpectedEof)
-        }
+        Ok(RawString::from(self.take(length)?))
     }
 
     /// Take n bytes from the input

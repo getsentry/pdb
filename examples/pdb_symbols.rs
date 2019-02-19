@@ -23,6 +23,9 @@ fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
         pdb::SymbolData::DataSymbol(data) => {
             print_row(data.segment, data.offset, "data", symbol.name()?);
         }
+        pdb::SymbolData::Procedure(data) => {
+            print_row(data.segment, data.offset, "function", symbol.name()?);
+        }
         _ => {
             // ignore everything else
         }
