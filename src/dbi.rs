@@ -53,6 +53,7 @@ impl<'s> DebugInformation<'s> {
     pub fn machine_type(&self) -> Result<MachineType> {
         Ok(self.header.machine_type.into())
     }
+
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter> {
         let mut buf = self.stream.parse_buffer();

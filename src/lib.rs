@@ -59,15 +59,16 @@ mod source;
 mod symbol;
 mod tpi;
 mod pdbi;
-mod pe;
-mod omap;
+
+pub mod pe;
+pub mod omap;
 
 // exports
 pub use common::{Error,Result,TypeIndex,RawString,Variant};
 pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
 pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
-pub use pdb::PDB;
+pub use pdb::{PDB, AddressTranslator};
 pub use source::*;
 pub use symbol::*;
 pub use tpi::*;

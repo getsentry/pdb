@@ -69,6 +69,9 @@ pub enum Error {
     /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
 
+    /// Required mapping for virtual addresses (OMAP) was not found.
+    AddressMapNotFound,
+
     /// A parse error from scroll.
     ScrollError(scroll::Error),
 }
@@ -91,6 +94,7 @@ impl error::Error for Error {
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
             Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
+            Error::AddressMapNotFound => "Required mapping for virtual addresses (OMAP) was not found",
             Error::ScrollError(ref e) => e.description(),
         }
     }
@@ -110,6 +114,7 @@ impl fmt::Display for Error {
             Error::TypeNotIndexed(type_index, indexed_count) => write!(f, "Type {} not indexed (index covers {})", type_index, indexed_count),
             Error::UnimplementedTypeKind(kind) => write!(f, "Support for types of kind 0x{:04x} is not implemented", kind),
             Error::UnexpectedNumericPrefix(prefix) => write!(f, "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}", prefix),
+            Error::AddressMapNotFound => write!(f, "Required mapping for virtual addresses (OMAP) was not found"),
             _ => fmt::Debug::fmt(self, f)
         }
     }

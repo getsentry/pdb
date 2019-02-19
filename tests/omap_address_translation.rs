@@ -34,7 +34,7 @@ fn verify_pdb_identity() {
     let pdb_info = pdb.pdb_information().expect("pdb information");
     assert_eq!(pdb_info.guid, uuid::Uuid::from_str("3844DBB9-2017-4967-BE7A-A4A2C20430FA").unwrap());
     assert_eq!(pdb_info.age, 5);
-    assert_eq!(pdb_info.signature, 1290245416);
+    assert_eq!(pdb_info.signature, 1_290_245_416);
 }
 
 #[test]
@@ -60,19 +60,10 @@ fn test_omap() {
 
     // ensure the symbol has the correct location
     assert_eq!(pubsym.segment, 0x000c);
-    assert_eq!(pubsym.offset, 0x0004aeb0);
+    assert_eq!(pubsym.offset, 0x0004_aeb0);
 
-    // read the sections
-    let sections = pdb.sections().expect("sections");
-    assert_eq!(sections[13].name().to_string(), "PAGEVRFY");
-    assert_eq!(sections[13].virtual_address, 0x505000);
-
-    // great, good to go
-    // find the debug information
-    pdb.debug_information().expect("debug_information");
-
-    // TODO:
-    //   build an address translator
-    //   translate the segment+offset
-    //   assert_eq!(rva, 0x003768c0)
+    // translate the segment offset to an RVA
+    let translator = pdb.address_translator().expect("address translator");
+    let rva = translator.to_rva(pubsym.segment, pubsym.offset);
+    assert_eq!(rva, 0x0037_68c0);
 }
