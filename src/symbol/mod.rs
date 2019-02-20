@@ -125,6 +125,8 @@ impl<'t> Symbol<'t> {
             S_LPROC32_DPC |
             S_LPROC32_DPC_ID => 35,
 
+            S_OBJNAME | S_OBJNAME_ST => 4,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
 
@@ -290,6 +292,12 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             }))
         }
 
+        S_OBJNAME | S_OBJNAME_ST => {
+            Ok(SymbolData::ObjName(ObjNameSymbol {
+                signature: buf.parse_u32()?,
+            }))
+        }
+
         _ => Err(Error::UnimplementedSymbolKind(kind))
     }
 }
@@ -332,8 +340,10 @@ pub enum SymbolData {
     // S_GPROC32_ID (0x1147) |
     // S_LPROC32_DPC (0x1155) |
     // S_LPROC32_DPC_ID (0x1156)
-    Procedure(ProcedureSymbol)
+    Procedure(ProcedureSymbol),
 
+    // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
+    ObjName(ObjNameSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -462,6 +472,13 @@ pub struct ProcedureSymbol {
     pub offset: u32,
     pub segment: u16,
     pub flags: ProcedureFlags
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_OBJNAME`, or `S_OBJNAME_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ObjNameSymbol {
+    pub signature: u32,
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
