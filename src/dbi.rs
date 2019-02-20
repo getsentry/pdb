@@ -59,7 +59,9 @@ impl<'s> DebugInformation<'s> {
         // drop the header
         buf.take(self.header_len)?;
         let modules_buf = buf.take(self.header.module_list_size as usize)?;
-        Ok(ModuleIter { buf: modules_buf.into() })
+        Ok(ModuleIter {
+            buf: modules_buf.into(),
+        })
     }
 }
 
@@ -70,7 +72,7 @@ pub fn new_debug_information(stream: Stream) -> Result<DebugInformation> {
         (header, buf.pos())
     };
 
-    Ok(DebugInformation{
+    Ok(DebugInformation {
         stream: stream,
         header: header,
         header_len: len,
@@ -81,14 +83,14 @@ pub fn get_header(dbi: &DebugInformation) -> Header {
     dbi.header
 }
 
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug, Copy, Clone)]
 pub enum HeaderVersion {
     V41,
     V50,
     V60,
     V70,
     V110,
-    OtherValue(u32)
+    OtherValue(u32),
 }
 
 impl From<u32> for HeaderVersion {
@@ -107,7 +109,7 @@ impl From<u32> for HeaderVersion {
 /// A DBI header -- `NewDBIHdr`, really -- parsed from a stream.
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
-#[derive(Debug,Copy,Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct Header {
     pub signature: u32,
     pub version: HeaderVersion,
@@ -206,31 +208,61 @@ pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
 }
 
 /// The target machine's architecture.
-// Reference: https://github.com/llvm-mirror/llvm/blob/8e47a8d1a66b89cd59fbc2fdc7e19dbe7a15c6f8/include/llvm/DebugInfo/PDB/PDBTypes.h#L124
+/// Reference: https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#machine-types
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineType {
-    Invalid = 0xffff,
+    /// The contents of this field are assumed to be applicable to any machine type.
     Unknown = 0x0,
+    /// Matsushita AM33
     Am33 = 0x13,
+    /// x64
     Amd64 = 0x8664,
+    /// ARM little endian
     Arm = 0x1C0,
+    /// ARM64 little endian
+    Arm64 = 0xAA64,
+    /// ARM Thumb-2 little endian
     ArmNT = 0x1C4,
+    /// EFI byte code
     Ebc = 0xEBC,
+    /// Intel 386 or later processors and compatible processors
     X86 = 0x14C,
+    /// Intel Itanium processor family
     Ia64 = 0x200,
+    /// Mitsubishi M32R little endian
     M32R = 0x9041,
+    /// MIPS16
     Mips16 = 0x266,
+    /// MIPS with FPU
     MipsFpu = 0x366,
+    /// MIPS16 with FPU
     MipsFpu16 = 0x466,
+    /// Power PC little endian
     PowerPC = 0x1F0,
+    /// Power PC with floating point support
     PowerPCFP = 0x1F1,
+    /// MIPS little endian
     R4000 = 0x166,
+    /// RISC-V 32-bit address space
+    RiscV32 = 0x5032,
+    /// RISC-V 64-bit address space
+    RiscV64 = 0x5064,
+    /// RISC-V 128-bit address space
+    RiscV128 = 0x5128,
+    /// Hitachi SH3
     SH3 = 0x1A2,
+    /// Hitachi SH3 DSP
     SH3DSP = 0x1A3,
+    /// Hitachi SH4
     SH4 = 0x1A6,
+    /// Hitachi SH5
     SH5 = 0x1A8,
+    /// Thumb
     Thumb = 0x1C2,
+    /// MIPS little-endian WCE v2
     WceMipsV2 = 0x169,
+    /// Invalid value
+    Invalid = 0xffff,
 }
 
 impl ::std::fmt::Display for MachineType {
@@ -241,6 +273,7 @@ impl ::std::fmt::Display for MachineType {
             MachineType::Am33 => write!(f, "Am33"),
             MachineType::Amd64 => write!(f, "Amd64"),
             MachineType::Arm => write!(f, "Arm"),
+            MachineType::Arm64 => write!(f, "Arm64"),
             MachineType::ArmNT => write!(f, "ArmNT"),
             MachineType::Ebc => write!(f, "Ebc"),
             MachineType::X86 => write!(f, "X86"),
@@ -252,6 +285,9 @@ impl ::std::fmt::Display for MachineType {
             MachineType::PowerPC => write!(f, "PowerPC"),
             MachineType::PowerPCFP => write!(f, "PowerPCFP"),
             MachineType::R4000 => write!(f, "R4000"),
+            MachineType::RiscV32 => write!(f, "RiscV32"),
+            MachineType::RiscV64 => write!(f, "RiscV64"),
+            MachineType::RiscV128 => write!(f, "RiscV128"),
             MachineType::SH3 => write!(f, "SH3"),
             MachineType::SH3DSP => write!(f, "SH3DSP"),
             MachineType::SH4 => write!(f, "SH4"),
@@ -270,6 +306,7 @@ impl From<u16> for MachineType {
             0x13 => MachineType::Am33,
             0x8664 => MachineType::Amd64,
             0x1C0 => MachineType::Arm,
+            0xAA64 => MachineType::Arm64,
             0x1C4 => MachineType::ArmNT,
             0xEBC => MachineType::Ebc,
             0x14C => MachineType::X86,
@@ -281,6 +318,9 @@ impl From<u16> for MachineType {
             0x1F0 => MachineType::PowerPC,
             0x1F1 => MachineType::PowerPCFP,
             0x166 => MachineType::R4000,
+            0x5032 => MachineType::RiscV32,
+            0x5064 => MachineType::RiscV64,
+            0x5128 => MachineType::RiscV128,
             0x1A2 => MachineType::SH3,
             0x1A3 => MachineType::SH3DSP,
             0x1A6 => MachineType::SH4,
@@ -398,7 +438,9 @@ pub struct Module<'m> {
 
 impl<'m> Module<'m> {
     /// The `DBIModuleInfo` from the module info substream in the DBI stream.
-    pub fn info(&self) -> &DBIModuleInfo { &self.info }
+    pub fn info(&self) -> &DBIModuleInfo {
+        &self.info
+    }
     /// The module name.
     ///
     /// Usually either a full path to an object file or a string of the form `Import:<dll name>`.
