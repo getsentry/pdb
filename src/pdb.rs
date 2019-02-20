@@ -372,7 +372,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// Build a map that translates relative section offsets to RVAs (relative virtual addresses).
     ///
     /// This reads `omap_from_src` and either `original_sections` or `sections` from this PDB and
-    /// chooses internally which strategy to use for resolving RVAs.
+    /// chooses internally which strategy to use for resolving RVAs. Consider to reuse this instance
+    /// for multiple translations.
     ///
     /// # Errors
     ///
@@ -447,12 +448,24 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 }
 
+/// A helper to resolve RVAs (relative virtual addresses) from segment offsets.
+///
+/// Addresses in PDBs are stored as offsets to segments, which refer to sections in the original PE.
+/// For some binaries, these addresses are additionally reordered to optimize them for paging
+/// reduction.
+///
+/// An instance of this translator can be obtained via `PDB::address_translator`.
 pub struct AddressTranslator<'s> {
     sections: Vec<ImageSectionHeader>,
     omap: Option<OMAPTable<'s>>,
 }
 
 impl<'s> AddressTranslator<'s> {
+    /// Lookup an address relative to the `image_base` from a segment and offset.
+    ///
+    /// An RVA of `0` may either indicate a location that does not exist in the original address
+    /// space, a reference to a non-existent section, or simply the start of the image. Thus, take
+    /// special care when zero is returned from this function.
     pub fn to_rva(&self, segment: u16, offset: u32) -> u32 {
         if segment == 0 {
             return 0;

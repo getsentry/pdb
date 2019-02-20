@@ -14,6 +14,7 @@ use msf::*;
 
 mod constants;
 use self::constants::*;
+use pdb::AddressTranslator;
 
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
@@ -31,17 +32,19 @@ use self::constants::*;
 /// let mut pdb = pdb::PDB::open(file)?;
 ///
 /// let symbol_table = pdb.global_symbols()?;
+/// let translator = pdb.address_translator()?;
 ///
 /// # let mut count: usize = 0;
 /// let mut symbols = symbol_table.iter();
 /// while let Some(symbol) = symbols.next()? {
 ///     match symbol.parse() {
-///     	Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
-///     		// we found the location of a function!
-///     		println!("{:x}:{:08x} is {}", data.segment, data.offset, symbol.name()?);
+///         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
+///             // we found the location of a function!
+///             let rva = data.rva(&translator);
+///             println!("{:x}:{:08x} ({:08x}) is {}", data.segment, data.offset, rva, symbol.name()?);
 ///             # count += 1;
-///     	}
-///     	_ => {}
+///         }
+///         _ => {}
 ///     }
 /// }
 ///
@@ -347,6 +350,13 @@ pub struct PublicSymbol {
     pub segment: u16,
 }
 
+impl PublicSymbol {
+    /// Returns the relative virtual address of this symbol.
+    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+        translator.to_rva(self.segment, self.offset)
+    }
+}
+
 /// The information parsed from a symbol record with kind
 /// `S_LDATA32`, `S_LDATA32_ST`, `S_GDATA32`, `S_GDATA32_ST`,
 /// `S_LMANDATA`, `S_LMANDATA_ST`, `S_GMANDATA`, or `S_GMANDATA_ST`.
@@ -357,6 +367,13 @@ pub struct DataSymbol {
     pub type_index: TypeIndex,
     pub offset: u32,
     pub segment: u16,
+}
+
+impl DataSymbol {
+    /// Returns the relative virtual address of this symbol.
+    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+        translator.to_rva(self.segment, self.offset)
+    }
 }
 
 /// The information parsed from a symbol record with kind
@@ -406,6 +423,13 @@ pub struct ThreadStorageSymbol {
     pub type_index: TypeIndex,
     pub offset: u32,
     pub segment: u16,
+}
+
+impl ThreadStorageSymbol {
+    /// Returns the relative virtual address of this symbol.
+    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+        translator.to_rva(self.segment, self.offset)
+    }
 }
 
 // CV_PROCFLAGS:
