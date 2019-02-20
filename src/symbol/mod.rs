@@ -40,7 +40,7 @@ use pdb::AddressTranslator;
 ///     match symbol.parse() {
 ///         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
 ///             // we found the location of a function!
-///             let rva = data.rva(&translator);
+///             let rva = data.rva(&translator).unwrap_or(0);
 ///             println!("{:x}:{:08x} ({:08x}) is {}", data.segment, data.offset, rva, symbol.name()?);
 ///             # count += 1;
 ///         }
@@ -352,7 +352,7 @@ pub struct PublicSymbol {
 
 impl PublicSymbol {
     /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
         translator.to_rva(self.segment, self.offset)
     }
 }
@@ -371,7 +371,7 @@ pub struct DataSymbol {
 
 impl DataSymbol {
     /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
         translator.to_rva(self.segment, self.offset)
     }
 }
@@ -427,7 +427,7 @@ pub struct ThreadStorageSymbol {
 
 impl ThreadStorageSymbol {
     /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> u32 {
+    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
         translator.to_rva(self.segment, self.offset)
     }
 }

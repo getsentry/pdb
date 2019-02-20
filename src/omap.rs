@@ -5,10 +5,51 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use byteorder::{ByteOrder, LittleEndian};
 use common::*;
-use byteorder::{ByteOrder,LittleEndian,ReadBytesExt};
 use msf::Stream;
 use std::cmp::Ordering;
+use std::mem;
+use std::slice;
+
+/// A address translation record from an `OMAPTable`.
+///
+/// This record applies to the half-open interval [ `record.source_address`,
+/// `next_record.source_address` ).
+#[repr(C, packed)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OMAPRecord {
+    source_address: [u8; 4],
+    target_address: [u8; 4],
+}
+
+impl OMAPRecord {
+    /// Returns the address in the source space.
+    #[inline]
+    pub fn source_address(self) -> u32 {
+        LittleEndian::read_u32(&self.source_address)
+    }
+
+    /// Returns the start of the mapped portion in the target address space.
+    #[inline]
+    pub fn target_address(self) -> u32 {
+        LittleEndian::read_u32(&self.target_address)
+    }
+}
+
+impl PartialOrd for OMAPRecord {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.source_address.partial_cmp(&other.source_address)
+    }
+}
+
+impl Ord for OMAPRecord {
+    #[inline]
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.source_address.cmp(&other.source_address)
+    }
+}
 
 /// PDBs can contain OMAP tables, which translate relative virtual addresses (RVAs) from one address
 /// space into another.
@@ -37,25 +78,13 @@ use std::cmp::Ordering;
 ///
 /// # Structure
 ///
-/// OMAP tables are dense arrays, sequentially storing records of the form:
-///
-/// ```
-/// struct Record {
-///     source_address: u32,
-///     target_address: u32
-/// }
-/// ```
-///
-/// Each table is sorted by source address.
-///
-/// As a (potentially) special case, `target_address` can be zero, which seems to indicate that the
-/// `source_address` does not exist in the target address space. However, zero may not be a
-/// strictly invalid address, as RVA zero points to the PE header.
+/// OMAP tables are dense arrays, sequentially storing `OMAPRecord` structs sorted by source
+/// address.
 ///
 /// Each record applies to a range of addresses: i.e. record N indicates that addresses in the
 /// half-open interval [ `record[n].source_address`, `record[n+1].source_address` ) were relocated
 /// to a starting address of `record[n].target_address`. If `target_address` is zero, the `lookup()`
-/// will return zero, since this seems more generally correct than treating it as an offset.
+/// will return None, since this indicates a non-existent location in the target address space.
 ///
 /// Given that the table is sorted, lookups by source address can be efficiently serviced using a
 /// binary search directly against the underlying data without secondary data structures. This is
@@ -68,33 +97,26 @@ pub struct OMAPTable<'s> {
 }
 
 impl<'s> OMAPTable<'s> {
-    pub fn new(stream: Stream<'s>) -> Result<OMAPTable> {
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         if stream.as_slice().len() % 8 != 0 {
-            Err(Error::UnimplementedFeature("OMAP tables must be a multiple of the record size"))
+            Err(Error::UnimplementedFeature(
+                "OMAP tables must be a multiple of the record size",
+            ))
         } else {
-            Ok(OMAPTable{
-                stream
-            })
+            Ok(OMAPTable { stream })
         }
     }
 
+    /// Returns a direct view onto the records stored in this OMAP table.
     #[inline]
-    fn records(&self) -> usize {
-        self.stream.as_slice().len() / 8
-    }
-
-    #[inline]
-    fn read_source_address(&self, n: usize) -> u32 {
+    pub fn records(&self) -> &[OMAPRecord] {
         let bytes = self.stream.as_slice();
-        let offset = n * 8;
-        LittleEndian::read_u32(&bytes[offset..offset+4])
-    }
-
-    #[inline]
-    fn read_target_address(&self, n: usize) -> u32 {
-        let bytes = self.stream.as_slice();
-        let offset = n * 8 + 4;
-        LittleEndian::read_u32(&bytes[offset..offset+4])
+        unsafe {
+            slice::from_raw_parts(
+                bytes.as_ptr() as *const OMAPRecord,
+                bytes.len() / mem::size_of::<OMAPRecord>(),
+            )
+        }
     }
 
     /// Look up `source_address` to yield a target address.
@@ -103,43 +125,24 @@ impl<'s> OMAPTable<'s> {
     /// exist in the target address space. This is not a lookup failure per sé, so it's not a
     /// `Result::Error`, and zero _is_ a valid address, so it's not an `Option::None`. It's just
     /// zero.
-    pub fn lookup(&self, source_address: u32) -> u32 {
-        // We want to search using Price Is Right rules: closest without going over wins.
-        let n = {
-            let mut size = self.records();
-            let mut left = 0usize;
-            while size > 1 {
-                size /= 2;
-                let center = left + size;
-                let center_address = self.read_source_address(center);
-                match center_address.cmp(&source_address) {
-                    Ordering::Less => {
-                        // go right
-                        left = center;
-                    },
-                    Ordering::Greater => {
-                        // go left
-                        left = left;
-                    },
-                    Ordering::Equal => {
-                        // exact match
-                        left = center;
-                        break;
-                    }
-                };
-            }
-            left
+    pub fn lookup(&self, source_address: u32) -> Option<u32> {
+        let records = self.records();
+
+        let index = match records.binary_search_by_key(&source_address, |r| r.source_address()) {
+            Ok(i) => i,
+            Err(0) => return None,
+            Err(i) => i - 1,
         };
 
-        let record_source_address = self.read_source_address(n);
-        let record_target_address = self.read_target_address(n);
+        let record = records[index];
 
-        assert!(record_source_address <= source_address);
-
-        if record_target_address == 0 {
-            0
-        } else {
-            (source_address - record_source_address) + record_target_address
+        // As a special case, `target_address` can be zero, which seems to indicate that the
+        // `source_address` does not exist in the target address space.
+        if record.target_address() == 0 {
+            return None;
         }
+
+        debug_assert!(record.source_address() <= source_address);
+        Some((source_address - record.source_address()) + record.target_address())
     }
 }

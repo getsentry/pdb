@@ -334,7 +334,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         };
 
         let stream = self.msf.get(stream_number as u32, None)?;
-        let table = OMAPTable::new(stream)?;
+        let table = OMAPTable::parse(stream)?;
         Ok(Some(table))
     }
 
@@ -365,7 +365,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         };
 
         let stream = self.msf.get(stream_number as u32, None)?;
-        let table = OMAPTable::new(stream)?;
+        let table = OMAPTable::parse(stream)?;
         Ok(Some(table))
     }
 
@@ -466,20 +466,20 @@ impl<'s> AddressTranslator<'s> {
     /// An RVA of `0` may either indicate a location that does not exist in the original address
     /// space, a reference to a non-existent section, or simply the start of the image. Thus, take
     /// special care when zero is returned from this function.
-    pub fn to_rva(&self, segment: u16, offset: u32) -> u32 {
+    pub fn to_rva(&self, segment: u16, offset: u32) -> Option<u32> {
         if segment == 0 {
-            return 0;
+            return None;
         }
 
         let section = match self.sections.get(segment as usize - 1) {
             Some(section) => section,
-            None => return 0,
+            None => return None,
         };
 
         let address = section.virtual_address + offset;
         match self.omap {
             Some(ref omap) => omap.lookup(address),
-            None => address,
+            None => Some(address),
         }
     }
 }

@@ -65,5 +65,5 @@ fn test_omap() {
     // translate the segment offset to an RVA
     let translator = pdb.address_translator().expect("address translator");
     let rva = translator.to_rva(pubsym.segment, pubsym.offset);
-    assert_eq!(rva, 0x0037_68c0);
+    assert_eq!(rva, Some(0x0037_68c0));
 }
