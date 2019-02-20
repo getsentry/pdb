@@ -128,7 +128,7 @@ impl<'t> Symbol<'t> {
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
 
-        if self.0.len() < data_length + 2 + 2 {
+        if self.0.len() < data_length + 2 {
             return Err(Error::SymbolTooShort);
         }
 
