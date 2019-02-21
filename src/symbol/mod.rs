@@ -128,10 +128,16 @@ impl<'t> Symbol<'t> {
             S_LPROC32_DPC |
             S_LPROC32_DPC_ID => 35,
 
+            S_OBJNAME | S_OBJNAME_ST => 4,
+
+            S_COMPILE3 => 22,
+
+            S_UNAMESPACE | S_UNAMESPACE_ST => 0,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind))
         };
 
-        if self.0.len() < data_length + 2 + 2 {
+        if self.0.len() < data_length + 2 {
             return Err(Error::SymbolTooShort);
         }
 
@@ -293,6 +299,26 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             }))
         }
 
+        S_OBJNAME | S_OBJNAME_ST => {
+            Ok(SymbolData::ObjName(ObjNameSymbol {
+                signature: buf.parse_u32()?,
+            }))
+        }
+
+        S_COMPILE3 => {
+            Ok(SymbolData::Compile3(Compile3Symbol {
+                language: buf.parse_u8()?.into(),
+                flags: [buf.parse_u8()?, buf.parse_u8()?, buf.parse_u8()?],
+                cpu_type: buf.parse_u16()?.into(),
+                frontend_version: [buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?],
+                backend_version: [buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?, buf.parse_u16()?],
+            }))
+        }
+
+        S_UNAMESPACE | S_UNAMESPACE_ST => {
+            Ok(SymbolData::Namespace(NamespaceSymbol {}))
+        }
+
         _ => Err(Error::UnimplementedSymbolKind(kind))
     }
 }
@@ -335,8 +361,16 @@ pub enum SymbolData {
     // S_GPROC32_ID (0x1147) |
     // S_LPROC32_DPC (0x1155) |
     // S_LPROC32_DPC_ID (0x1156)
-    Procedure(ProcedureSymbol)
+    Procedure(ProcedureSymbol),
 
+    // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
+    ObjName(ObjNameSymbol),
+
+    // S_COMPILE3 (0x113c)
+    Compile3(Compile3Symbol),
+
+    // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
+    Namespace(NamespaceSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -486,6 +520,30 @@ pub struct ProcedureSymbol {
     pub offset: u32,
     pub segment: u16,
     pub flags: ProcedureFlags
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_OBJNAME`, or `S_OBJNAME_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct ObjNameSymbol {
+    pub signature: u32,
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_COMPILE3`
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct Compile3Symbol {
+    pub language: SourceLanguage,
+    pub flags: [u8; 3],
+    pub cpu_type: CPUType,
+    pub frontend_version: [u16; 4],
+    pub backend_version: [u16; 4],
+}
+  
+/// The information parsed from a symbol record with kind
+/// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
+#[derive(Debug,Copy,Clone,Eq,PartialEq)]
+pub struct NamespaceSymbol {
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.

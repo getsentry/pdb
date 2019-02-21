@@ -35,6 +35,8 @@ pub enum Error {
     // The requested stream is not stored in this file.
     StreamNotFound(u32),
 
+    StreamNameNotFound,
+
     /// An IO error occurred while reading from the data source.
     IoError(io::Error),
 
@@ -83,6 +85,7 @@ impl error::Error for Error {
             Error::InvalidPageSize(_) => "The MSF header specifies an invalid page size",
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
+            Error::StreamNameNotFound => "The requested stream is not stored in this file",
             Error::IoError(ref e) => e.description(),
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",

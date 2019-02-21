@@ -71,7 +71,7 @@ mod big {
 
     /// The PDB header as stored on disk.
     /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
-    #[derive(Debug, Pread)]
+    #[derive(Debug, Copy, Clone, Pread)]
     #[repr(C, packed)]
     struct RawHeader {
         magic: [u8; 32],
