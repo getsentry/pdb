@@ -473,10 +473,6 @@ pub struct AddressTranslator<'s> {
 
 impl<'s> AddressTranslator<'s> {
     /// Lookup an address relative to the `image_base` from a segment and offset.
-    ///
-    /// An RVA of `0` may either indicate a location that does not exist in the original address
-    /// space, a reference to a non-existent section, or simply the start of the image. Thus, take
-    /// special care when zero is returned from this function.
     pub fn to_rva(&self, segment: u16, offset: u32) -> Option<u32> {
         if segment == 0 {
             return None;
