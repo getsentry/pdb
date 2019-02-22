@@ -14,7 +14,6 @@ use msf::*;
 
 mod constants;
 use self::constants::*;
-use pdb::AddressTranslator;
 
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
@@ -32,7 +31,7 @@ use pdb::AddressTranslator;
 /// let mut pdb = pdb::PDB::open(file)?;
 ///
 /// let symbol_table = pdb.global_symbols()?;
-/// let translator = pdb.address_translator()?;
+/// let address_map = pdb.address_map()?;
 ///
 /// # let mut count: usize = 0;
 /// let mut symbols = symbol_table.iter();
@@ -40,8 +39,8 @@ use pdb::AddressTranslator;
 ///     match symbol.parse() {
 ///         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
 ///             // we found the location of a function!
-///             let rva = data.rva(&translator).unwrap_or(0);
-///             println!("{:x}:{:08x} ({:08x}) is {}", data.segment, data.offset, rva, symbol.name()?);
+///             let rva = data.offset.rva(&address_map).unwrap_or_default();
+///             println!("{} is {}", rva, symbol.name()?);
 ///             # count += 1;
 ///         }
 ///         _ => {}
@@ -211,8 +210,10 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
                 function:   flags & CVPSF_FUNCTION != 0,
                 managed:    flags & CVPSF_MANAGED != 0,
                 msil:       flags & CVPSF_MSIL != 0,
-                offset:     buf.parse_u32()?,
-                segment:    buf.parse_u16()?,
+                offset: OriginalSectionOffset {
+                    offset:     buf.parse_u32()?,
+                    section:    buf.parse_u16()?,
+                },
             }))
         }
 
@@ -224,8 +225,10 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
                 global: match kind { S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST => true, _ => false },
                 managed: match kind { S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST => true, _ => false },
                 type_index: buf.parse_u32()?,
-                offset:     buf.parse_u32()?,
-                segment:    buf.parse_u16()?,
+                offset: OriginalSectionOffset {
+                    offset:     buf.parse_u32()?,
+                    section:    buf.parse_u16()?,
+                },
             }))
         }
 
@@ -273,8 +276,10 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             Ok(SymbolData::ThreadStorage(ThreadStorageSymbol {
                 global: match kind { S_GTHREAD32 | S_GTHREAD32_ST => true, _ => false },
                 type_index: buf.parse_u32()?,
-                offset: buf.parse_u32()?,
-                segment: buf.parse_u16()?,
+                offset: OriginalSectionOffset {
+                    offset:     buf.parse_u32()?,
+                    section:    buf.parse_u16()?,
+                },
             }))
         }
 
@@ -293,8 +298,10 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
                 dbg_start_offset: buf.parse_u32()?,
                 dbg_end_offset: buf.parse_u32()?,
                 type_index: buf.parse_u32()?,
-                offset: buf.parse_u32()?,
-                segment: buf.parse_u16()?,
+                offset: OriginalSectionOffset {
+                    offset:     buf.parse_u32()?,
+                    section:    buf.parse_u16()?,
+                },
                 flags: ProcedureFlags::new(buf.parse_u8()?)
             }))
         }
@@ -380,15 +387,7 @@ pub struct PublicSymbol {
     pub function: bool,
     pub managed: bool,
     pub msil: bool,
-    pub offset: u32,
-    pub segment: u16,
-}
-
-impl PublicSymbol {
-    /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
-        translator.to_rva(self.segment, self.offset)
-    }
+    pub offset: OriginalSectionOffset,
 }
 
 /// The information parsed from a symbol record with kind
@@ -399,15 +398,7 @@ pub struct DataSymbol {
     pub global: bool,
     pub managed: bool,
     pub type_index: TypeIndex,
-    pub offset: u32,
-    pub segment: u16,
-}
-
-impl DataSymbol {
-    /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
-        translator.to_rva(self.segment, self.offset)
-    }
+    pub offset: OriginalSectionOffset,
 }
 
 /// The information parsed from a symbol record with kind
@@ -455,15 +446,7 @@ pub struct UserDefinedTypeSymbol {
 pub struct ThreadStorageSymbol {
     pub global: bool,
     pub type_index: TypeIndex,
-    pub offset: u32,
-    pub segment: u16,
-}
-
-impl ThreadStorageSymbol {
-    /// Returns the relative virtual address of this symbol.
-    pub fn rva(&self, translator: &AddressTranslator) -> Option<u32> {
-        translator.to_rva(self.segment, self.offset)
-    }
+    pub offset: OriginalSectionOffset,
 }
 
 // CV_PROCFLAGS:
@@ -517,8 +500,7 @@ pub struct ProcedureSymbol {
     pub dbg_start_offset: u32,
     pub dbg_end_offset: u32,
     pub type_index: TypeIndex,
-    pub offset: u32,
-    pub segment: u16,
+    pub offset: OriginalSectionOffset,
     pub flags: ProcedureFlags
 }
 
@@ -539,7 +521,7 @@ pub struct Compile3Symbol {
     pub frontend_version: [u16; 4],
     pub backend_version: [u16; 4],
 }
-  
+
 /// The information parsed from a symbol record with kind
 /// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
 #[derive(Debug,Copy,Clone,Eq,PartialEq)]
@@ -609,7 +591,7 @@ mod tests {
             let buf = &[14, 17, 2, 0, 0, 0, 192, 85, 0, 0, 1, 0, 95, 95, 108, 111, 99, 97, 108, 95, 115, 116, 100, 105, 111, 95, 112, 114, 105, 110, 116, 102, 95, 111, 112, 116, 105, 111, 110, 115, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110e);
-            assert_eq!(data, SymbolData::PublicSymbol(PublicSymbol { code: false, function: true, managed: false, msil: false, offset: 21952, segment: 1 }));
+            assert_eq!(data, SymbolData::PublicSymbol(PublicSymbol { code: false, function: true, managed: false, msil: false, offset: OriginalSectionOffset { offset: 21952, section: 1 } }));
             assert_eq!(name, "__local_stdio_printf_options");
         }
 
@@ -645,7 +627,7 @@ mod tests {
             let buf = &[13, 17, 116, 0, 0, 0, 16, 0, 0, 0, 3, 0, 95, 95, 105, 115, 97, 95, 97, 118, 97, 105, 108, 97, 98, 108, 101, 0, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110d);
-            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: true, managed: false, type_index: 116, offset: 16, segment: 3 }));
+            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: true, managed: false, type_index: 116, offset: OriginalSectionOffset { offset: 16, section: 3 } }));
             assert_eq!(name, "__isa_available");
         }
 
@@ -654,7 +636,7 @@ mod tests {
             let buf = &[12, 17, 32, 0, 0, 0, 240, 36, 1, 0, 2, 0, 36, 120, 100, 97, 116, 97, 115, 121, 109, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110c);
-            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: false, managed: false, type_index: 32, offset: 74992, segment: 2 }));
+            assert_eq!(data, SymbolData::DataSymbol(DataSymbol { global: false, managed: false, type_index: 32, offset: OriginalSectionOffset { offset: 74992, section: 2 } }));
             assert_eq!(name, "$xdatasym");
         }
 
@@ -672,7 +654,7 @@ mod tests {
             let buf = &[16, 17, 0, 0, 0, 0, 48, 2, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 7, 16, 0, 0, 64, 85, 0, 0, 1, 0, 0, 66, 97, 122, 58, 58, 102, 95, 112, 114, 111, 116, 101, 99, 116, 101, 100, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x1110);
-            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: true, parent: 0, end: 560, next: 0, len: 6, dbg_start_offset: 5, dbg_end_offset: 5, type_index: 4103, offset: 21824, segment: 1, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: false } }));
+            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: true, parent: 0, end: 560, next: 0, len: 6, dbg_start_offset: 5, dbg_end_offset: 5, type_index: 4103, offset: OriginalSectionOffset { offset: 21824, section: 1 }, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: false } }));
             assert_eq!(name, "Baz::f_protected");
         }
 
@@ -681,7 +663,7 @@ mod tests {
             let buf = &[15, 17, 0, 0, 0, 0, 156, 1, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 128, 16, 0, 0, 196, 87, 0, 0, 1, 0, 128, 95, 95, 115, 99, 114, 116, 95, 99, 111, 109, 109, 111, 110, 95, 109, 97, 105, 110, 0, 0, 0];
             let (symbol, data, name) = parse(buf).expect("parse");
             assert_eq!(symbol.raw_kind(), 0x110f);
-            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: false, parent: 0, end: 412, next: 0, len: 18, dbg_start_offset: 4, dbg_end_offset: 9, type_index: 4224, offset: 22468, segment: 1, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: true } }));
+            assert_eq!(data, SymbolData::Procedure(ProcedureSymbol { global: false, parent: 0, end: 412, next: 0, len: 18, dbg_start_offset: 4, dbg_end_offset: 9, type_index: 4224, offset: OriginalSectionOffset { offset: 22468, section: 1 }, flags: ProcedureFlags { nofpo: false, int: false, far: false, never: false, notreached: false, cust_call: false, noinline: false, optdbginfo: true } }));
             assert_eq!(name, "__scrt_common_main");
         }
     }

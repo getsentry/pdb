@@ -21,7 +21,7 @@ use symbol::SymbolTable;
 use tpi::TypeInformation;
 use pdbi::PDBInformation;
 use pe::ImageSectionHeader;
-use omap::OMAPTable;
+use omap::{AddressMap, OMAPTable};
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -307,42 +307,13 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(Some(headers))
     }
 
-    /// Retrieve the executable's OMAP lookup table for mapping section offsets to RVAs (relative
-    /// virtual addresses).
+    /// Retrieve the OMAP lookup table for mapping original to actual address space.
+    ///
+    /// For more information on using OMAPs and performing correct address translation, see the
+    /// [omap module documentation].
     ///
     /// The debug information stream indicates which stream contains the section headers, so
-    /// `omap_table()` accesses the debug information stream to read the header unless
-    /// `debug_information()` was called first.
-    ///
-    /// # Errors
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
-    /// * `Error::IoError` if returned by the `Source`
-    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
-    ///
-    /// If `debug_information()` was not already called, `omap_table()` will additionally read
-    /// the debug information header, in which case it can also return:
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
-    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
-    pub fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
-        // Open the appropriate stream
-        let stream_number = match self.extra_streams()?.omap_from_src().map(u32::from) {
-            Some(number) => number,
-            None => return Ok(None),
-        };
-
-        let stream = self.msf.get(stream_number as u32, None)?;
-        let table = OMAPTable::parse(stream)?;
-        Ok(Some(table))
-    }
-
-    /// Retrieve the executable's OMAP lookup table for RVAs (relative virtual addresses) to section
-    /// offsets.
-    ///
-    /// The debug information stream indicates which stream contains the section headers, so
-    /// `omap_table()` accesses the debug information stream to read the header unless
+    /// `omap_from_src()` accesses the debug information stream to read the header unless
     /// `debug_information()` was called first.
     ///
     /// # Errors
@@ -357,6 +328,43 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
+    ///
+    /// [omap module documentation]: omap/index.html
+    pub fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
+        // Open the appropriate stream
+        let stream_number = match self.extra_streams()?.omap_from_src().map(u32::from) {
+            Some(number) => number,
+            None => return Ok(None),
+        };
+
+        let stream = self.msf.get(stream_number, None)?;
+        let table = OMAPTable::parse(stream)?;
+        Ok(Some(table))
+    }
+
+    /// Retrieve the OMAP lookup table for mapping back to the original address space.
+    ///
+    /// For more information on using OMAPs and performing correct address translation, see the
+    /// [omap module documentation].
+    ///
+    /// The debug information stream indicates which stream contains the section headers, so
+    /// `omap_to_src()` accesses the debug information stream to read the header unless
+    /// `debug_information()` was called first.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
+    ///
+    /// If `debug_information()` was not already called, `omap_table()` will additionally read the
+    /// debug information header, in which case it can also return:
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
+    ///
+    /// [omap module documentation]: omap/index.html
     pub fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
         // Open the appropriate stream
         let stream_number = match self.extra_streams()?.omap_to_src().map(u32::from) {
@@ -364,12 +372,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             None => return Ok(None),
         };
 
-        let stream = self.msf.get(stream_number as u32, None)?;
+        let stream = self.msf.get(stream_number, None)?;
         let table = OMAPTable::parse(stream)?;
         Ok(Some(table))
     }
 
-    /// Build a map that translates relative section offsets to RVAs (relative virtual addresses).
+    /// Build a map translating between different kinds of offsets and virtual addresses.
+    ///
+    /// For more information on address translation, see the [omap module documentation].
     ///
     /// This reads `omap_from_src` and either `original_sections` or `sections` from this PDB and
     /// chooses internally which strategy to use for resolving RVAs. Consider to reuse this instance
@@ -388,22 +398,27 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
-    pub fn address_translator(&mut self) -> Result<AddressTranslator<'s>> {
+    ///
+    /// [omap module documentation]: omap/index.html
+    pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
+        let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
         Ok(match self.original_sections()? {
-            Some(sections) => {
+            Some(original_sections) => {
                 let omap_from_src = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
                 let omap_to_src = self.omap_to_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
 
-                AddressTranslator {
-                    sections,
-                    omap_from_src: Some(omap_from_src),
-                    omap_to_src: Some(omap_to_src)
+                AddressMap {
+                    original_sections,
+                    transformed_sections: Some(sections),
+                    original_to_transformed: Some(omap_from_src),
+                    transformed_to_original: Some(omap_to_src)
                 }
             }
-            None => AddressTranslator {
-                sections: self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?,
-                omap_from_src: None,
-                omap_to_src: None,
+            None => AddressMap {
+                original_sections: sections,
+                transformed_sections: None,
+                original_to_transformed: None,
+                transformed_to_original: None,
             }
         })
     }
@@ -463,53 +478,5 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         self.dbi_extra_streams = Some(extra);
 
         Ok(extra)
-    }
-}
-
-/// A helper to resolve RVAs (relative virtual addresses) from segment offsets.
-///
-/// Addresses in PDBs are stored as offsets to segments, which refer to sections in the original PE.
-/// For some binaries, these addresses are additionally reordered to optimize them for paging
-/// reduction.
-///
-/// An instance of this translator can be obtained via `PDB::address_translator`.
-pub struct AddressTranslator<'s> {
-    sections: Vec<ImageSectionHeader>,
-    omap_from_src: Option<OMAPTable<'s>>,
-    omap_to_src: Option<OMAPTable<'s>>,
-}
-
-impl<'s> AddressTranslator<'s> {
-    /// Retrieve an address relative to the `image_base` from a segment and offset.
-    pub fn to_rva(&self, segment: u16, offset: u32) -> Option<u32> {
-        if segment == 0 {
-            return None;
-        }
-
-        let section = self.sections.get(segment as usize - 1)?;
-        let address = section.virtual_address + offset;
-        match self.omap_from_src {
-            Some(ref omap) => omap.lookup(address),
-            None => Some(address),
-        }
-    }
-
-    /// Retrieve the segment number and offset from an RVA.
-    pub fn to_offset(&self, address: u32) -> Option<(u16, u32)> {
-        let address = match self.omap_to_src {
-            Some(ref omap) => omap.lookup(address)?,
-            None => address,
-        };
-
-        // Section headers are sorted by virtual_address, so we only need to iterate until we exceed
-        // the desired address. Since the number of section headers is relatively low, a sequential
-        // search is the fastest option here.
-        let (index, section) = self.sections
-            .iter()
-            .take_while(|s| s.virtual_address <= address)
-            .enumerate()
-            .find(|(_, s)| address < s.virtual_address + s.size_of_raw_data)?;
-
-        Some((index as u16 + 1, address - section.virtual_address))
     }
 }

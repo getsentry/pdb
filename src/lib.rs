@@ -24,17 +24,19 @@
 //! let mut pdb = pdb::PDB::open(file)?;
 //!
 //! let symbol_table = pdb.global_symbols()?;
+//! let address_map = pdb.address_map()?;
 //!
 //! # let mut count: usize = 0;
 //! let mut symbols = symbol_table.iter();
 //! while let Some(symbol) = symbols.next()? {
 //!     match symbol.parse() {
-//!     	Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
-//!     		// we found the location of a function!
-//!     		println!("{:x}:{:08x} is {}", data.segment, data.offset, symbol.name()?);
+//!         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
+//!             // we found the location of a function!
+//!             let rva = data.offset.rva(&address_map).unwrap_or_default();
+//!             println!("{} is {}", rva, symbol.name()?);
 //!             # count += 1;
-//!     	}
-//!     	_ => {}
+//!         }
+//!         _ => {}
 //!     }
 //! }
 //!
@@ -60,18 +62,19 @@ mod symbol;
 mod tpi;
 mod pdbi;
 
-pub mod pe;
 pub mod omap;
+pub mod pe;
 
 // exports
-pub use common::{Error,Result,TypeIndex,RawString,Variant};
+pub use common::{Error, Result, TypeIndex, RawString, Variant, OriginalSectionOffset, OriginalRva, Rva, SectionOffset};
 pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
 pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
-pub use pdb::{PDB, AddressTranslator};
+pub use pdb::PDB;
 pub use source::*;
 pub use symbol::*;
 pub use tpi::*;
+pub use omap::AddressMap;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]

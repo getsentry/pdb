@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+//! Definitions for PE headers contained in PDBs.
+
 // PDBs contain PE section headers in one or two streams. `pdb::pe` is responsible for parsing them.
 
 use common::*;
