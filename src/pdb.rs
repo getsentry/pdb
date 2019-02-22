@@ -391,12 +391,19 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     pub fn address_translator(&mut self) -> Result<AddressTranslator<'s>> {
         Ok(match self.original_sections()? {
             Some(sections) => {
-                let omap = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
-                AddressTranslator { sections, omap: Some(omap) }
+                let omap_from_src = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_to_src = self.omap_to_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+
+                AddressTranslator {
+                    sections,
+                    omap_from_src: Some(omap_from_src),
+                    omap_to_src: Some(omap_to_src)
+                }
             }
             None => AddressTranslator {
                 sections: self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?,
-                omap: None,
+                omap_from_src: None,
+                omap_to_src: None,
             }
         })
     }
@@ -468,25 +475,41 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
 /// An instance of this translator can be obtained via `PDB::address_translator`.
 pub struct AddressTranslator<'s> {
     sections: Vec<ImageSectionHeader>,
-    omap: Option<OMAPTable<'s>>,
+    omap_from_src: Option<OMAPTable<'s>>,
+    omap_to_src: Option<OMAPTable<'s>>,
 }
 
 impl<'s> AddressTranslator<'s> {
-    /// Lookup an address relative to the `image_base` from a segment and offset.
+    /// Retrieve an address relative to the `image_base` from a segment and offset.
     pub fn to_rva(&self, segment: u16, offset: u32) -> Option<u32> {
         if segment == 0 {
             return None;
         }
 
-        let section = match self.sections.get(segment as usize - 1) {
-            Some(section) => section,
-            None => return None,
-        };
-
+        let section = self.sections.get(segment as usize - 1)?;
         let address = section.virtual_address + offset;
-        match self.omap {
+        match self.omap_from_src {
             Some(ref omap) => omap.lookup(address),
             None => Some(address),
         }
+    }
+
+    /// Retrieve the segment number and offset from an RVA.
+    pub fn to_offset(&self, address: u32) -> Option<(u16, u32)> {
+        let address = match self.omap_to_src {
+            Some(ref omap) => omap.lookup(address)?,
+            None => address,
+        };
+
+        // Section headers are sorted by virtual_address, so we only need to iterate until we exceed
+        // the desired address. Since the number of section headers is relatively low, a sequential
+        // search is the fastest option here.
+        let (index, section) = self.sections
+            .iter()
+            .take_while(|s| s.virtual_address <= address)
+            .enumerate()
+            .find(|(_, s)| address < s.virtual_address + s.size_of_raw_data)?;
+
+        Some((index as u16 + 1, address - section.virtual_address))
     }
 }
