@@ -11,8 +11,6 @@ use std::cmp::Ordering;
 use std::mem;
 use std::slice;
 
-use byteorder::{ByteOrder, LittleEndian};
-
 use common::*;
 use msf::Stream;
 use pe::ImageSectionHeader;
@@ -24,35 +22,35 @@ use pe::ImageSectionHeader;
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct OMAPRecord {
-    source_address: [u8; 4],
-    target_address: [u8; 4],
+    source_address: u32,
+    target_address: u32,
 }
 
 impl OMAPRecord {
     /// Returns the address in the source space.
     #[inline]
     pub fn source_address(self) -> u32 {
-        LittleEndian::read_u32(&self.source_address)
+        u32::from_le(self.source_address)
     }
 
     /// Returns the start of the mapped portion in the target address space.
     #[inline]
     pub fn target_address(self) -> u32 {
-        LittleEndian::read_u32(&self.target_address)
+        u32::from_le(self.target_address)
     }
 }
 
 impl PartialOrd for OMAPRecord {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.source_address.partial_cmp(&other.source_address)
+        self.source_address().partial_cmp(&other.source_address())
     }
 }
 
 impl Ord for OMAPRecord {
     #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
-        self.source_address.cmp(&other.source_address)
+        self.source_address().cmp(&other.source_address())
     }
 }
 
