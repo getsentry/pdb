@@ -177,9 +177,9 @@ impl fmt::Debug for Rva {
 ///
 /// This offset can be converted to an `Rva` to receive the address relative to the entire image.
 /// Note that this offset applies to the actual PE headers. The PDB debug information actually
-/// stores [`OriginalSectionOffsets`].
+/// stores [`PdbInternalSectionOffsets`].
 ///
-/// [`OriginalSectionOffsets`]: struct.OriginalSectionOffset.html
+/// [`PdbInternalSectionOffsets`]: struct.PdbInternalSectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SectionOffset {
     /// The memory offset relative from the start of the section's memory.
@@ -210,31 +210,31 @@ impl fmt::Debug for SectionOffset {
 /// This instance can be converted into an actual [`Rva`] using [`rva`].
 ///
 /// [`Rva`]: struct.Rva.html
-/// [`rva`]: struct.OriginalRva.html#method.rva
+/// [`rva`]: struct.PdbInternalRva.html#method.rva
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct OriginalRva(pub u32);
+pub struct PdbInternalRva(pub u32);
 
-impl From<u32> for OriginalRva {
+impl From<u32> for PdbInternalRva {
     fn from(addr: u32) -> Self {
-        OriginalRva(addr)
+        PdbInternalRva(addr)
     }
 }
 
-impl From<OriginalRva> for u32 {
-    fn from(addr: OriginalRva) -> Self {
+impl From<PdbInternalRva> for u32 {
+    fn from(addr: PdbInternalRva) -> Self {
         addr.0
     }
 }
 
-impl fmt::Display for OriginalRva {
+impl fmt::Display for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:#08x}", self.0)
     }
 }
 
-impl fmt::Debug for OriginalRva {
+impl fmt::Debug for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "OriginalRva({})", self)
+        write!(f, "PdbInternalRva({})", self)
     }
 }
 
@@ -249,23 +249,23 @@ impl fmt::Debug for OriginalRva {
 /// For binaries and their PDBs that have not been optimized, both address spaces are equal and the
 /// offsets are interchangeable. The conversion operations are cheap no-ops in this case.
 ///
-/// [`rva`]: struct.OriginalSectionOffset.html#method.rva
+/// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
 /// [`SectionOffset`]: struct.SectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct OriginalSectionOffset {
+pub struct PdbInternalSectionOffset {
     pub offset: u32,
     pub section: u16,
 }
 
-impl OriginalSectionOffset {
+impl PdbInternalSectionOffset {
     pub fn new(section: u16, offset: u32) -> Self {
-        OriginalSectionOffset { offset, section }
+        PdbInternalSectionOffset { offset, section }
     }
 }
 
-impl fmt::Debug for OriginalSectionOffset {
+impl fmt::Debug for PdbInternalSectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("OriginalSectionOffset")
+        f.debug_struct("PdbInternalSectionOffset")
             .field("section", &format!("{:#x}", self.section))
             .field("offset", &format!("{:#08x}", self.offset))
             .finish()

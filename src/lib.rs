@@ -32,7 +32,7 @@
 //!     match symbol.parse() {
 //!         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
 //!             // we found the location of a function!
-//!             let rva = data.offset.rva(&address_map).unwrap_or_default();
+//!             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
 //!             println!("{} is {}", rva, symbol.name()?);
 //!             # count += 1;
 //!         }
@@ -61,12 +61,11 @@ mod source;
 mod symbol;
 mod tpi;
 mod pdbi;
-
-pub mod omap;
-pub mod pe;
+mod omap;
+mod pe;
 
 // exports
-pub use common::{Error, Result, TypeIndex, RawString, Variant, OriginalSectionOffset, OriginalRva, Rva, SectionOffset};
+pub use common::{Error, Result, TypeIndex, RawString, Variant, PdbInternalSectionOffset, PdbInternalRva, Rva, SectionOffset};
 pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
 pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
@@ -75,6 +74,7 @@ pub use source::*;
 pub use symbol::*;
 pub use tpi::*;
 pub use omap::AddressMap;
+pub use pe::ImageSectionHeader;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]

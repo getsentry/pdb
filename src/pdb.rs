@@ -269,34 +269,12 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(Some(headers))
     }
 
-    /// Retrieve the executable's original section headers, as stored inside this PDB.
-    ///
-    /// Offsets and addresses from these sections need to be rebased using `omap_from_src`.
-    ///
-    /// The debug information stream indicates which stream contains the section headers, so
-    /// `sections()` accesses the debug information stream to read the header unless
-    /// `debug_information()` was called first.
-    ///
-    /// # Errors
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
-    /// * `Error::IoError` if returned by the `Source`
-    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
-    ///
-    /// If `debug_information()` was not already called, `sections()` will additionally read
-    /// the debug information header, in which case it can also return:
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
-    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
-    pub fn original_sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
-        // Open the appropriate stream
+    pub(crate) fn original_sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
         let stream_number = match self.extra_streams()?.original_section_headers() {
             Some(number) => number,
             None => return Ok(None),
         };
 
-        // Parse
         let stream = self.msf.get(stream_number as u32, None)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
@@ -307,30 +285,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(Some(headers))
     }
 
-    /// Retrieve the OMAP lookup table for mapping original to actual address space.
-    ///
-    /// For more information on using OMAPs and performing correct address translation, see the
-    /// [omap module documentation].
-    ///
-    /// The debug information stream indicates which stream contains the section headers, so
-    /// `omap_from_src()` accesses the debug information stream to read the header unless
-    /// `debug_information()` was called first.
-    ///
-    /// # Errors
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
-    /// * `Error::IoError` if returned by the `Source`
-    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
-    ///
-    /// If `debug_information()` was not already called, `omap_table()` will additionally read the
-    /// debug information header, in which case it can also return:
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
-    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
-    ///
-    /// [omap module documentation]: omap/index.html
-    pub fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
+    pub(crate) fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
         // Open the appropriate stream
         let stream_number = match self.extra_streams()?.omap_from_src().map(u32::from) {
             Some(number) => number,
@@ -342,30 +297,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(Some(table))
     }
 
-    /// Retrieve the OMAP lookup table for mapping back to the original address space.
-    ///
-    /// For more information on using OMAPs and performing correct address translation, see the
-    /// [omap module documentation].
-    ///
-    /// The debug information stream indicates which stream contains the section headers, so
-    /// `omap_to_src()` accesses the debug information stream to read the header unless
-    /// `debug_information()` was called first.
-    ///
-    /// # Errors
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
-    /// * `Error::IoError` if returned by the `Source`
-    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
-    ///
-    /// If `debug_information()` was not already called, `omap_table()` will additionally read the
-    /// debug information header, in which case it can also return:
-    ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
-    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
-    ///
-    /// [omap module documentation]: omap/index.html
-    pub fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
+    pub(crate) fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
         // Open the appropriate stream
         let stream_number = match self.extra_streams()?.omap_to_src().map(u32::from) {
             Some(number) => number,
@@ -379,7 +311,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
 
     /// Build a map translating between different kinds of offsets and virtual addresses.
     ///
-    /// For more information on address translation, see the [omap module documentation].
+    /// For more information on address translation, see [`AddressMap`].
     ///
     /// This reads `omap_from_src` and either `original_sections` or `sections` from this PDB and
     /// chooses internally which strategy to use for resolving RVAs. Consider to reuse this instance
@@ -399,7 +331,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     ///
-    /// [omap module documentation]: omap/index.html
+    /// [`AddressMap`]: struct.AddressMap.html
     pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
         let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
         Ok(match self.original_sections()? {

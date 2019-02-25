@@ -2,7 +2,7 @@ extern crate getopts;
 extern crate pdb;
 
 use getopts::Options;
-use pdb::{FallibleIterator, OriginalSectionOffset};
+use pdb::{FallibleIterator, PdbInternalSectionOffset};
 use std::env;
 use std::io::Write;
 
@@ -11,7 +11,7 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn print_row(offset: OriginalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
+fn print_row(offset: PdbInternalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
     println!("{:x}\t{:x}\t{}\t{}", offset.section, offset.offset, kind, name.to_string());
 }
 

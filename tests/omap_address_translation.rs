@@ -5,7 +5,7 @@ extern crate reqwest;
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Once, ONCE_INIT};
-use pdb::{FallibleIterator, OriginalSectionOffset, Rva};
+use pdb::{FallibleIterator, PdbInternalSectionOffset, Rva};
 
 // This test is intended to cover OMAP address translation:
 //   https://github.com/willglynn/pdb/issues/17
@@ -59,13 +59,13 @@ fn test_omap() {
     };
 
     // ensure the symbol has the correct location
-    assert_eq!(pubsym.offset, OriginalSectionOffset {
+    assert_eq!(pubsym.offset, PdbInternalSectionOffset {
         section: 0xc,
         offset: 0x0004_aeb0,
     });
 
     // translate the segment offset to an RVA
     let address_map = pdb.address_map().expect("address map");
-    assert_eq!(pubsym.offset.rva(&address_map), Some(Rva(0x0037_68c0)));
-    assert_eq!(Rva(0x0037_68c0).original_offset(&address_map), Some(pubsym.offset));
+    assert_eq!(pubsym.offset.to_rva(&address_map), Some(Rva(0x0037_68c0)));
+    assert_eq!(Rva(0x0037_68c0).to_internal_offset(&address_map), Some(pubsym.offset));
 }
