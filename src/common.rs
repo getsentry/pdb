@@ -71,6 +71,9 @@ pub enum Error {
     /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
 
+    /// Required mapping for virtual addresses (OMAP) was not found.
+    AddressMapNotFound,
+
     /// A parse error from scroll.
     ScrollError(scroll::Error),
 }
@@ -94,6 +97,7 @@ impl error::Error for Error {
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
             Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
+            Error::AddressMapNotFound => "Required mapping for virtual addresses (OMAP) was not found",
             Error::ScrollError(ref e) => e.description(),
         }
     }
@@ -113,6 +117,7 @@ impl fmt::Display for Error {
             Error::TypeNotIndexed(type_index, indexed_count) => write!(f, "Type {} not indexed (index covers {})", type_index, indexed_count),
             Error::UnimplementedTypeKind(kind) => write!(f, "Support for types of kind 0x{:04x} is not implemented", kind),
             Error::UnexpectedNumericPrefix(prefix) => write!(f, "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}", prefix),
+            Error::AddressMapNotFound => write!(f, "Required mapping for virtual addresses (OMAP) was not found"),
             _ => fmt::Debug::fmt(self, f)
         }
     }
@@ -135,6 +140,137 @@ impl convert::From<scroll::Error> for Error {
 }
 
 pub type Result<T> = result::Result<T, Error>;
+
+/// A Relative Virtual Address as it appears in a PE file.
+///
+/// RVAs are always relative to the image base address, as it is loaded into process memory. This
+/// address is reported by debuggers in stack traces and may refer to symbols or instruction
+/// pointers.
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Rva(pub u32);
+
+impl From<u32> for Rva {
+    fn from(addr: u32) -> Self {
+        Rva(addr)
+    }
+}
+
+impl From<Rva> for u32 {
+    fn from(addr: Rva) -> Self {
+        addr.0
+    }
+}
+
+impl fmt::Display for Rva {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#08x}", self.0)
+    }
+}
+
+impl fmt::Debug for Rva {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Rva({})", self)
+    }
+}
+
+/// An offset relative to a PE section.
+///
+/// This offset can be converted to an `Rva` to receive the address relative to the entire image.
+/// Note that this offset applies to the actual PE headers. The PDB debug information actually
+/// stores [`PdbInternalSectionOffsets`].
+///
+/// [`PdbInternalSectionOffsets`]: struct.PdbInternalSectionOffset.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SectionOffset {
+    /// The memory offset relative from the start of the section's memory.
+    pub offset: u32,
+
+    /// The index of the section in the PE's section headers list, incremented by `1`. A value of
+    /// `0` indicates an invalid or missing reference.
+    pub section: u16,
+}
+
+impl SectionOffset {
+    pub fn new(section: u16, offset: u32) -> Self {
+        SectionOffset { offset, section }
+    }
+}
+
+impl fmt::Debug for SectionOffset {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("SectionOffset")
+            .field("section", &format!("{:#x}", self.section))
+            .field("offset", &format!("{:#08x}", self.offset))
+            .finish()
+    }
+}
+
+/// A Relative Virtual Address in an unoptimized PE file.
+///
+/// This instance can be converted into an actual [`Rva`] using [`rva`].
+///
+/// [`Rva`]: struct.Rva.html
+/// [`rva`]: struct.PdbInternalRva.html#method.rva
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PdbInternalRva(pub u32);
+
+impl From<u32> for PdbInternalRva {
+    fn from(addr: u32) -> Self {
+        PdbInternalRva(addr)
+    }
+}
+
+impl From<PdbInternalRva> for u32 {
+    fn from(addr: PdbInternalRva) -> Self {
+        addr.0
+    }
+}
+
+impl fmt::Display for PdbInternalRva {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#08x}", self.0)
+    }
+}
+
+impl fmt::Debug for PdbInternalRva {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PdbInternalRva({})", self)
+    }
+}
+
+/// An offset relative to a PE section in the original unoptimized binary.
+///
+/// For optimized Microsoft binaries, this offset points to a virtual address space before the
+/// rearrangement of sections has been performed. This kind of offset is usually stored in PDB debug
+/// information. It can be converted to an RVA in the transformed address space of the optimized
+/// binary using [`rva`]. Likewise, there is a conversion to [`SectionOffset`] in the actual address
+/// space.
+///
+/// For binaries and their PDBs that have not been optimized, both address spaces are equal and the
+/// offsets are interchangeable. The conversion operations are cheap no-ops in this case.
+///
+/// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
+/// [`SectionOffset`]: struct.SectionOffset.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PdbInternalSectionOffset {
+    pub offset: u32,
+    pub section: u16,
+}
+
+impl PdbInternalSectionOffset {
+    pub fn new(section: u16, offset: u32) -> Self {
+        PdbInternalSectionOffset { offset, section }
+    }
+}
+
+impl fmt::Debug for PdbInternalSectionOffset {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("PdbInternalSectionOffset")
+            .field("section", &format!("{:#x}", self.section))
+            .field("offset", &format!("{:#08x}", self.offset))
+            .finish()
+    }
+}
 
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]

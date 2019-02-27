@@ -20,6 +20,8 @@ use msf::{MSF, Stream};
 use symbol::SymbolTable;
 use tpi::TypeInformation;
 use pdbi::PDBInformation;
+use pe::ImageSectionHeader;
+use omap::{AddressMap, OMAPTable};
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -42,6 +44,9 @@ pub struct PDB<'s, S> {
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<dbi::Header>,
+
+    /// Memoize the `dbi::DBIExtraStreams`, since it too contains stream numbers we sometimes need
+    dbi_extra_streams: Option<dbi::DBIExtraStreams>,
 }
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
@@ -63,6 +68,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         Ok(PDB{
             msf: msf,
             dbi_header: None,
+            dbi_extra_streams: None,
         })
     }
 
@@ -122,10 +128,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream: Stream = self.msf.get(DBI_STREAM, None)?;
 
         // Parse it
-        let debug_info = dbi::new_debug_information(stream)?;
+        let debug_info = dbi::DebugInformation::new(stream)?;
 
         // Grab its header, since we need that for unrelated operations
-        self.dbi_header = Some(dbi::get_header(&debug_info));
+        self.dbi_header = Some(debug_info.get_header());
 
         // Return
         Ok(debug_info)
@@ -227,6 +233,128 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         res
     }
 
+    /// Retrieve the executable's section headers, as stored inside this PDB.
+    ///
+    /// The debug information stream indicates which stream contains the section headers, so
+    /// `sections()` accesses the debug information stream to read the header unless
+    /// `debug_information()` was called first.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
+    ///
+    /// If `debug_information()` was not already called, `sections()` will additionally read
+    /// the debug information header, in which case it can also return:
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
+    pub fn sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
+        // Open the appropriate stream
+        let stream_number = match self.extra_streams()?.section_headers() {
+            Some(number) => number,
+            None => return Ok(None),
+        };
+
+        // Parse
+        let stream = self.msf.get(stream_number as u32, None)?;
+        let mut buf = stream.parse_buffer();
+        let mut headers = Vec::with_capacity(buf.len() / 40);
+        while buf.len() > 0 {
+            headers.push(ImageSectionHeader::parse(&mut buf)?);
+        }
+
+        Ok(Some(headers))
+    }
+
+    pub(crate) fn original_sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
+        let stream_number = match self.extra_streams()?.original_section_headers() {
+            Some(number) => number,
+            None => return Ok(None),
+        };
+
+        let stream = self.msf.get(stream_number as u32, None)?;
+        let mut buf = stream.parse_buffer();
+        let mut headers = Vec::with_capacity(buf.len() / 40);
+        while buf.len() > 0 {
+            headers.push(ImageSectionHeader::parse(&mut buf)?);
+        }
+
+        Ok(Some(headers))
+    }
+
+    pub(crate) fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
+        // Open the appropriate stream
+        let stream_number = match self.extra_streams()?.omap_from_src().map(u32::from) {
+            Some(number) => number,
+            None => return Ok(None),
+        };
+
+        let stream = self.msf.get(stream_number, None)?;
+        let table = OMAPTable::parse(stream)?;
+        Ok(Some(table))
+    }
+
+    pub(crate) fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
+        // Open the appropriate stream
+        let stream_number = match self.extra_streams()?.omap_to_src().map(u32::from) {
+            Some(number) => number,
+            None => return Ok(None),
+        };
+
+        let stream = self.msf.get(stream_number, None)?;
+        let table = OMAPTable::parse(stream)?;
+        Ok(Some(table))
+    }
+
+    /// Build a map translating between different kinds of offsets and virtual addresses.
+    ///
+    /// For more information on address translation, see [`AddressMap`].
+    ///
+    /// This reads `omap_from_src` and either `original_sections` or `sections` from this PDB and
+    /// chooses internally which strategy to use for resolving RVAs. Consider to reuse this instance
+    /// for multiple translations.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::OmapNotFound` if an OMAP is required for translation but missing
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnexpectedEof` if the section headers are truncated mid-record
+    ///
+    /// If `debug_information()` was not already called, `omap_table()` will additionally read the
+    /// debug information header, in which case it can also return:
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
+    /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
+    ///
+    /// [`AddressMap`]: struct.AddressMap.html
+    pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
+        let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
+        Ok(match self.original_sections()? {
+            Some(original_sections) => {
+                let omap_from_src = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_to_src = self.omap_to_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+
+                AddressMap {
+                    original_sections,
+                    transformed_sections: Some(sections),
+                    original_to_transformed: Some(omap_from_src),
+                    transformed_to_original: Some(omap_to_src)
+                }
+            }
+            None => AddressMap {
+                original_sections: sections,
+                transformed_sections: None,
+                original_to_transformed: None,
+                transformed_to_original: None,
+            }
+        })
+    }
+
     /// Retrieve a stream by its index to read its contents as bytes.
     ///
     /// # Errors
@@ -263,5 +391,24 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             }
         }
         Err(Error::StreamNameNotFound)
+    }
+
+    /// Loads the Optional Debug Header Stream, which contains offsets into extra streams.
+    ///
+    /// this stream is always returned, but its members are all optional depending on the data
+    /// present in the PDB.
+    ///
+    /// The optional header begins at offset 0 immediately after the EC Substream ends.
+    fn extra_streams(&mut self) -> Result<dbi::DBIExtraStreams> {
+        if let Some(extra) = self.dbi_extra_streams {
+            return Ok(extra);
+        }
+
+        // Parse and grab information on extra streams, since we might also need that
+        let debug_info = self.debug_information()?;
+        let extra = dbi::DBIExtraStreams::new(&debug_info)?;
+        self.dbi_extra_streams = Some(extra);
+
+        Ok(extra)
     }
 }

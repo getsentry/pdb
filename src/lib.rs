@@ -24,17 +24,19 @@
 //! let mut pdb = pdb::PDB::open(file)?;
 //!
 //! let symbol_table = pdb.global_symbols()?;
+//! let address_map = pdb.address_map()?;
 //!
 //! # let mut count: usize = 0;
 //! let mut symbols = symbol_table.iter();
 //! while let Some(symbol) = symbols.next()? {
 //!     match symbol.parse() {
-//!     	Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
-//!     		// we found the location of a function!
-//!     		println!("{:x}:{:08x} is {}", data.segment, data.offset, symbol.name()?);
+//!         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
+//!             // we found the location of a function!
+//!             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
+//!             println!("{} is {}", rva, symbol.name()?);
 //!             # count += 1;
-//!     	}
-//!     	_ => {}
+//!         }
+//!         _ => {}
 //!     }
 //! }
 //!
@@ -43,6 +45,7 @@
 //! # assert!(test().expect("test") > 2000);
 //! ```
 
+extern crate byteorder;
 extern crate fallible_iterator;
 #[macro_use]
 extern crate scroll;
@@ -58,9 +61,11 @@ mod source;
 mod symbol;
 mod tpi;
 mod pdbi;
+mod omap;
+mod pe;
 
 // exports
-pub use common::{Error,Result,TypeIndex,RawString,Variant};
+pub use common::{Error, Result, TypeIndex, RawString, Variant, PdbInternalSectionOffset, PdbInternalRva, Rva, SectionOffset};
 pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
 pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
@@ -68,6 +73,8 @@ pub use pdb::PDB;
 pub use source::*;
 pub use symbol::*;
 pub use tpi::*;
+pub use omap::AddressMap;
+pub use pe::ImageSectionHeader;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]

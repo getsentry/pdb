@@ -2,7 +2,7 @@ extern crate getopts;
 extern crate pdb;
 
 use getopts::Options;
-use pdb::FallibleIterator;
+use pdb::{FallibleIterator, PdbInternalSectionOffset};
 use std::env;
 use std::io::Write;
 
@@ -11,20 +11,20 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn print_row<'p>(segment: u16, offset: u32, kind: &'static str, name: pdb::RawString<'p>) {
-    println!("{:x}\t{:x}\t{}\t{}", segment, offset, kind, name.to_string());
+fn print_row(offset: PdbInternalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
+    println!("{:x}\t{:x}\t{}\t{}", offset.section, offset.offset, kind, name.to_string());
 }
 
 fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
     match symbol.parse()? {
         pdb::SymbolData::PublicSymbol(data) => {
-            print_row(data.segment, data.offset, "function", symbol.name()?);
+            print_row(data.offset, "function", symbol.name()?);
         }
         pdb::SymbolData::DataSymbol(data) => {
-            print_row(data.segment, data.offset, "data", symbol.name()?);
+            print_row(data.offset, "data", symbol.name()?);
         }
         pdb::SymbolData::Procedure(data) => {
-            print_row(data.segment, data.offset, "function", symbol.name()?);
+            print_row(data.offset, "function", symbol.name()?);
         }
         _ => {
             // ignore everything else

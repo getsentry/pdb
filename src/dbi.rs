@@ -53,6 +53,7 @@ impl<'s> DebugInformation<'s> {
     pub fn machine_type(&self) -> Result<MachineType> {
         Ok(self.header.machine_type.into())
     }
+
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter> {
         let mut buf = self.stream.parse_buffer();
@@ -63,24 +64,24 @@ impl<'s> DebugInformation<'s> {
             buf: modules_buf.into(),
         })
     }
-}
 
-pub fn new_debug_information(stream: Stream) -> Result<DebugInformation> {
-    let (header, len) = {
-        let mut buf = stream.parse_buffer();
-        let header = parse_header(&mut buf)?;
-        (header, buf.pos())
-    };
+    pub(crate) fn get_header(&self) -> Header {
+        self.header
+    }
 
-    Ok(DebugInformation {
-        stream: stream,
-        header: header,
-        header_len: len,
-    })
-}
+    pub(crate) fn new(stream: Stream) -> Result<DebugInformation> {
+        let (header, len) = {
+            let mut buf = stream.parse_buffer();
+            let header = parse_header(&mut buf)?;
+            (header, buf.pos())
+        };
 
-pub fn get_header(dbi: &DebugInformation) -> Header {
-    dbi.header
+        Ok(DebugInformation {
+            stream: stream,
+            header: header,
+            header_len: len,
+        })
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -482,5 +483,139 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
             module_name,
             object_file_name,
         }))
+    }
+}
+
+
+/// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
+#[derive(Debug, Copy, Clone)]
+pub(crate) struct DBIExtraStreams {
+    // The struct itself is defined at:
+    //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L250-L274
+    // It's just an array of stream numbers; `u16`s where 0xffff means "no stream".
+    //
+    // The array indices are:
+    //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L439-L449
+    // We'll map those to fields.
+    //
+    // The struct itself can be truncated. This is an internal struct; we'll treat missing fields as
+    // 0xffff even if it's a short read, so long as the short read stops on a u16 boundary.
+    fpo: u16,
+    exception: u16,
+    fixup: u16,
+    omap_to_src: u16,
+    omap_from_src: u16,
+    section_headers: u16,
+    token_rid_map: u16,
+    xdata: u16,
+    pdata: u16,
+    new_fpo: u16,
+    original_section_headers: u16,
+}
+
+fn optional_stream_number(sn: u16) -> Option<u16> {
+    if sn == 0xffff {
+        None
+    } else {
+        Some(sn)
+    }
+}
+
+impl DBIExtraStreams {
+    pub(crate) fn new(debug_info: &DebugInformation) -> Result<DBIExtraStreams> {
+        // calculate the location of the extra stream information
+        let header = debug_info.header;
+        let offset = debug_info.header_len + (
+            header.module_list_size
+                + header.section_contribution_size
+                + header.section_map_size
+                + header.file_info_size
+                + header.type_server_map_size
+                + header.mfc_type_server_index
+                + header.ec_substream_size
+        ) as usize;
+
+        // seek
+        let mut buf = debug_info.stream.parse_buffer();
+        buf.take(offset)?;
+
+        // grab that section as bytes
+        let bytes = buf.take(header.debug_header_size as _)?;
+
+        // parse those bytes
+        let mut extra_streams_buf = ParseBuffer::from(bytes);
+        Self::parse(&mut extra_streams_buf)
+    }
+
+    pub(crate) fn parse(buf: &mut ParseBuffer) -> Result<DBIExtraStreams> {
+        // short reads are okay, as are long reads -- this struct is actually an array
+        // what's _not_ okay are
+        if buf.len() % 2 == 1 {
+            return Err(Error::UnimplementedFeature("DbgDataHdr should always be an even number of bytes"))
+        }
+
+        fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
+            match err {
+                Error::UnexpectedEof => Ok(0xffff),
+                other => Err(other)
+            }
+        }
+
+        Ok(DBIExtraStreams {
+            fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            exception: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            fixup: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            omap_to_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            omap_from_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            token_rid_map: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            xdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            pdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            new_fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            original_section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+        })
+    }
+
+    pub fn fpo(&self) -> Option<u16> { optional_stream_number(self.fpo) }
+    pub fn exception(&self) -> Option<u16> { optional_stream_number(self.exception) }
+    pub fn fixup(&self) -> Option<u16> { optional_stream_number(self.fixup) }
+    pub fn omap_to_src(&self) -> Option<u16> { optional_stream_number(self.omap_to_src) }
+    pub fn omap_from_src(&self) -> Option<u16> { optional_stream_number(self.omap_from_src) }
+    pub fn section_headers(&self) -> Option<u16> { optional_stream_number(self.section_headers) }
+    pub fn token_rid_map(&self) -> Option<u16> { optional_stream_number(self.token_rid_map) }
+    pub fn xdata(&self) -> Option<u16> { optional_stream_number(self.xdata) }
+    pub fn pdata(&self) -> Option<u16> { optional_stream_number(self.pdata) }
+    pub fn new_fpo(&self) -> Option<u16> { optional_stream_number(self.new_fpo) }
+    pub fn original_section_headers(&self) -> Option<u16> { optional_stream_number(self.original_section_headers) }
+}
+
+#[cfg(test)]
+mod tests {
+    use dbi::*;
+
+    #[test]
+    fn test_dbi_extra_streams() {
+        let bytes = vec![
+            0xff, 0xff,
+            0x01, 0x02,
+            0x03, 0x04,
+            0xff, 0xff,
+            0x05, 0x06
+        ];
+
+        let mut buf = ParseBuffer::from(bytes.as_slice());
+        let extra_streams = DBIExtraStreams::parse(&mut buf).expect("parse");
+
+        // check readback
+        assert_eq!(extra_streams.fpo(), None);
+        assert_eq!(extra_streams.exception(), Some(0x0201));
+        assert_eq!(extra_streams.fixup(), Some(0x0403));
+        assert_eq!(extra_streams.omap_to_src(), None);
+        assert_eq!(extra_streams.omap_from_src(), Some(0x0605));
+
+        // check that short reads => None
+        assert_eq!(extra_streams.section_headers(), None);
+        assert_eq!(extra_streams.token_rid_map(), None);
+        assert_eq!(extra_streams.original_section_headers(), None);
     }
 }
