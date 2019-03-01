@@ -7,5 +7,10 @@ os:
   - linux
   - osx
 matrix:
+  include:
+    - install: rustup component add rustfmt
+      script: cargo fmt -- --check
+    - install: rustup component add clippy
+      script: cargo clippy --all-features --tests --all --examples -- -D clippy::all
   allow_failures:
     - rust: nightly
