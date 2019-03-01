@@ -11,9 +11,9 @@ use std::cmp::Ordering;
 use std::mem;
 use std::slice;
 
-use common::*;
-use msf::Stream;
-use pe::ImageSectionHeader;
+use crate::common::*;
+use crate::msf::Stream;
+use crate::pe::ImageSectionHeader;
 
 /// A address translation record from an `OMAPTable`.
 ///

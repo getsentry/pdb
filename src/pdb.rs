@@ -5,23 +5,23 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use dbi;
-use module_info;
-use msf;
-use pdbi;
-use symbol;
-use tpi;
+use crate::dbi;
+use crate::module_info;
+use crate::msf;
+use crate::pdbi;
+use crate::symbol;
+use crate::tpi;
 
-use common::*;
-use dbi::{DebugInformation, Module};
-use module_info::ModuleInfo;
-use msf::{Stream, MSF};
-use omap::{AddressMap, OMAPTable};
-use pdbi::PDBInformation;
-use pe::ImageSectionHeader;
-use source::Source;
-use symbol::SymbolTable;
-use tpi::TypeInformation;
+use crate::common::*;
+use crate::dbi::{DebugInformation, Module};
+use crate::module_info::ModuleInfo;
+use crate::msf::{Stream, MSF};
+use crate::omap::{AddressMap, OMAPTable};
+use crate::pdbi::PDBInformation;
+use crate::pe::ImageSectionHeader;
+use crate::source::Source;
+use crate::symbol::SymbolTable;
+use crate::tpi::TypeInformation;
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html

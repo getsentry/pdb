@@ -5,9 +5,9 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use common::*;
-use dbi::HeaderVersion;
-use msf::*;
+use crate::common::*;
+use crate::dbi::HeaderVersion;
+use crate::msf::*;
 use std::mem;
 use uuid::Uuid;
 

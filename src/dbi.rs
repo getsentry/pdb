@@ -10,9 +10,9 @@
 use std::borrow::Cow;
 use std::result;
 
-use common::*;
-use msf::*;
-use FallibleIterator;
+use crate::common::*;
+use crate::msf::*;
+use crate::FallibleIterator;
 
 /// Provides access to the "DBI" stream inside the PDB.
 ///
@@ -630,7 +630,7 @@ impl DBIExtraStreams {
 
 #[cfg(test)]
 mod tests {
-    use dbi::*;
+    use crate::dbi::*;
 
     #[test]
     fn test_dbi_extra_streams() {

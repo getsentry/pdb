@@ -6,7 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use super::data::TypeData;
-use common::*;
+use crate::common::*;
 
 // References for primitive types:
 //

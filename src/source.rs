@@ -109,7 +109,7 @@ where
 #[cfg(test)]
 mod tests {
     mod read_view {
-        use source::*;
+        use crate::source::*;
         use std::io::Cursor;
         use std::io::ErrorKind;
 

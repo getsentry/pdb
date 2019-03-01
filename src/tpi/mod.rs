@@ -8,9 +8,9 @@
 use std::fmt;
 use std::result;
 
-use common::*;
-use msf::Stream;
-use FallibleIterator;
+use crate::common::*;
+use crate::msf::Stream;
+use crate::FallibleIterator;
 
 pub(crate) mod constants;
 mod data;

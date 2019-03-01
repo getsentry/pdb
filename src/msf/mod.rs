@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use common::*;
-use source::*;
+use crate::common::*;
+use crate::source::*;
 
 mod page_list;
 use self::page_list::PageList;
@@ -374,8 +374,8 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<MSF<'s, S> 
 mod tests {
 
     mod header {
-        use common::Error;
-        use msf::Header;
+        use crate::common::Error;
+        use crate::msf::Header;
 
         #[test]
         fn test_pages_needed_to_store() {

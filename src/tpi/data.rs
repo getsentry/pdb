@@ -7,7 +7,7 @@
 
 use super::constants::*;
 use super::primitive::*;
-use common::*;
+use crate::common::*;
 
 /// Encapsulates parsed data about a `Type`.
 #[derive(Debug, Clone, PartialEq, Eq)]

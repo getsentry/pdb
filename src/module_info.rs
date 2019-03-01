@@ -1,8 +1,8 @@
-use common::*;
-use dbi::Module;
-use msf::Stream;
+use crate::common::*;
+use crate::dbi::Module;
+use crate::msf::Stream;
 use std::mem;
-use symbol::SymbolIter;
+use crate::symbol::SymbolIter;
 
 /// The signature at the start of a module information stream.
 const MODI_SIGNATURE: u32 = 4;

@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use msf::PageNumber;
-use source::SourceSlice;
+use crate::msf::PageNumber;
+use crate::source::SourceSlice;
 
 /// Represents a list of `PageNumbers`, which are likely (but not certainly) sequential, and which
 /// will be presented as a slice of `SourceSlice`s.
@@ -100,8 +100,8 @@ impl PageList {
 
 #[cfg(test)]
 mod tests {
-    use msf::page_list::*;
-    use source::SourceSlice;
+    use crate::msf::page_list::*;
+    use crate::source::SourceSlice;
 
     #[test]
     fn test_push() {

@@ -15,6 +15,8 @@ use std::result;
 use scroll::ctx::TryFromCtx;
 use scroll::{self, Endian, Pread, LE};
 
+use crate::tpi::constants;
+
 /// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
 
@@ -422,19 +424,19 @@ impl<'b> ParseBuffer<'b> {
 
     pub fn parse_variant(&mut self) -> Result<Variant> {
         let leaf = self.parse_u16()?;
-        if leaf < ::tpi::constants::LF_NUMERIC {
+        if leaf < constants::LF_NUMERIC {
             // the u16 directly encodes a value
             return Ok(Variant::U16(leaf));
         }
 
         match leaf {
-            ::tpi::constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
-            ::tpi::constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
-            ::tpi::constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
-            ::tpi::constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
-            ::tpi::constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
-            ::tpi::constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
-            ::tpi::constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
+            constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
+            constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
+            constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
+            constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
+            constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
+            constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
+            constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
             _ => {
                 debug_assert!(false);
                 Err(Error::UnexpectedNumericPrefix(leaf))
@@ -541,7 +543,7 @@ impl<'b> From<&'b [u8]> for RawString<'b> {
 #[cfg(test)]
 mod tests {
     mod parse_buffer {
-        use common::*;
+        use crate::common::*;
 
         #[test]
         fn test_parse_u8() {

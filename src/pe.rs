@@ -9,8 +9,9 @@
 
 // PDBs contain PE section headers in one or two streams. `pdb::pe` is responsible for parsing them.
 
-use common::*;
-use std::fmt::{self, Debug};
+use std::fmt;
+
+use crate::common::*;
 
 /// A PE `IMAGE_SECTION_HEADER`, as described in [the Microsoft documentation](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx).
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -96,7 +97,7 @@ impl ImageSectionHeader {
     }
 }
 
-impl Debug for ImageSectionHeader {
+impl fmt::Debug for ImageSectionHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("ImageSectionHeader")
             .field("name()", &self.name().to_string())

@@ -64,19 +64,17 @@ mod symbol;
 mod tpi;
 
 // exports
-pub use common::{
-    Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
-    TypeIndex, Variant,
-};
-pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
-pub use module_info::ModuleInfo;
-pub use omap::AddressMap;
-pub use pdb::PDB;
-pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
-pub use pe::ImageSectionHeader;
-pub use source::*;
-pub use symbol::*;
-pub use tpi::*;
+pub use crate::common::{Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
+    TypeIndex, Variant,};
+pub use crate::dbi::{DebugInformation, MachineType, Module, ModuleIter};
+pub use crate::module_info::ModuleInfo;
+pub use crate::omap::AddressMap;
+pub use crate::pdb::PDB;
+pub use crate::pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
+pub use crate::pe::ImageSectionHeader;
+pub use crate::source::*;
+pub use crate::symbol::*;
+pub use crate::tpi::*;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]

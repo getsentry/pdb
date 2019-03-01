@@ -7,10 +7,10 @@
 
 use std::fmt;
 use std::result;
-use FallibleIterator;
+use crate::FallibleIterator;
 
-use common::*;
-use msf::*;
+use crate::common::*;
+use crate::msf::*;
 
 mod constants;
 use self::constants::*;
@@ -566,8 +566,8 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
 #[cfg(test)]
 mod tests {
     mod parsing {
-        use common::*;
-        use symbol::*;
+        use crate::common::*;
+        use crate::symbol::*;
 
         fn parse<'s>(buf: &'s [u8]) -> Result<(Symbol<'s>, SymbolData, String)> {
             let symbol = Symbol(buf);
