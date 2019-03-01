@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use common::*;
 use super::data::TypeData;
+use common::*;
 
 // References for primitive types:
 //
@@ -23,7 +23,7 @@ use super::data::TypeData;
 // implementations.
 
 /// Represents a primitive type like `void` or `char *`.
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PrimitiveType {
     pub kind: PrimitiveKind,
 
@@ -31,7 +31,7 @@ pub struct PrimitiveType {
     pub indirection: Indirection,
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
     Void,
 
@@ -129,7 +129,7 @@ pub enum PrimitiveKind {
     HRESULT,
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Indirection {
     None,
 
@@ -167,7 +167,9 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x400 => Indirection::Pointer32,
         0x500 => Indirection::Pointer1632,
         0x600 => Indirection::Pointer64,
-        _ => { return Err(Error::TypeNotFound(index)); }
+        _ => {
+            return Err(Error::TypeNotFound(index));
+        }
     };
 
     // primitive types are stored in the lowest octet
@@ -224,7 +226,9 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x32 => PrimitiveKind::Bool32,
         0x33 => PrimitiveKind::Bool64,
 
-        _ => { return Err(Error::TypeNotFound(index)); }
+        _ => {
+            return Err(Error::TypeNotFound(index));
+        }
     };
 
     Ok(TypeData::Primitive(PrimitiveType {

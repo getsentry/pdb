@@ -12,7 +12,7 @@ use std::io;
 ///
 /// The multi-stream file implementation (used by `pdb::PDB`) determines which byte ranges it needs
 /// to satisfy its requests, and it describes those requests as a `&[SourceSlice]`.
-#[derive(Debug,Clone,Copy,Eq,PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct SourceSlice {
     pub offset: u64,
     pub size: usize,
@@ -44,7 +44,7 @@ pub struct SourceSlice {
 /// PDB files are specified as always being a multiple of the page size, so `Source` implementations
 /// are free to e.g. map whole pages and return a sub-slice of the requested length.
 ///
-pub trait Source<'s> : fmt::Debug {
+pub trait Source<'s>: fmt::Debug {
     /// Provides a contiguous view of the source file composed of the requested position(s).
     ///
     /// Note that the SourceView's as_slice() method cannot fail, so `view()` is the time to raise
@@ -80,13 +80,15 @@ impl<'s> Drop for ReadView {
     }
 }
 
-impl<'s, T> Source<'s> for T where T: io::Read + io::Seek + fmt::Debug + 's {
+impl<'s, T> Source<'s> for T
+where
+    T: io::Read + io::Seek + fmt::Debug + 's,
+{
     fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<SourceView<'s>>, io::Error> {
-        let len = slices.iter()
-            .fold(0 as usize, |acc,s| acc + s.size);
+        let len = slices.iter().fold(0 as usize, |acc, s| acc + s.size);
 
-        let mut v = ReadView{
-            bytes: Vec::with_capacity(len)
+        let mut v = ReadView {
+            bytes: Vec::with_capacity(len),
         };
         v.bytes.resize(len, 0);
 
@@ -95,7 +97,7 @@ impl<'s, T> Source<'s> for T where T: io::Read + io::Seek + fmt::Debug + 's {
             let mut output_offset: usize = 0;
             for slice in slices {
                 self.seek(io::SeekFrom::Start(slice.offset))?;
-                self.read_exact(&mut bytes[output_offset .. (output_offset + slice.size)])?;
+                self.read_exact(&mut bytes[output_offset..(output_offset + slice.size)])?;
                 output_offset += slice.size;
             }
         }
@@ -107,9 +109,9 @@ impl<'s, T> Source<'s> for T where T: io::Read + io::Seek + fmt::Debug + 's {
 #[cfg(test)]
 mod tests {
     mod read_view {
+        use source::*;
         use std::io::Cursor;
         use std::io::ErrorKind;
-        use source::*;
 
         #[test]
         fn test_basic_reading() {
@@ -118,8 +120,13 @@ mod tests {
 
             let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
 
-            let source_slices = vec![SourceSlice{ offset: 40, size: 4 } ];
-            let view = source.view(source_slices.as_slice()).expect("viewing must succeed");
+            let source_slices = vec![SourceSlice {
+                offset: 40,
+                size: 4,
+            }];
+            let view = source
+                .view(source_slices.as_slice())
+                .expect("viewing must succeed");
             assert_eq!(&[0u8, 0, 42, 0], view.as_slice());
         }
 
@@ -131,8 +138,19 @@ mod tests {
 
             let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
 
-            let source_slices = vec![SourceSlice{ offset: 88, size: 1 }, SourceSlice{ offset: 40, size: 4 } ];
-            let view = source.view(source_slices.as_slice()).expect("viewing must succeed");
+            let source_slices = vec![
+                SourceSlice {
+                    offset: 88,
+                    size: 1,
+                },
+                SourceSlice {
+                    offset: 40,
+                    size: 4,
+                },
+            ];
+            let view = source
+                .view(source_slices.as_slice())
+                .expect("viewing must succeed");
             assert_eq!(&[88u8, 0, 0, 42, 0], view.as_slice());
         }
 
@@ -144,8 +162,23 @@ mod tests {
 
             let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
 
-            let source_slices = vec![SourceSlice{ offset: 88, size: 1 }, SourceSlice{ offset: 40, size: 4 }, SourceSlice{ offset: 88, size: 1 } ];
-            let view = source.view(source_slices.as_slice()).expect("viewing must succeed");
+            let source_slices = vec![
+                SourceSlice {
+                    offset: 88,
+                    size: 1,
+                },
+                SourceSlice {
+                    offset: 40,
+                    size: 4,
+                },
+                SourceSlice {
+                    offset: 88,
+                    size: 1,
+                },
+            ];
+            let view = source
+                .view(source_slices.as_slice())
+                .expect("viewing must succeed");
             assert_eq!(&[88u8, 0, 0, 42, 0, 88], view.as_slice());
         }
 
@@ -156,7 +189,10 @@ mod tests {
             let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
 
             // one byte is readable, but we asked for two
-            let source_slices = vec![SourceSlice { offset: 4095, size: 2 }];
+            let source_slices = vec![SourceSlice {
+                offset: 4095,
+                size: 2,
+            }];
             let r = source.view(source_slices.as_slice());
             match r {
                 Ok(_) => panic!("should have failed"),

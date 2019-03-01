@@ -12,8 +12,8 @@ use std::fmt;
 use std::io;
 use std::result;
 
-use scroll::{self, Endian, Pread, LE};
 use scroll::ctx::TryFromCtx;
+use scroll::{self, Endian, Pread, LE};
 
 /// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
@@ -81,7 +81,9 @@ pub enum Error {
 impl error::Error for Error {
     fn description(&self) -> &str {
         match *self {
-            Error::UnrecognizedFileFormat => "The input data was not recognized as a MSF (PDB) file",
+            Error::UnrecognizedFileFormat => {
+                "The input data was not recognized as a MSF (PDB) file"
+            }
             Error::InvalidPageSize(_) => "The MSF header specifies an invalid page size",
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
@@ -90,14 +92,20 @@ impl error::Error for Error {
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
             Error::SymbolTooShort => "A symbol record's length value was impossibly small",
-            Error::UnimplementedSymbolKind(_) => "Support for symbols of this kind is not implemented",
+            Error::UnimplementedSymbolKind(_) => {
+                "Support for symbols of this kind is not implemented"
+            }
             Error::InvalidTypeInformationHeader(_) => "The type information header was invalid",
             Error::TypeTooShort => "A type record's length value was impossibly small",
             Error::TypeNotFound(_) => "Type not found",
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
-            Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
-            Error::AddressMapNotFound => "Required mapping for virtual addresses (OMAP) was not found",
+            Error::UnexpectedNumericPrefix(_) => {
+                "Variable-length numeric parsing encountered an unexpected prefix"
+            }
+            Error::AddressMapNotFound => {
+                "Required mapping for virtual addresses (OMAP) was not found"
+            }
             Error::ScrollError(ref e) => e.description(),
         }
     }
@@ -106,19 +114,50 @@ impl error::Error for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
         match *self {
-            Error::PageReferenceOutOfRange(p) => write!(f, "MSF referred to page number ({}) out of range", p),
-            Error::InvalidPageSize(n) => write!(f, "The MSF header specifies an invalid page size ({} bytes)", n),
-            Error::StreamNotFound(s) => write!(f, "The requested stream ({}) is not stored in this file", s),
+            Error::PageReferenceOutOfRange(p) => {
+                write!(f, "MSF referred to page number ({}) out of range", p)
+            }
+            Error::InvalidPageSize(n) => write!(
+                f,
+                "The MSF header specifies an invalid page size ({} bytes)",
+                n
+            ),
+            Error::StreamNotFound(s) => {
+                write!(f, "The requested stream ({}) is not stored in this file", s)
+            }
             Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
-            Error::UnimplementedFeature(feature) => write!(f, "Unimplemented PDB feature: {}", feature),
-            Error::UnimplementedSymbolKind(kind) => write!(f, "Support for symbols of kind 0x{:04x} is not implemented", kind),
-            Error::InvalidTypeInformationHeader(reason) => write!(f, "The type information header was invalid: {}", reason),
+            Error::UnimplementedFeature(feature) => {
+                write!(f, "Unimplemented PDB feature: {}", feature)
+            }
+            Error::UnimplementedSymbolKind(kind) => write!(
+                f,
+                "Support for symbols of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::InvalidTypeInformationHeader(reason) => {
+                write!(f, "The type information header was invalid: {}", reason)
+            }
             Error::TypeNotFound(type_index) => write!(f, "Type {} not found", type_index),
-            Error::TypeNotIndexed(type_index, indexed_count) => write!(f, "Type {} not indexed (index covers {})", type_index, indexed_count),
-            Error::UnimplementedTypeKind(kind) => write!(f, "Support for types of kind 0x{:04x} is not implemented", kind),
-            Error::UnexpectedNumericPrefix(prefix) => write!(f, "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}", prefix),
-            Error::AddressMapNotFound => write!(f, "Required mapping for virtual addresses (OMAP) was not found"),
-            _ => fmt::Debug::fmt(self, f)
+            Error::TypeNotIndexed(type_index, indexed_count) => write!(
+                f,
+                "Type {} not indexed (index covers {})",
+                type_index, indexed_count
+            ),
+            Error::UnimplementedTypeKind(kind) => write!(
+                f,
+                "Support for types of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::UnexpectedNumericPrefix(prefix) => write!(
+                f,
+                "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}",
+                prefix
+            ),
+            Error::AddressMapNotFound => write!(
+                f,
+                "Required mapping for virtual addresses (OMAP) was not found"
+            ),
+            _ => fmt::Debug::fmt(self, f),
         }
     }
 }
@@ -274,8 +313,8 @@ impl fmt::Debug for PdbInternalSectionOffset {
 
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]
-#[derive(Debug,Clone)]
-pub struct ParseBuffer<'b> (&'b [u8], usize);
+#[derive(Debug, Clone)]
+pub struct ParseBuffer<'b>(&'b [u8], usize);
 
 macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
@@ -327,7 +366,8 @@ impl<'b> ParseBuffer<'b> {
     }
 
     pub fn parse<T>(&mut self) -> Result<T>
-        where T: TryFromCtx<'b, Endian, [u8], Error=scroll::Error, Size=usize>,
+    where
+        T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
     {
         Ok(self.0.gread_with(&mut self.1, LE)?)
     }
@@ -342,10 +382,7 @@ impl<'b> ParseBuffer<'b> {
         (parse_i64, i64),
     );
 
-    def_peek!(
-        (peek_u8, u8),
-        (peek_u16, u16),
-    );
+    def_peek!((peek_u8, u8), (peek_u16, u16),);
 
     /// Parse a NUL-terminated string from the input.
     #[doc(hidden)]
@@ -391,13 +428,13 @@ impl<'b> ParseBuffer<'b> {
         }
 
         match leaf {
-            ::tpi::constants::LF_CHAR =>      { Ok(Variant::U8 (self.parse_u8()? )) },
-            ::tpi::constants::LF_SHORT =>     { Ok(Variant::I16(self.parse_i16()?)) },
-            ::tpi::constants::LF_LONG =>      { Ok(Variant::I32(self.parse_i32()?)) },
-            ::tpi::constants::LF_QUADWORD =>  { Ok(Variant::I64(self.parse_i64()?)) },
-            ::tpi::constants::LF_USHORT =>    { Ok(Variant::U16(self.parse_u16()?)) },
-            ::tpi::constants::LF_ULONG =>     { Ok(Variant::U32(self.parse_u32()?)) },
-            ::tpi::constants::LF_UQUADWORD => { Ok(Variant::U64(self.parse_u64()?)) },
+            ::tpi::constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
+            ::tpi::constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
+            ::tpi::constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
+            ::tpi::constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
+            ::tpi::constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
+            ::tpi::constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
+            ::tpi::constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
             _ => {
                 debug_assert!(false);
                 Err(Error::UnexpectedNumericPrefix(leaf))
@@ -422,7 +459,7 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
     }
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Variant {
     U8(u8),
     U16(u16),
@@ -437,7 +474,7 @@ pub enum Variant {
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
 ///
 /// A `RawString` may not be valid UTF-8.
-#[derive(Clone,PartialEq,Eq,Hash,PartialOrd,Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
 impl<'b> fmt::Debug for RawString<'b> {
@@ -540,7 +577,7 @@ mod tests {
 
             match buf.parse_u8() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -559,13 +596,13 @@ mod tests {
 
             match buf.parse_u16() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u16() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -581,28 +618,28 @@ mod tests {
 
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 5);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 6);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 7);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -616,7 +653,7 @@ mod tests {
 
             match buf.parse_u64() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -632,25 +669,25 @@ mod tests {
 
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -675,7 +712,7 @@ mod tests {
 
             match buf.parse_cstring() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -700,7 +737,7 @@ mod tests {
 
             match buf.parse_u8_pascal_string() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
     }

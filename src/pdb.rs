@@ -8,20 +8,20 @@
 use dbi;
 use module_info;
 use msf;
+use pdbi;
 use symbol;
 use tpi;
-use pdbi;
 
 use common::*;
 use dbi::{DebugInformation, Module};
 use module_info::ModuleInfo;
-use source::Source;
-use msf::{MSF, Stream};
-use symbol::SymbolTable;
-use tpi::TypeInformation;
+use msf::{Stream, MSF};
+use omap::{AddressMap, OMAPTable};
 use pdbi::PDBInformation;
 use pe::ImageSectionHeader;
-use omap::{AddressMap, OMAPTable};
+use source::Source;
+use symbol::SymbolTable;
+use tpi::TypeInformation;
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -65,7 +65,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     pub fn open(source: S) -> Result<PDB<'s, S>> {
         let msf = msf::open_msf(source)?;
 
-        Ok(PDB{
+        Ok(PDB {
             msf: msf,
             dbi_header: None,
             dbi_extra_streams: None,
@@ -183,7 +183,9 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let dbi_header = self.dbi_header()?;
 
         // open the appropriate stream
-        let stream: Stream = self.msf.get(dbi_header.symbol_records_stream as u32, None)?;
+        let stream: Stream = self
+            .msf
+            .get(dbi_header.symbol_records_stream as u32, None)?;
 
         Ok(symbol::new_symbol_table(stream))
     }
@@ -336,14 +338,18 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
         Ok(match self.original_sections()? {
             Some(original_sections) => {
-                let omap_from_src = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
-                let omap_to_src = self.omap_to_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_from_src = self
+                    .omap_from_src()?
+                    .ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_to_src = self
+                    .omap_to_src()?
+                    .ok_or_else(|| Error::AddressMapNotFound)?;
 
                 AddressMap {
                     original_sections,
                     transformed_sections: Some(sections),
                     original_to_transformed: Some(omap_from_src),
-                    transformed_to_original: Some(omap_to_src)
+                    transformed_to_original: Some(omap_to_src),
                 }
             }
             None => AddressMap {
@@ -351,7 +357,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
                 transformed_sections: None,
                 original_to_transformed: None,
                 transformed_to_original: None,
-            }
+            },
         })
     }
 

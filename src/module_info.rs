@@ -37,7 +37,9 @@ pub fn new_module_info<'s, 'm>(stream: Stream<'s>, module: &Module<'m>) -> Resul
     {
         let mut buf = stream.parse_buffer();
         if buf.parse_u32()? != MODI_SIGNATURE {
-            return Err(Error::UnimplementedFeature("Unsupported module info format"));
+            return Err(Error::UnimplementedFeature(
+                "Unsupported module info format",
+            ));
         }
     }
     let lines = if info.lines_size > 0 {

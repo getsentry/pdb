@@ -12,7 +12,13 @@ fn print_usage(program: &str, opts: Options) {
 }
 
 fn print_row(offset: PdbInternalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
-    println!("{:x}\t{:x}\t{}\t{}", offset.section, offset.offset, kind, name.to_string());
+    println!(
+        "{:x}\t{:x}\t{}\t{}",
+        offset.section,
+        offset.offset,
+        kind,
+        name.to_string()
+    );
 }
 
 fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
@@ -41,8 +47,13 @@ fn walk_symbols(mut symbols: pdb::SymbolIter) -> pdb::Result<()> {
         match print_symbol(&symbol) {
             Ok(_) => {}
             Err(e) => {
-                writeln!(&mut std::io::stderr(), "error printing symbol {:?}: {}", symbol, e)
-                    .expect("stderr write");
+                writeln!(
+                    &mut std::io::stderr(),
+                    "error printing symbol {:?}: {}",
+                    symbol,
+                    e
+                )
+                .expect("stderr write");
             }
         }
     }
@@ -75,8 +86,8 @@ fn main() {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
-        Ok(m) => { m }
-        Err(f) => { panic!(f.to_string()) }
+        Ok(m) => m,
+        Err(f) => panic!(f.to_string()),
     };
 
     let filename = if matches.free.len() == 1 {
@@ -89,8 +100,7 @@ fn main() {
     match dump_pdb(&filename) {
         Ok(_) => {}
         Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e)
-                .expect("stderr write");
+            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");
         }
     }
 }

@@ -486,7 +486,6 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
     }
 }
 
-
 /// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct DBIExtraStreams {
@@ -525,15 +524,14 @@ impl DBIExtraStreams {
     pub(crate) fn new(debug_info: &DebugInformation) -> Result<DBIExtraStreams> {
         // calculate the location of the extra stream information
         let header = debug_info.header;
-        let offset = debug_info.header_len + (
-            header.module_list_size
+        let offset = debug_info.header_len
+            + (header.module_list_size
                 + header.section_contribution_size
                 + header.section_map_size
                 + header.file_info_size
                 + header.type_server_map_size
                 + header.mfc_type_server_index
-                + header.ec_substream_size
-        ) as usize;
+                + header.ec_substream_size) as usize;
 
         // seek
         let mut buf = debug_info.stream.parse_buffer();
@@ -551,13 +549,15 @@ impl DBIExtraStreams {
         // short reads are okay, as are long reads -- this struct is actually an array
         // what's _not_ okay are
         if buf.len() % 2 == 1 {
-            return Err(Error::UnimplementedFeature("DbgDataHdr should always be an even number of bytes"))
+            return Err(Error::UnimplementedFeature(
+                "DbgDataHdr should always be an even number of bytes",
+            ));
         }
 
         fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
             match err {
                 Error::UnexpectedEof => Ok(0xffff),
-                other => Err(other)
+                other => Err(other),
             }
         }
 
@@ -576,17 +576,39 @@ impl DBIExtraStreams {
         })
     }
 
-    pub fn fpo(&self) -> Option<u16> { optional_stream_number(self.fpo) }
-    pub fn exception(&self) -> Option<u16> { optional_stream_number(self.exception) }
-    pub fn fixup(&self) -> Option<u16> { optional_stream_number(self.fixup) }
-    pub fn omap_to_src(&self) -> Option<u16> { optional_stream_number(self.omap_to_src) }
-    pub fn omap_from_src(&self) -> Option<u16> { optional_stream_number(self.omap_from_src) }
-    pub fn section_headers(&self) -> Option<u16> { optional_stream_number(self.section_headers) }
-    pub fn token_rid_map(&self) -> Option<u16> { optional_stream_number(self.token_rid_map) }
-    pub fn xdata(&self) -> Option<u16> { optional_stream_number(self.xdata) }
-    pub fn pdata(&self) -> Option<u16> { optional_stream_number(self.pdata) }
-    pub fn new_fpo(&self) -> Option<u16> { optional_stream_number(self.new_fpo) }
-    pub fn original_section_headers(&self) -> Option<u16> { optional_stream_number(self.original_section_headers) }
+    pub fn fpo(&self) -> Option<u16> {
+        optional_stream_number(self.fpo)
+    }
+    pub fn exception(&self) -> Option<u16> {
+        optional_stream_number(self.exception)
+    }
+    pub fn fixup(&self) -> Option<u16> {
+        optional_stream_number(self.fixup)
+    }
+    pub fn omap_to_src(&self) -> Option<u16> {
+        optional_stream_number(self.omap_to_src)
+    }
+    pub fn omap_from_src(&self) -> Option<u16> {
+        optional_stream_number(self.omap_from_src)
+    }
+    pub fn section_headers(&self) -> Option<u16> {
+        optional_stream_number(self.section_headers)
+    }
+    pub fn token_rid_map(&self) -> Option<u16> {
+        optional_stream_number(self.token_rid_map)
+    }
+    pub fn xdata(&self) -> Option<u16> {
+        optional_stream_number(self.xdata)
+    }
+    pub fn pdata(&self) -> Option<u16> {
+        optional_stream_number(self.pdata)
+    }
+    pub fn new_fpo(&self) -> Option<u16> {
+        optional_stream_number(self.new_fpo)
+    }
+    pub fn original_section_headers(&self) -> Option<u16> {
+        optional_stream_number(self.original_section_headers)
+    }
 }
 
 #[cfg(test)]
@@ -595,13 +617,7 @@ mod tests {
 
     #[test]
     fn test_dbi_extra_streams() {
-        let bytes = vec![
-            0xff, 0xff,
-            0x01, 0x02,
-            0x03, 0x04,
-            0xff, 0xff,
-            0x05, 0x06
-        ];
+        let bytes = vec![0xff, 0xff, 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0x05, 0x06];
 
         let mut buf = ParseBuffer::from(bytes.as_slice());
         let extra_streams = DBIExtraStreams::parse(&mut buf).expect("parse");

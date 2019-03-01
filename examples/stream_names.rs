@@ -12,7 +12,12 @@ fn dump_stream_names(filename: &OsStr) -> pdb::Result<()> {
     println!("index, name");
     for name in names.iter() {
         let stream = pdb.raw_stream(name.stream_id)?;
-        println!("{:5}, {} {} bytes", name.stream_id, name.name, stream.parse_buffer().len());
+        println!(
+            "{:5}, {} {} bytes",
+            name.stream_id,
+            name.name,
+            stream.parse_buffer().len()
+        );
     }
     Ok(())
 }
@@ -23,8 +28,7 @@ fn main() {
     match dump_stream_names(&filename) {
         Ok(_) => {}
         Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e)
-                .expect("stderr write");
+            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");
         }
     }
 }

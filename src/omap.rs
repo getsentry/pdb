@@ -276,7 +276,8 @@ impl Rva {
     }
 
     pub fn to_internal_offset(self, translator: &AddressMap) -> Option<PdbInternalSectionOffset> {
-        self.to_internal_rva(translator)?.to_internal_offset(translator)
+        self.to_internal_rva(translator)?
+            .to_internal_offset(translator)
     }
 }
 
@@ -319,7 +320,8 @@ impl SectionOffset {
             return Some(PdbInternalSectionOffset { section, offset });
         }
 
-        self.to_internal_rva(translator)?.to_internal_offset(translator)
+        self.to_internal_rva(translator)?
+            .to_internal_offset(translator)
     }
 }
 

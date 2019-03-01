@@ -21,7 +21,7 @@ pub struct PageList {
 impl PageList {
     /// Create a new PageList for a given page size.
     pub fn new(page_size: usize) -> PageList {
-        PageList{
+        PageList {
             page_size: page_size,
             source_slices: Vec::new(),
             last_page: None,
@@ -35,8 +35,8 @@ impl PageList {
         assert!(!self.truncated);
 
         let is_continuous = match self.last_page {
-            Some(n) => { (n + 1) == page }
-            None => { false }
+            Some(n) => (n + 1) == page,
+            None => false,
         };
 
         if is_continuous {
@@ -45,7 +45,7 @@ impl PageList {
             let last_slice = self.source_slices.last_mut().unwrap();
             last_slice.size += self.page_size;
         } else {
-            self.source_slices.push(SourceSlice{
+            self.source_slices.push(SourceSlice {
                 offset: (self.page_size as u64) * (page as u64),
                 size: self.page_size,
             });
@@ -75,10 +75,9 @@ impl PageList {
 
                 // subtract the number of bytes in this slice
                 bytes -= slice.size;
-
             } else {
                 // we're done
-                break
+                break;
             }
         }
 
@@ -88,8 +87,9 @@ impl PageList {
 
     /// Return the total length of this PageList.
     pub fn len(&self) -> usize {
-        self.source_slices.iter()
-            .fold(0 as usize, |acc,s| acc + s.size)
+        self.source_slices
+            .iter()
+            .fold(0 as usize, |acc, s| acc + s.size)
     }
 
     /// Return a slice of SourceSlices.
@@ -110,7 +110,10 @@ mod tests {
         // PageList should coalesce sequential pages
         list.push(0);
         list.push(1);
-        let expected = vec![SourceSlice { offset: 0, size: 8192 }];
+        let expected = vec![SourceSlice {
+            offset: 0,
+            size: 8192,
+        }];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 8192);
 
@@ -118,8 +121,14 @@ mod tests {
         list.push(4);
         list.push(5);
         let expected = vec![
-            SourceSlice { offset: 0, size: 8192 },
-            SourceSlice { offset: 16384, size: 8192 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 8192,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 16384);
@@ -127,9 +136,18 @@ mod tests {
         // ...including nonsequential runs that go backwards
         list.push(2);
         let expected = vec![
-            SourceSlice { offset: 0, size: 8192 },
-            SourceSlice { offset: 16384, size: 8192 },
-            SourceSlice { offset: 8192, size: 4096 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 20480);
@@ -137,10 +155,22 @@ mod tests {
         // ...and runs that repeat themselves
         list.push(2);
         let expected = vec![
-            SourceSlice { offset: 0, size: 8192 },
-            SourceSlice { offset: 16384, size: 8192 },
-            SourceSlice { offset: 8192, size: 4096 },
-            SourceSlice { offset: 8192, size: 4096 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 24576);
@@ -160,10 +190,22 @@ mod tests {
         // truncation should do nothing when it's truncating more than is described
         list.truncate(25000);
         let expected = vec![
-            SourceSlice { offset: 0, size: 8192 },
-            SourceSlice { offset: 16384, size: 8192 },
-            SourceSlice { offset: 8192, size: 4096 },
-            SourceSlice { offset: 8192, size: 4096 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 24576);
@@ -171,10 +213,22 @@ mod tests {
         // it's usually employed to reduce the size of the last slice...
         list.truncate(24000);
         let expected = vec![
-            SourceSlice{ offset: 0, size: 8192 },
-            SourceSlice{ offset: 16384, size: 8192 },
-            SourceSlice{ offset: 8192, size: 4096 },
-            SourceSlice{ offset: 8192, size: 3520 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 4096,
+            },
+            SourceSlice {
+                offset: 8192,
+                size: 3520,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 24000);
@@ -182,8 +236,14 @@ mod tests {
         // ...but it should be able to lop off entire slices too
         list.truncate(10000);
         let expected = vec![
-            SourceSlice{ offset: 0, size: 8192 },
-            SourceSlice{ offset: 16384, size: 1808 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 1808,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 10000);
@@ -191,8 +251,14 @@ mod tests {
         // and again, it shouldn't do anything if we re-truncate to a larger size
         list.truncate(12000);
         let expected = vec![
-            SourceSlice{ offset: 0, size: 8192 },
-            SourceSlice{ offset: 16384, size: 1808 },
+            SourceSlice {
+                offset: 0,
+                size: 8192,
+            },
+            SourceSlice {
+                offset: 16384,
+                size: 1808,
+            },
         ];
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 10000);
@@ -210,7 +276,7 @@ mod tests {
         let mut list = PageList::new(4096);
         list.push(5);
         list.truncate(2000);
-        assert!(true);  // so far so good
+        assert!(true); // so far so good
 
         // bam!
         list.push(6);

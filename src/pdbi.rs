@@ -6,10 +6,10 @@
 // copied, modified, or distributed except according to those terms.
 
 use common::*;
-use msf::*;
-use uuid::Uuid;
 use dbi::HeaderVersion;
+use msf::*;
 use std::mem;
+use uuid::Uuid;
 
 /// A PDB info stream header parsed from a stream.
 ///
@@ -89,7 +89,7 @@ pub type NameIter<'a, 'n> = ::std::slice::Iter<'a, StreamName<'n>>;
 
 impl<'s> StreamNames<'s> {
     /// Return an iterator over named streams and their stream indices.
-    pub fn iter<'a>(&'a self) -> NameIter<'a,'s> {
+    pub fn iter<'a>(&'a self) -> NameIter<'a, 's> {
         self.names.iter()
     }
 }
@@ -137,17 +137,11 @@ fn parse_names<'b, 's: 'b>(info: &'b PDBInformation<'s>) -> Result<StreamNames<'
             let name_offset = buf.parse_u32()? as usize;
             let stream_id = buf.parse_u32()?;
             let name = ParseBuffer::from(&names_buf[name_offset..]).parse_cstring()?;
-            names.push(StreamName {
-                name,
-                stream_id,
-            });
+            names.push(StreamName { name, stream_id });
         }
         names_reader
     };
-    Ok(StreamNames {
-        buf,
-        names,
-    })
+    Ok(StreamNames { buf, names })
 }
 
 pub fn new_pdb_information(stream: Stream) -> Result<PDBInformation> {
@@ -160,8 +154,9 @@ pub fn new_pdb_information(stream: Stream) -> Result<PDBInformation> {
             buf.parse_u32()?,
             buf.parse_u16()?,
             buf.parse_u16()?,
-            buf.take(8)?
-            ).unwrap();
+            buf.take(8)?,
+        )
+        .unwrap();
         let names_size = buf.parse_u32()? as usize;
         let names_offset = buf.pos();
         (version, signature, age, guid, names_size, names_offset)

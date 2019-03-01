@@ -5,7 +5,6 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-
 //! The `pdb` create parses Microsoft PDB (Program Database) files. PDB files contain debugging
 //! information produced by most compilers that target Windows, including information about symbols,
 //! types, modules, and so on.
@@ -56,25 +55,28 @@ mod common;
 mod dbi;
 mod module_info;
 mod msf;
+mod omap;
 mod pdb;
+mod pdbi;
+mod pe;
 mod source;
 mod symbol;
 mod tpi;
-mod pdbi;
-mod omap;
-mod pe;
 
 // exports
-pub use common::{Error, Result, TypeIndex, RawString, Variant, PdbInternalSectionOffset, PdbInternalRva, Rva, SectionOffset};
+pub use common::{
+    Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
+    TypeIndex, Variant,
+};
 pub use dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use module_info::ModuleInfo;
-pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
+pub use omap::AddressMap;
 pub use pdb::PDB;
+pub use pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
+pub use pe::ImageSectionHeader;
 pub use source::*;
 pub use symbol::*;
 pub use tpi::*;
-pub use omap::AddressMap;
-pub use pe::ImageSectionHeader;
 
 // re-export FallibleIterator for convenience
 #[doc(no_inline)]
