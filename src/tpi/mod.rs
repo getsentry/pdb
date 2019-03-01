@@ -8,9 +8,9 @@
 use std::fmt;
 use std::result;
 
-use common::*;
-use msf::Stream;
-use FallibleIterator;
+use crate::common::*;
+use crate::msf::Stream;
+use crate::FallibleIterator;
 
 pub(crate) mod constants;
 mod data;
@@ -22,7 +22,7 @@ use self::header::*;
 use self::primitive::type_data_for_primitive;
 
 pub use self::data::*;
-pub use self::primitive::{Indirection,PrimitiveKind,PrimitiveType};
+pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 
 /// `TypeInformation` provides zero-copy access to a PDB type data stream.
 ///
@@ -111,23 +111,31 @@ pub use self::primitive::{Indirection,PrimitiveKind,PrimitiveType};
 /// # assert!(test().expect("test") > 8000);
 /// ```
 #[derive(Debug)]
-pub struct TypeInformation<'t> {
-    stream: Stream<'t>,
+pub struct TypeInformation<'s> {
+    stream: Stream<'s>,
     header: Header,
 }
 
-impl<'t> TypeInformation<'t> {
+impl<'s> TypeInformation<'s> {
+    /// Parses `TypeInformation` from raw stream data.
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        let mut buf = stream.parse_buffer();
+        let header = Header::parse(&mut buf)?;
+        Ok(TypeInformation { stream, header })
+    }
+
     /// Returns an iterator that can traverse the type table in sequential order.
-    pub fn iter(&self) -> TypeIter {
+    pub fn iter(&self) -> TypeIter<'_> {
         // get a parse buffer
         let mut buf = self.stream.parse_buffer();
 
         // drop the header
         // this can't fail; we've already read this once
-        buf.take(self.header.header_size as usize).expect("dropping TPI header");
+        buf.take(self.header.header_size as usize)
+            .expect("dropping TPI header");
 
-        TypeIter{
-            buf: buf,
+        TypeIter {
+            buf,
             type_index: self.header.minimum_type_index,
         }
     }
@@ -140,39 +148,36 @@ impl<'t> TypeInformation<'t> {
         (self.header.maximum_type_index - self.header.minimum_type_index) as usize
     }
 
+    /// Returns whether this `TypeInformation` contains any types.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns a `TypeFinder` with a default time-space tradeoff.
     ///
     /// The `TypeFinder` is initially empty and must be populated by iterating.
-    pub fn new_type_finder(&self) -> TypeFinder {
-        new_type_finder(self, 3)
-    }
-}
-
-pub(crate) fn new_type_information(stream: Stream) -> Result<TypeInformation> {
-    let h;
-
-    {
-        let mut buf = stream.parse_buffer();
-        h = Header::parse(&mut buf)?;
+    pub fn type_finder(&self) -> TypeFinder<'_> {
+        TypeFinder::new(self, 3)
     }
 
-    Ok(TypeInformation{
-        stream: stream,
-        header: h,
-    })
+    #[doc(hidden)]
+    #[deprecated(note = "use type_finder() instead")]
+    pub fn new_type_finder(&self) -> TypeFinder<'_> {
+        self.type_finder()
+    }
 }
 
 /// This buffer is used when a `Type` refers to a primitive type. It doesn't contain anything
 /// type-specific, but it does parse as `raw_type() == 0xffff`, which is a reserved value. Seems
 /// like a reasonable thing to do.
-const PRIMITIVE_TYPE: &'static [u8] = b"\xff\xff";
+const PRIMITIVE_TYPE: &[u8] = b"\xff\xff";
 
 /// Represents a type from the type table. A `Type` has been minimally processed and may not be
 /// correctly formed or even understood by this library.
 ///
 /// To avoid copying, `Type`s exist as references to data owned by the parent `TypeInformation`.
 /// Therefore, a `Type` may not outlive its parent.
-#[derive(Copy,Clone,PartialEq)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Type<'t>(TypeIndex, &'t [u8]);
 
 impl<'t> Type<'t> {
@@ -188,6 +193,13 @@ impl<'t> Type<'t> {
         self.1.len()
     }
 
+    /// Returns whether this type's data is empty.
+    ///
+    /// Types are prefixed by length, which is not included in this operation.
+    pub fn is_empty(&self) -> bool {
+        self.1.is_empty()
+    }
+
     /// Returns the kind of type identified by this `Type`.
     ///
     /// As a special case, if this `Type` is actually a primitive type, `raw_kind()` will return
@@ -197,7 +209,7 @@ impl<'t> Type<'t> {
         debug_assert!(self.1.len() >= 2);
 
         // assemble a little-endian u16
-        (self.1[0] as u16) | ((self.1[1] as u16) << 8)
+        u16::from(self.1[0]) | (u16::from(self.1[1]) << 8)
     }
 
     /// Parse this Type into a TypeData.
@@ -219,8 +231,13 @@ impl<'t> Type<'t> {
 }
 
 impl<'t> fmt::Debug for Type<'t> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Type{{ kind: 0x{:4x} [{} bytes] }}", self.raw_kind(), self.1.len())
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Type{{ kind: 0x{:4x} [{} bytes] }}",
+            self.raw_kind(),
+            self.1.len()
+        )
     }
 }
 
@@ -270,25 +287,25 @@ pub struct TypeFinder<'t> {
     shift: u8,
 }
 
-fn new_type_finder<'b, 't: 'b>(type_info: &'b TypeInformation<'t>, shift: u8) -> TypeFinder<'b> {
-    let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
-    let shifted_count = (count >> shift) as usize;
-
-    let mut positions: Vec<u32> = Vec::with_capacity(shifted_count);
-
-    // add record zero, which is identical regardless of shift
-    positions.push(type_info.header.header_size);
-
-    TypeFinder{
-        buffer: type_info.stream.parse_buffer(),
-        minimum_type_index: type_info.header.minimum_type_index,
-        maximum_type_index: type_info.header.maximum_type_index,
-        positions: positions,
-        shift: shift,
-    }
-}
-
 impl<'t> TypeFinder<'t> {
+    fn new(type_info: &'t TypeInformation<'_>, shift: u8) -> Self {
+        let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
+        let shifted_count = (count >> shift) as usize;
+
+        let mut positions = Vec::with_capacity(shifted_count);
+
+        // add record zero, which is identical regardless of shift
+        positions.push(type_info.header.header_size);
+
+        TypeFinder {
+            buffer: type_info.stream.parse_buffer(),
+            minimum_type_index: type_info.header.minimum_type_index,
+            maximum_type_index: type_info.header.maximum_type_index,
+            positions,
+            shift,
+        }
+    }
+
     /// Given a `TypeIndex`, find which position in the Vec we should jump to and how many times we
     /// need to iterate to find the requested type.
     ///
@@ -298,7 +315,7 @@ impl<'t> TypeFinder<'t> {
         let raw = type_index - self.minimum_type_index;
         (
             (raw >> self.shift) as usize,
-            (raw & ((1 << self.shift) - 1)) as usize
+            (raw & ((1 << self.shift) - 1)) as usize,
         )
     }
 
@@ -321,7 +338,7 @@ impl<'t> TypeFinder<'t> {
     ///
     /// Do this each time you call `.next()`.
     #[inline]
-    pub fn update(&mut self, iterator: &TypeIter) {
+    pub fn update(&mut self, iterator: &TypeIter<'_>) {
         let (vec_index, iteration_count) = self.resolve(iterator.type_index);
         if iteration_count == 0 && vec_index == self.positions.len() {
             let pos = iterator.buf.pos();
@@ -363,7 +380,6 @@ impl<'t> TypeFinder<'t> {
             // read the type
             let length = buf.parse_u16()?;
             Ok(Type(type_index, buf.take(length as usize)?))
-
         } else {
             // miss
             Err(Error::TypeNotIndexed(type_index, self.max_indexed_type()))

@@ -1,14 +1,17 @@
-extern crate pdb;
-use pdb::FallibleIterator;
-
 use std::collections::HashMap;
 
-fn setup<F>(func: F) where F: FnOnce(&pdb::TypeInformation) -> () {
+use pdb::FallibleIterator;
+
+fn setup<F>(func: F)
+where
+    F: FnOnce(&pdb::TypeInformation<'_>) -> (),
+{
     let file = if let Ok(filename) = std::env::var("PDB_FILE") {
         std::fs::File::open(filename)
     } else {
         std::fs::File::open("fixtures/self/foo.pdb")
-    }.expect("opening file");
+    }
+    .expect("opening file");
 
     let mut pdb = pdb::PDB::open(file).expect("opening pdb");
     let type_information = pdb.type_information().expect("type information");
@@ -37,8 +40,8 @@ fn iteration() {
 #[test]
 fn type_finder() {
     setup(|type_information| {
-        let mut type_finder = type_information.new_type_finder();
-        let mut map: HashMap<pdb::TypeIndex, pdb::Type> = HashMap::new();
+        let mut type_finder = type_information.type_finder();
+        let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
         assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
 
@@ -65,7 +68,7 @@ fn type_finder() {
 #[test]
 fn find_classes() {
     setup(|type_information| {
-        let mut type_finder = type_information.new_type_finder();
+        let mut type_finder = type_information.type_finder();
 
         // iterate over all the types
         let mut iter = type_information.iter();
@@ -75,7 +78,11 @@ fn find_classes() {
 
             // parse the type record
             match typ.parse() {
-                Ok(pdb::TypeData::Class(pdb::ClassType { name, fields: Some(fields), ..})) => {
+                Ok(pdb::TypeData::Class(pdb::ClassType {
+                    name,
+                    fields: Some(fields),
+                    ..
+                })) => {
                     // this Type describes a class-like type with fields
                     println!("class {} (type {}):", name, typ.type_index());
 
@@ -94,12 +101,12 @@ fn find_classes() {
                         Ok(value) => {
                             println!("expected a field list, got {:?}", value);
                             assert!(false);
-                        },
+                        }
                         Err(e) => {
                             println!("field parse error: {}", e);
                         }
                     }
-                },
+                }
                 Ok(pdb::TypeData::Enumeration(data)) => {
                     println!("enum {} (type {}):", data.name, data.fields);
 
@@ -117,26 +124,31 @@ fn find_classes() {
                         Ok(value) => {
                             println!("expected a field list, got {:?}", value);
                             assert!(false);
-                        },
+                        }
                         Err(e) => {
                             println!("field parse error: {}", e);
                         }
                     }
-                },
+                }
                 Ok(pdb::TypeData::FieldList(_)) => {
                     // ignore, since we find these by class
                 }
                 Ok(_) => {
                     //println!("type: {:?}", data);
-                },
+                }
                 Err(pdb::Error::UnimplementedTypeKind(kind)) => {
                     println!("unimplemented: 0x{:04x}", kind);
                     // TODO: parse everything
                     // ignore for now
-                },
+                }
                 Err(e) => {
                     // other parse error
-                    println!("other parse error on type {} (raw type {:04x}): {}", typ.type_index(), typ.raw_kind(), e);
+                    println!(
+                        "other parse error on type {} (raw type {:04x}): {}",
+                        typ.type_index(),
+                        typ.raw_kind(),
+                        e
+                    );
                     panic!("dying due to parse error");
                 }
             }

@@ -9,11 +9,12 @@
 
 // PDBs contain PE section headers in one or two streams. `pdb::pe` is responsible for parsing them.
 
-use common::*;
-use std::fmt::{self, Debug};
+use std::fmt;
+
+use crate::common::*;
 
 /// A PE `IMAGE_SECTION_HEADER`, as described in [the Microsoft documentation](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx).
-#[derive(Copy,Clone,PartialEq,Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct ImageSectionHeader {
     /// An 8-byte, null-padded UTF-8 string. There is no terminating null character if the string is
     /// exactly eight characters long. For longer names, this member contains a forward slash (`/`)
@@ -59,13 +60,19 @@ pub struct ImageSectionHeader {
 }
 
 impl ImageSectionHeader {
-    pub(crate) fn parse(parse_buffer: &mut ParseBuffer) -> Result<Self> {
+    pub(crate) fn parse(parse_buffer: &mut ParseBuffer<'_>) -> Result<Self> {
         let name_bytes = parse_buffer.take(8)?;
 
-        Ok(ImageSectionHeader{
+        Ok(ImageSectionHeader {
             name: [
-                name_bytes[0], name_bytes[1], name_bytes[2], name_bytes[3],
-                name_bytes[4], name_bytes[5], name_bytes[6], name_bytes[7]
+                name_bytes[0],
+                name_bytes[1],
+                name_bytes[2],
+                name_bytes[3],
+                name_bytes[4],
+                name_bytes[5],
+                name_bytes[6],
+                name_bytes[7],
             ],
             physical_address: parse_buffer.parse_u32()?,
             virtual_address: parse_buffer.parse_u32()?,
@@ -79,26 +86,51 @@ impl ImageSectionHeader {
         })
     }
 
-    pub fn name(&self) -> RawString {
-        let first_nul = self.name.iter().position(|ch| *ch == 0);
-        let name_bytes = &self.name[0..first_nul.unwrap_or(self.name.len())];
-        RawString::from(name_bytes)
+    /// Returns the name of the section.
+    pub fn name(&self) -> &str {
+        let end = self
+            .name
+            .iter()
+            .position(|ch| *ch == 0)
+            .unwrap_or_else(|| self.name.len());
+
+        // The spec guarantees that the name is a proper UTF-8 string.
+        // TODO: Look up long names from the string table.
+        std::str::from_utf8(&self.name[0..end]).unwrap_or("")
     }
 }
 
-impl Debug for ImageSectionHeader {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for ImageSectionHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageSectionHeader")
             .field("name()", &self.name().to_string())
-            .field("physical_address", &format_args!("{:#x}", self.physical_address))
-            .field("virtual_address", &format_args!("{:#x}", self.virtual_address))
+            .field(
+                "physical_address",
+                &format_args!("{:#x}", self.physical_address),
+            )
+            .field(
+                "virtual_address",
+                &format_args!("{:#x}", self.virtual_address),
+            )
             .field("size_of_raw_data", &self.size_of_raw_data)
-            .field("pointer_to_raw_data", &format_args!("{:#x}", self.pointer_to_raw_data))
-            .field("pointer_to_relocations", &format_args!("{:#x}", self.pointer_to_relocations))
-            .field("pointer_to_line_numbers", &format_args!("{:#x}", self.pointer_to_line_numbers))
+            .field(
+                "pointer_to_raw_data",
+                &format_args!("{:#x}", self.pointer_to_raw_data),
+            )
+            .field(
+                "pointer_to_relocations",
+                &format_args!("{:#x}", self.pointer_to_relocations),
+            )
+            .field(
+                "pointer_to_line_numbers",
+                &format_args!("{:#x}", self.pointer_to_line_numbers),
+            )
             .field("number_of_relocations", &self.number_of_relocations)
             .field("number_of_line_numbers", &self.number_of_line_numbers)
-            .field("characteristics", &format_args!("{:#x}", self.characteristics))
+            .field(
+                "characteristics",
+                &format_args!("{:#x}", self.characteristics),
+            )
             .finish()
     }
 }
@@ -110,26 +142,24 @@ mod tests {
     #[test]
     fn image_section_header() {
         let bytes: Vec<u8> = vec![
-            0x2E, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00,
-            0x48, 0x35, 0x09, 0x00, 0x00, 0xD0, 0x1E, 0x00,
-            0x00, 0xFE, 0x00, 0x00, 0x00, 0xA2, 0x1E, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0xC8
+            0x2E, 0x64, 0x61, 0x74, 0x61, 0x00, 0x00, 0x00, 0x48, 0x35, 0x09, 0x00, 0x00, 0xD0,
+            0x1E, 0x00, 0x00, 0xFE, 0x00, 0x00, 0x00, 0xA2, 0x1E, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0xC8,
         ];
 
         let mut parse_buffer = ParseBuffer::from(bytes.as_slice());
 
         let ish = ImageSectionHeader::parse(&mut parse_buffer).expect("parse");
         assert_eq!(&ish.name, b".data\0\0\0");
-        assert_eq!(ish.name(), RawString::from(".data"));
+        assert_eq!(ish.name(), ".data");
         assert_eq!(ish.physical_address, 0x93548);
-        assert_eq!(ish.virtual_address, 0x1ed000);
+        assert_eq!(ish.virtual_address, 0x001e_d000);
         assert_eq!(ish.size_of_raw_data, 0xfe00);
-        assert_eq!(ish.pointer_to_raw_data, 0x1ea200);
+        assert_eq!(ish.pointer_to_raw_data, 0x001e_a200);
         assert_eq!(ish.pointer_to_relocations, 0);
         assert_eq!(ish.pointer_to_line_numbers, 0);
         assert_eq!(ish.number_of_relocations, 0);
         assert_eq!(ish.number_of_line_numbers, 0);
-        assert_eq!(ish.characteristics, 0xc8000040);
+        assert_eq!(ish.characteristics, 0xc800_0040);
     }
 }

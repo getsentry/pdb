@@ -5,8 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use common::*;
-use super::data::TypeData;
+use crate::common::*;
+use crate::tpi::data::TypeData;
 
 // References for primitive types:
 //
@@ -23,7 +23,7 @@ use super::data::TypeData;
 // implementations.
 
 /// Represents a primitive type like `void` or `char *`.
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PrimitiveType {
     pub kind: PrimitiveKind,
 
@@ -31,18 +31,21 @@ pub struct PrimitiveType {
     pub indirection: Indirection,
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
+    /// Void type
     Void,
 
+    /// Character (byte)
     Char,
 
+    /// Unsigned character
     UChar,
 
     /// "Really a char"
     RChar,
 
-    //// Wide characters, i.e. 16 bits
+    /// Wide characters, i.e. 16 bits
     WChar,
 
     /// "Really a 16-bit char"
@@ -126,11 +129,16 @@ pub enum PrimitiveKind {
     /// 16-bit boolean value
     Bool64,
 
+    /// Windows `HRESULT` error code.
+    ///
+    /// See: https://docs.microsoft.com/en-us/windows/desktop/seccrypto/common-hresult-values
     HRESULT,
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+/// Pointer kinds.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Indirection {
+    ///
     None,
 
     /// 16-bit ("near") pointer
@@ -167,7 +175,9 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x400 => Indirection::Pointer32,
         0x500 => Indirection::Pointer1632,
         0x600 => Indirection::Pointer64,
-        _ => { return Err(Error::TypeNotFound(index)); }
+        _ => {
+            return Err(Error::TypeNotFound(index));
+        }
     };
 
     // primitive types are stored in the lowest octet
@@ -224,11 +234,10 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x32 => PrimitiveKind::Bool32,
         0x33 => PrimitiveKind::Bool64,
 
-        _ => { return Err(Error::TypeNotFound(index)); }
+        _ => {
+            return Err(Error::TypeNotFound(index));
+        }
     };
 
-    Ok(TypeData::Primitive(PrimitiveType {
-        kind: kind,
-        indirection: indirection,
-    }))
+    Ok(TypeData::Primitive(PrimitiveType { kind, indirection }))
 }

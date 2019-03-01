@@ -1,11 +1,7 @@
-extern crate pdb;
-extern crate uuid;
-extern crate reqwest;
-
+use pdb::{FallibleIterator, PdbInternalSectionOffset, Rva};
 use std::path::Path;
 use std::str::FromStr;
 use std::sync::{Once, ONCE_INIT};
-use pdb::{FallibleIterator, PdbInternalSectionOffset, Rva};
 
 // This test is intended to cover OMAP address translation:
 //   https://github.com/willglynn/pdb/issues/17
@@ -32,7 +28,10 @@ fn verify_pdb_identity() {
     let mut pdb = pdb::PDB::open(open_file()).expect("opening pdb");
 
     let pdb_info = pdb.pdb_information().expect("pdb information");
-    assert_eq!(pdb_info.guid, uuid::Uuid::from_str("3844DBB9-2017-4967-BE7A-A4A2C20430FA").unwrap());
+    assert_eq!(
+        pdb_info.guid,
+        uuid::Uuid::from_str("3844DBB9-2017-4967-BE7A-A4A2C20430FA").unwrap()
+    );
     assert_eq!(pdb_info.age, 5);
     assert_eq!(pdb_info.signature, 1_290_245_416);
 }
@@ -46,8 +45,9 @@ fn test_omap() {
     // find the target symbol
     let target_symbol = {
         let target_name = pdb::RawString::from("NtWaitForSingleObject");
-        let mut iter = global_symbols.iter();
-        iter.filter(|sym| sym.name().expect("symbol name") == target_name).next()
+        let iter = global_symbols.iter();
+        iter.filter(|sym| sym.name().expect("symbol name") == target_name)
+            .next()
             .expect("iterate symbols")
             .expect("find target symbol")
     };
@@ -55,17 +55,23 @@ fn test_omap() {
     // extract the PublicSymbol data
     let pubsym = match target_symbol.parse().expect("parse symbol") {
         pdb::SymbolData::PublicSymbol(pubsym) => pubsym,
-        _ => panic!("expected public symbol")
+        _ => panic!("expected public symbol"),
     };
 
     // ensure the symbol has the correct location
-    assert_eq!(pubsym.offset, PdbInternalSectionOffset {
-        section: 0xc,
-        offset: 0x0004_aeb0,
-    });
+    assert_eq!(
+        pubsym.offset,
+        PdbInternalSectionOffset {
+            section: 0xc,
+            offset: 0x0004_aeb0,
+        }
+    );
 
     // translate the segment offset to an RVA
     let address_map = pdb.address_map().expect("address map");
     assert_eq!(pubsym.offset.to_rva(&address_map), Some(Rva(0x0037_68c0)));
-    assert_eq!(Rva(0x0037_68c0).to_internal_offset(&address_map), Some(pubsym.offset));
+    assert_eq!(
+        Rva(0x0037_68c0).to_internal_offset(&address_map),
+        Some(pubsym.offset)
+    );
 }

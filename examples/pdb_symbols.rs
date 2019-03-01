@@ -1,21 +1,24 @@
-extern crate getopts;
-extern crate pdb;
+use std::env;
 
 use getopts::Options;
 use pdb::{FallibleIterator, PdbInternalSectionOffset};
-use std::env;
-use std::io::Write;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} input.pdb", program);
     print!("{}", opts.usage(&brief));
 }
 
-fn print_row(offset: PdbInternalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
-    println!("{:x}\t{:x}\t{}\t{}", offset.section, offset.offset, kind, name.to_string());
+fn print_row(offset: PdbInternalSectionOffset, kind: &str, name: pdb::RawString<'_>) {
+    println!(
+        "{:x}\t{:x}\t{}\t{}",
+        offset.section,
+        offset.offset,
+        kind,
+        name.to_string()
+    );
 }
 
-fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
+fn print_symbol(symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
     match symbol.parse()? {
         pdb::SymbolData::PublicSymbol(data) => {
             print_row(data.offset, "function", symbol.name()?);
@@ -34,16 +37,13 @@ fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
     Ok(())
 }
 
-fn walk_symbols(mut symbols: pdb::SymbolIter) -> pdb::Result<()> {
+fn walk_symbols(mut symbols: pdb::SymbolIter<'_>) -> pdb::Result<()> {
     println!("segment\toffset\tkind\tname");
 
     while let Some(symbol) = symbols.next()? {
         match print_symbol(&symbol) {
-            Ok(_) => {}
-            Err(e) => {
-                writeln!(&mut std::io::stderr(), "error printing symbol {:?}: {}", symbol, e)
-                    .expect("stderr write");
-            }
+            Ok(_) => (),
+            Err(e) => eprintln!("error printing symbol {:?}: {}", symbol, e),
         }
     }
 
@@ -75,8 +75,8 @@ fn main() {
     let mut opts = Options::new();
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
-        Ok(m) => { m }
-        Err(f) => { panic!(f.to_string()) }
+        Ok(m) => m,
+        Err(f) => panic!(f.to_string()),
     };
 
     let filename = if matches.free.len() == 1 {
@@ -87,10 +87,7 @@ fn main() {
     };
 
     match dump_pdb(&filename) {
-        Ok(_) => {}
-        Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e)
-                .expect("stderr write");
-        }
+        Ok(_) => (),
+        Err(e) => eprintln!("error dumping PDB: {}", e),
     }
 }

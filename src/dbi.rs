@@ -8,11 +8,12 @@
 // DBI = "Debug Information"
 
 use std::borrow::Cow;
+use std::fmt;
 use std::result;
 
-use common::*;
-use msf::*;
-use FallibleIterator;
+use crate::common::*;
+use crate::msf::*;
+use crate::FallibleIterator;
 
 /// Provides access to the "DBI" stream inside the PDB.
 ///
@@ -44,18 +45,34 @@ use FallibleIterator;
 #[derive(Debug)]
 pub struct DebugInformation<'s> {
     stream: Stream<'s>,
-    header: Header,
+    header: DBIHeader,
     header_len: usize,
 }
 
 impl<'s> DebugInformation<'s> {
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        let mut buf = stream.parse_buffer();
+        let header = DBIHeader::parse_buf(&mut buf)?;
+        let header_len = buf.pos();
+
+        Ok(DebugInformation {
+            stream,
+            header,
+            header_len,
+        })
+    }
+
+    pub(crate) fn header(&self) -> DBIHeader {
+        self.header
+    }
+
     /// Returns the target's machine type (architecture).
     pub fn machine_type(&self) -> Result<MachineType> {
         Ok(self.header.machine_type.into())
     }
 
     /// Returns an iterator that can traverse the modules list in sequential order.
-    pub fn modules(&self) -> Result<ModuleIter> {
+    pub fn modules(&self) -> Result<ModuleIter<'_>> {
         let mut buf = self.stream.parse_buffer();
         // drop the header
         buf.take(self.header_len)?;
@@ -64,26 +81,11 @@ impl<'s> DebugInformation<'s> {
             buf: modules_buf.into(),
         })
     }
-
-    pub(crate) fn get_header(&self) -> Header {
-        self.header
-    }
-
-    pub(crate) fn new(stream: Stream) -> Result<DebugInformation> {
-        let (header, len) = {
-            let mut buf = stream.parse_buffer();
-            let header = parse_header(&mut buf)?;
-            (header, buf.pos())
-        };
-
-        Ok(DebugInformation {
-            stream: stream,
-            header: header,
-            header_len: len,
-        })
-    }
 }
 
+/// The version of the PDB format.
+///
+/// This version type is used in multiple locations: the DBI header, and the PDBI header.
 #[derive(Debug, Copy, Clone)]
 pub enum HeaderVersion {
     V41,
@@ -97,11 +99,11 @@ pub enum HeaderVersion {
 impl From<u32> for HeaderVersion {
     fn from(v: u32) -> Self {
         match v {
-            930803 => HeaderVersion::V41,
-            19960307 => HeaderVersion::V50,
-            19970606 => HeaderVersion::V60,
-            19990903 => HeaderVersion::V70,
-            20091201 => HeaderVersion::V110,
+            930_803 => HeaderVersion::V41,
+            19_960_307 => HeaderVersion::V50,
+            19_970_606 => HeaderVersion::V60,
+            19_990_903 => HeaderVersion::V70,
+            20_091_201 => HeaderVersion::V110,
             _ => HeaderVersion::OtherValue(v),
         }
     }
@@ -111,7 +113,7 @@ impl From<u32> for HeaderVersion {
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
 #[derive(Debug, Copy, Clone)]
-pub struct Header {
+pub(crate) struct DBIHeader {
     pub signature: u32,
     pub version: HeaderVersion,
     pub age: u32,
@@ -172,40 +174,46 @@ pub struct Header {
     pub reserved: u32,
 }
 
-pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
-    let header = Header {
-        signature: buf.parse_u32()?,
-        version: From::from(buf.parse_u32()?),
-        age: buf.parse_u32()?,
-        gs_symbols_stream: buf.parse_u16()?,
-        internal_version: buf.parse_u16()?,
-        ps_symbols_stream: buf.parse_u16()?,
-        pdb_dll_build_version: buf.parse_u16()?,
-        symbol_records_stream: buf.parse_u16()?,
-        pdb_dll_rbld_version: buf.parse_u16()?,
-        module_list_size: buf.parse_u32()?,
-        section_contribution_size: buf.parse_u32()?,
-        section_map_size: buf.parse_u32()?,
-        file_info_size: buf.parse_u32()?,
-        type_server_map_size: buf.parse_u32()?,
-        mfc_type_server_index: buf.parse_u32()?,
-        debug_header_size: buf.parse_u32()?,
-        ec_substream_size: buf.parse_u32()?,
-        flags: buf.parse_u16()?,
-        machine_type: buf.parse_u16()?,
-        reserved: buf.parse_u32()?,
-    };
-
-    if header.signature != 0xffffffff {
-        // this is likely a DBIHdr, not a NewDBIHdr
-        // it could be promoted:
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L1180-L1184
-        // but that seems like a lot of work
-        return Err(Error::UnimplementedFeature("ancient DBI header"));
+impl DBIHeader {
+    pub fn parse(stream: Stream<'_>) -> Result<Self> {
+        Self::parse_buf(&mut stream.parse_buffer())
     }
 
-    Ok(header)
+    fn parse_buf(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        let header = DBIHeader {
+            signature: buf.parse_u32()?,
+            version: From::from(buf.parse_u32()?),
+            age: buf.parse_u32()?,
+            gs_symbols_stream: buf.parse_u16()?,
+            internal_version: buf.parse_u16()?,
+            ps_symbols_stream: buf.parse_u16()?,
+            pdb_dll_build_version: buf.parse_u16()?,
+            symbol_records_stream: buf.parse_u16()?,
+            pdb_dll_rbld_version: buf.parse_u16()?,
+            module_list_size: buf.parse_u32()?,
+            section_contribution_size: buf.parse_u32()?,
+            section_map_size: buf.parse_u32()?,
+            file_info_size: buf.parse_u32()?,
+            type_server_map_size: buf.parse_u32()?,
+            mfc_type_server_index: buf.parse_u32()?,
+            debug_header_size: buf.parse_u32()?,
+            ec_substream_size: buf.parse_u32()?,
+            flags: buf.parse_u16()?,
+            machine_type: buf.parse_u16()?,
+            reserved: buf.parse_u32()?,
+        };
+
+        if header.signature != u32::max_value() {
+            // this is likely a DBIHdr, not a NewDBIHdr
+            // it could be promoted:
+            //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
+            //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L1180-L1184
+            // but that seems like a lot of work
+            return Err(Error::UnimplementedFeature("ancient DBI header"));
+        }
+
+        Ok(header)
+    }
 }
 
 /// The target machine's architecture.
@@ -266,8 +274,8 @@ pub enum MachineType {
     Invalid = 0xffff,
 }
 
-impl ::std::fmt::Display for MachineType {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for MachineType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             MachineType::Invalid => write!(f, "Invalid"),
             MachineType::Unknown => write!(f, "Unknown"),
@@ -337,7 +345,7 @@ impl From<u16> for MachineType {
 /// `struct SC` in Microsoft's code:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
 #[derive(Debug, Copy, Clone)]
-pub struct DBISectionContribution {
+pub(crate) struct DBISectionContribution {
     /// The index of the section.
     section: u16,
     _padding1: u16,
@@ -358,11 +366,27 @@ pub struct DBISectionContribution {
     reloc_crc: u32,
 }
 
+impl DBISectionContribution {
+    fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        Ok(DBISectionContribution {
+            section: buf.parse_u16()?,
+            _padding1: buf.parse_u16()?,
+            offset: buf.parse_u32()?,
+            size: buf.parse_u32()?,
+            characteristics: buf.parse_u32()?,
+            module: buf.parse_u16()?,
+            _padding2: buf.parse_u16()?,
+            data_crc: buf.parse_u32()?,
+            reloc_crc: buf.parse_u32()?,
+        })
+    }
+}
+
 /// Information about a module parsed from the DBI stream. Named `MODI` in
 /// the Microsoft PDB source:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197
 #[derive(Debug, Copy, Clone)]
-pub struct DBIModuleInfo {
+pub(crate) struct DBIModuleInfo {
     /// Currently open module.
     pub opened: u32,
     /// This module's first section contribution.
@@ -390,35 +414,23 @@ pub struct DBIModuleInfo {
     pub compiler: u32,
 }
 
-fn parse_module_info(buf: &mut ParseBuffer) -> Result<DBIModuleInfo> {
-    Ok(DBIModuleInfo {
-        opened: buf.parse_u32()?,
-        section: parse_section_contribution(buf)?,
-        flags: buf.parse_u16()?,
-        stream: buf.parse_u16()?,
-        symbols_size: buf.parse_u32()?,
-        lines_size: buf.parse_u32()?,
-        c13_lines_size: buf.parse_u32()?,
-        files: buf.parse_u16()?,
-        _padding: buf.parse_u16()?,
-        filename_offsets: buf.parse_u32()?,
-        source: buf.parse_u32()?,
-        compiler: buf.parse_u32()?,
-    })
-}
-
-fn parse_section_contribution(buf: &mut ParseBuffer) -> Result<DBISectionContribution> {
-    Ok(DBISectionContribution {
-        section: buf.parse_u16()?,
-        _padding1: buf.parse_u16()?,
-        offset: buf.parse_u32()?,
-        size: buf.parse_u32()?,
-        characteristics: buf.parse_u32()?,
-        module: buf.parse_u16()?,
-        _padding2: buf.parse_u16()?,
-        data_crc: buf.parse_u32()?,
-        reloc_crc: buf.parse_u32()?,
-    })
+impl DBIModuleInfo {
+    fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        Ok(DBIModuleInfo {
+            opened: buf.parse_u32()?,
+            section: DBISectionContribution::parse(buf)?,
+            flags: buf.parse_u16()?,
+            stream: buf.parse_u16()?,
+            symbols_size: buf.parse_u32()?,
+            lines_size: buf.parse_u32()?,
+            c13_lines_size: buf.parse_u32()?,
+            files: buf.parse_u16()?,
+            _padding: buf.parse_u16()?,
+            filename_offsets: buf.parse_u32()?,
+            source: buf.parse_u32()?,
+            compiler: buf.parse_u32()?,
+        })
+    }
 }
 
 /// Represents a module from the DBI stream.
@@ -439,7 +451,7 @@ pub struct Module<'m> {
 
 impl<'m> Module<'m> {
     /// The `DBIModuleInfo` from the module info substream in the DBI stream.
-    pub fn info(&self) -> &DBIModuleInfo {
+    pub(crate) fn info(&self) -> &DBIModuleInfo {
         &self.info
     }
     /// The module name.
@@ -474,7 +486,7 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
             return Ok(None);
         }
 
-        let info = parse_module_info(&mut self.buf)?;
+        let info = DBIModuleInfo::parse(&mut self.buf)?;
         let module_name = self.buf.parse_cstring()?;
         let object_file_name = self.buf.parse_cstring()?;
         self.buf.align(4)?;
@@ -486,6 +498,13 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
     }
 }
 
+fn optional_stream_number(sn: u16) -> Option<u32> {
+    if sn == u16::max_value() {
+        None
+    } else {
+        Some(u32::from(sn))
+    }
+}
 
 /// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
 #[derive(Debug, Copy, Clone)]
@@ -513,27 +532,18 @@ pub(crate) struct DBIExtraStreams {
     original_section_headers: u16,
 }
 
-fn optional_stream_number(sn: u16) -> Option<u16> {
-    if sn == 0xffff {
-        None
-    } else {
-        Some(sn)
-    }
-}
-
 impl DBIExtraStreams {
-    pub(crate) fn new(debug_info: &DebugInformation) -> Result<DBIExtraStreams> {
+    pub(crate) fn new(debug_info: &DebugInformation<'_>) -> Result<Self> {
         // calculate the location of the extra stream information
         let header = debug_info.header;
-        let offset = debug_info.header_len + (
-            header.module_list_size
+        let offset = debug_info.header_len
+            + (header.module_list_size
                 + header.section_contribution_size
                 + header.section_map_size
                 + header.file_info_size
                 + header.type_server_map_size
                 + header.mfc_type_server_index
-                + header.ec_substream_size
-        ) as usize;
+                + header.ec_substream_size) as usize;
 
         // seek
         let mut buf = debug_info.stream.parse_buffer();
@@ -547,17 +557,19 @@ impl DBIExtraStreams {
         Self::parse(&mut extra_streams_buf)
     }
 
-    pub(crate) fn parse(buf: &mut ParseBuffer) -> Result<DBIExtraStreams> {
+    pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         // short reads are okay, as are long reads -- this struct is actually an array
         // what's _not_ okay are
         if buf.len() % 2 == 1 {
-            return Err(Error::UnimplementedFeature("DbgDataHdr should always be an even number of bytes"))
+            return Err(Error::UnimplementedFeature(
+                "DbgDataHdr should always be an even number of bytes",
+            ));
         }
 
         fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
             match err {
                 Error::UnexpectedEof => Ok(0xffff),
-                other => Err(other)
+                other => Err(other),
             }
         }
 
@@ -576,32 +588,65 @@ impl DBIExtraStreams {
         })
     }
 
-    pub fn fpo(&self) -> Option<u16> { optional_stream_number(self.fpo) }
-    pub fn exception(&self) -> Option<u16> { optional_stream_number(self.exception) }
-    pub fn fixup(&self) -> Option<u16> { optional_stream_number(self.fixup) }
-    pub fn omap_to_src(&self) -> Option<u16> { optional_stream_number(self.omap_to_src) }
-    pub fn omap_from_src(&self) -> Option<u16> { optional_stream_number(self.omap_from_src) }
-    pub fn section_headers(&self) -> Option<u16> { optional_stream_number(self.section_headers) }
-    pub fn token_rid_map(&self) -> Option<u16> { optional_stream_number(self.token_rid_map) }
-    pub fn xdata(&self) -> Option<u16> { optional_stream_number(self.xdata) }
-    pub fn pdata(&self) -> Option<u16> { optional_stream_number(self.pdata) }
-    pub fn new_fpo(&self) -> Option<u16> { optional_stream_number(self.new_fpo) }
-    pub fn original_section_headers(&self) -> Option<u16> { optional_stream_number(self.original_section_headers) }
+    #[allow(unused)]
+    pub fn fpo(&self) -> Option<u32> {
+        optional_stream_number(self.fpo)
+    }
+
+    #[allow(unused)]
+    pub fn exception(&self) -> Option<u32> {
+        optional_stream_number(self.exception)
+    }
+
+    #[allow(unused)]
+    pub fn fixup(&self) -> Option<u32> {
+        optional_stream_number(self.fixup)
+    }
+
+    pub fn omap_to_src(&self) -> Option<u32> {
+        optional_stream_number(self.omap_to_src)
+    }
+
+    pub fn omap_from_src(&self) -> Option<u32> {
+        optional_stream_number(self.omap_from_src)
+    }
+
+    pub fn section_headers(&self) -> Option<u32> {
+        optional_stream_number(self.section_headers)
+    }
+
+    #[allow(unused)]
+    pub fn token_rid_map(&self) -> Option<u32> {
+        optional_stream_number(self.token_rid_map)
+    }
+
+    #[allow(unused)]
+    pub fn xdata(&self) -> Option<u32> {
+        optional_stream_number(self.xdata)
+    }
+
+    #[allow(unused)]
+    pub fn pdata(&self) -> Option<u32> {
+        optional_stream_number(self.pdata)
+    }
+
+    #[allow(unused)]
+    pub fn new_fpo(&self) -> Option<u32> {
+        optional_stream_number(self.new_fpo)
+    }
+
+    pub fn original_section_headers(&self) -> Option<u32> {
+        optional_stream_number(self.original_section_headers)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use dbi::*;
+    use crate::dbi::*;
 
     #[test]
     fn test_dbi_extra_streams() {
-        let bytes = vec![
-            0xff, 0xff,
-            0x01, 0x02,
-            0x03, 0x04,
-            0xff, 0xff,
-            0x05, 0x06
-        ];
+        let bytes = vec![0xff, 0xff, 0x01, 0x02, 0x03, 0x04, 0xff, 0xff, 0x05, 0x06];
 
         let mut buf = ParseBuffer::from(bytes.as_slice());
         let extra_streams = DBIExtraStreams::parse(&mut buf).expect("parse");

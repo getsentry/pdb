@@ -1,13 +1,18 @@
-extern crate pdb;
+use std::collections::hash_map::{Entry, HashMap};
+
 use pdb::FallibleIterator;
 
-use std::collections::HashMap;
-
-fn setup<F>(func: F) where F: FnOnce(&pdb::SymbolTable, bool) -> () {
+fn setup<F>(func: F)
+where
+    F: FnOnce(&pdb::SymbolTable<'_>, bool) -> (),
+{
     let (file, is_fixture) = if let Ok(filename) = std::env::var("PDB_FILE") {
         (std::fs::File::open(filename).expect("opening file"), false)
     } else {
-        (std::fs::File::open("fixtures/self/foo.pdb").expect("opening file"), true)
+        (
+            std::fs::File::open("fixtures/self/foo.pdb").expect("opening file"),
+            true,
+        )
     };
 
     let mut pdb = pdb::PDB::open(file).expect("opening pdb");
@@ -18,7 +23,7 @@ fn setup<F>(func: F) where F: FnOnce(&pdb::SymbolTable, bool) -> () {
 
 #[test]
 fn count_symbols() {
-    setup(|global_symbols,is_fixture| {
+    setup(|global_symbols, is_fixture| {
         let mut map: HashMap<u16, usize> = HashMap::new();
 
         // walk the symbol table
@@ -34,11 +39,17 @@ fn count_symbols() {
                 println!("fn kind_{:04x}() {{", sym.raw_kind());
                 println!("    let buf = &{:?};", sym.raw_bytes());
                 println!("    let (symbol, data, name) = parse(buf).expect(\"parse\");");
-                println!("    assert_eq!(symbol.raw_kind(), 0x{:04x});", sym.raw_kind());
-                println!("    assert_eq!(data, SymbolData::{:?});", sym.parse().expect("parse"));
+                println!(
+                    "    assert_eq!(symbol.raw_kind(), 0x{:04x});",
+                    sym.raw_kind()
+                );
+                println!(
+                    "    assert_eq!(data, SymbolData::{:?});",
+                    sym.parse().expect("parse")
+                );
                 println!("    assert_eq!(name, {:?});", sym.name().expect("name"));
                 println!("}}");
-                println!("");
+                println!();
             }
 
             *entry += 1;
@@ -62,26 +73,26 @@ fn count_symbols() {
 
 #[test]
 fn find_symbols() {
-    setup(|global_symbols,is_fixture| {
+    setup(|global_symbols, is_fixture| {
         // can't do much if we don't know which PDB we're using
         if !is_fixture {
-            return
+            return;
         }
 
         let mut map: HashMap<&[u8], Option<pdb::SymbolData>> = HashMap::new();
 
         // look for:
         // main(), defined in the program
-        map.insert("main".as_bytes(), None);
+        map.insert(b"main", None);
 
         // malloc(), defined in libc
-        map.insert("memcpy".as_bytes(), None);
+        map.insert(b"memcpy", None);
 
         // HeapAlloc(), defined... somewhere
-        map.insert("HeapAlloc".as_bytes(), None);
+        map.insert(b"HeapAlloc", None);
 
         // Baz::static_f_public(), except MSVC-mangled
-        map.insert("?static_f_public@Baz@@SAXXZ".as_bytes(), None);
+        map.insert(b"?static_f_public@Baz@@SAXXZ", None);
 
         // walk the symbol table
         let mut iter = global_symbols.iter();
@@ -92,13 +103,10 @@ fn find_symbols() {
             // ensure we can parse all the symbols, even though we only want a few
             let data = sym.parse().expect("symbol parsing");
 
-            match map.entry(name.as_bytes()) {
-                std::collections::hash_map::Entry::Occupied(mut e) => {
-                    // this is a symbol we wanted to find
-                    // store our data
-                    e.insert(Some(data));
-                }
-                _ => {}
+            if let Entry::Occupied(mut e) = map.entry(name.as_bytes()) {
+                // this is a symbol we wanted to find
+                // store our data
+                e.insert(Some(data));
             }
         }
 

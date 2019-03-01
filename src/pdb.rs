@@ -5,23 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use dbi;
-use module_info;
-use msf;
-use symbol;
-use tpi;
-use pdbi;
-
-use common::*;
-use dbi::{DebugInformation, Module};
-use module_info::ModuleInfo;
-use source::Source;
-use msf::{MSF, Stream};
-use symbol::SymbolTable;
-use tpi::TypeInformation;
-use pdbi::PDBInformation;
-use pe::ImageSectionHeader;
-use omap::{AddressMap, OMAPTable};
+use crate::common::*;
+use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
+use crate::module_info::ModuleInfo;
+use crate::msf::{self, Stream, MSF};
+use crate::omap::{AddressMap, OMAPTable};
+use crate::pdbi::PDBInformation;
+use crate::pe::ImageSectionHeader;
+use crate::source::Source;
+use crate::symbol::SymbolTable;
+use crate::tpi::TypeInformation;
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -29,7 +22,7 @@ use omap::{AddressMap, OMAPTable};
 const PDB_STREAM: u32 = 1;
 const TPI_STREAM: u32 = 2;
 const DBI_STREAM: u32 = 3;
-#[allow(dead_code)]
+#[allow(unused)]
 const IPI_STREAM: u32 = 4;
 
 /// `PDB` provides access to the data within a PDB file.
@@ -40,13 +33,13 @@ const IPI_STREAM: u32 = 4;
 #[derive(Debug)]
 pub struct PDB<'s, S> {
     /// `msf` provides access to the underlying data streams
-    msf: Box<MSF<'s, S> + 's>,
+    msf: Box<dyn MSF<'s, S> + 's>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
-    dbi_header: Option<dbi::Header>,
+    dbi_header: Option<DBIHeader>,
 
     /// Memoize the `dbi::DBIExtraStreams`, since it too contains stream numbers we sometimes need
-    dbi_extra_streams: Option<dbi::DBIExtraStreams>,
+    dbi_extra_streams: Option<DBIExtraStreams>,
 }
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
@@ -63,10 +56,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange`, `Error::InvalidPageSize` if the PDB file seems corrupt
     pub fn open(source: S) -> Result<PDB<'s, S>> {
-        let msf = msf::open_msf(source)?;
-
-        Ok(PDB{
-            msf: msf,
+        Ok(PDB {
+            msf: msf::open_msf(source)?,
             dbi_header: None,
             dbi_extra_streams: None,
         })
@@ -83,13 +74,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     pub fn pdb_information(&mut self) -> Result<PDBInformation<'s>> {
-        let stream: Stream = self.msf.get(PDB_STREAM, None)?;
-
-        // Parse it
-        let pdb_info = pdbi::new_pdb_information(stream)?;
-
-        // Return
-        Ok(pdb_info)
+        let stream = self.msf.get(PDB_STREAM, None)?;
+        PDBInformation::parse(stream)
     }
 
     /// Retrieve the `TypeInformation` for this PDB.
@@ -105,13 +91,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
     ///   understood
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
-        let stream: Stream = self.msf.get(TPI_STREAM, None)?;
-
-        // Parse it
-        let type_info = tpi::new_type_information(stream)?;
-
-        // Return
-        Ok(type_info)
+        let stream = self.msf.get(TPI_STREAM, None)?;
+        TypeInformation::parse(stream)
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
@@ -125,35 +106,25 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn debug_information(&mut self) -> Result<DebugInformation<'s>> {
-        let stream: Stream = self.msf.get(DBI_STREAM, None)?;
-
-        // Parse it
-        let debug_info = dbi::DebugInformation::new(stream)?;
+        let stream = self.raw_stream(DBI_STREAM)?;
+        let debug_info = DebugInformation::parse(stream)?;
 
         // Grab its header, since we need that for unrelated operations
-        self.dbi_header = Some(debug_info.get_header());
-
-        // Return
+        self.dbi_header = Some(debug_info.header());
         Ok(debug_info)
     }
 
-    fn dbi_header(&mut self) -> Result<dbi::Header> {
+    fn dbi_header(&mut self) -> Result<DBIHeader> {
         // see if we've already got a header
         if let Some(ref h) = self.dbi_header {
             return Ok(*h);
         }
 
-        let header;
-
-        {
-            // get just the first little bit of the DBI stream
-            let stream: Stream = self.msf.get(DBI_STREAM, Some(1024))?;
-            let mut buf = stream.parse_buffer();
-            header = dbi::parse_header(&mut buf)?;
-        }
+        // get just the first little bit of the DBI stream
+        let stream = self.msf.get(DBI_STREAM, Some(1024))?;
+        let header = DBIHeader::parse(stream)?;
 
         self.dbi_header = Some(header);
-
         Ok(header)
     }
 
@@ -183,9 +154,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let dbi_header = self.dbi_header()?;
 
         // open the appropriate stream
-        let stream: Stream = self.msf.get(dbi_header.symbol_records_stream as u32, None)?;
-
-        Ok(symbol::new_symbol_table(stream))
+        let stream = self.raw_stream(dbi_header.symbol_records_stream.into())?;
+        SymbolTable::parse(stream)
     }
 
     /// Retrieve the module info stream for a specific `Module`.
@@ -226,11 +196,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// [`debug_information`]: #method.debug_information
     /// [`modules`]: struct.DebugInformation.html#method.modules
     pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
-        let res = {
-            let stream: Stream = self.msf.get(module.info().stream as u32, None)?;
-            module_info::new_module_info(stream, module)
-        };
-        res
+        let stream = self.raw_stream(module.info().stream.into())?;
+        ModuleInfo::parse(stream, module)
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
@@ -258,8 +225,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             None => return Ok(None),
         };
 
-        // Parse
-        let stream = self.msf.get(stream_number as u32, None)?;
+        let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
         while buf.len() > 0 {
@@ -275,7 +241,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             None => return Ok(None),
         };
 
-        let stream = self.msf.get(stream_number as u32, None)?;
+        let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
         while buf.len() > 0 {
@@ -286,25 +252,23 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     pub(crate) fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
-        // Open the appropriate stream
-        let stream_number = match self.extra_streams()?.omap_from_src().map(u32::from) {
+        let stream_number = match self.extra_streams()?.omap_from_src() {
             Some(number) => number,
             None => return Ok(None),
         };
 
-        let stream = self.msf.get(stream_number, None)?;
+        let stream = self.raw_stream(stream_number)?;
         let table = OMAPTable::parse(stream)?;
         Ok(Some(table))
     }
 
     pub(crate) fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
-        // Open the appropriate stream
-        let stream_number = match self.extra_streams()?.omap_to_src().map(u32::from) {
+        let stream_number = match self.extra_streams()?.omap_to_src() {
             Some(number) => number,
             None => return Ok(None),
         };
 
-        let stream = self.msf.get(stream_number, None)?;
+        let stream = self.raw_stream(stream_number)?;
         let table = OMAPTable::parse(stream)?;
         Ok(Some(table))
     }
@@ -336,14 +300,18 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
         Ok(match self.original_sections()? {
             Some(original_sections) => {
-                let omap_from_src = self.omap_from_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
-                let omap_to_src = self.omap_to_src()?.ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_from_src = self
+                    .omap_from_src()?
+                    .ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_to_src = self
+                    .omap_to_src()?
+                    .ok_or_else(|| Error::AddressMapNotFound)?;
 
                 AddressMap {
                     original_sections,
                     transformed_sections: Some(sections),
                     original_to_transformed: Some(omap_from_src),
-                    transformed_to_original: Some(omap_to_src)
+                    transformed_to_original: Some(omap_to_src),
                 }
             }
             None => AddressMap {
@@ -351,7 +319,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
                 transformed_sections: None,
                 original_to_transformed: None,
                 transformed_to_original: None,
-            }
+            },
         })
     }
 
@@ -359,7 +327,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// # Errors
     ///
-    /// * `Error::StreamNotFound` if the PDB does not contain this module info stream
+    /// * `Error::StreamNotFound` if the PDB does not contain this stream
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     ///
@@ -371,10 +339,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// let mut pdb = pdb::PDB::open(file)?;
     /// // This is the index of the "mystream" stream that was added using pdbstr.exe.
     /// let s = pdb.raw_stream(208)?;
-    /// let mut buf = s.parse_buffer();
-    /// let len = buf.len();
-    /// let bytes = buf.take(len)?;
-    /// assert_eq!(bytes, b"hello world\n");
+    /// assert_eq!(s.as_slice(), b"hello world\n");
     /// # Ok(())
     /// # }
     /// ```
@@ -382,10 +347,18 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         self.msf.get(stream, None)
     }
 
+    /// Retrieve a stream by its name, as declared in the PDB info stream.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNameNotFound` if the PDB does not specify a stream with that name
+    /// * `Error::StreamNotFound` if the PDB does not contain the stream referred to
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     pub fn named_stream(&mut self, name: &[u8]) -> Result<Stream<'s>> {
         let info = self.pdb_information()?;
         let names = info.stream_names()?;
-        for n in names.iter() {
+        for n in &names {
             if n.name.as_bytes() == name {
                 return self.raw_stream(n.stream_id);
             }
@@ -399,14 +372,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// present in the PDB.
     ///
     /// The optional header begins at offset 0 immediately after the EC Substream ends.
-    fn extra_streams(&mut self) -> Result<dbi::DBIExtraStreams> {
+    fn extra_streams(&mut self) -> Result<DBIExtraStreams> {
         if let Some(extra) = self.dbi_extra_streams {
             return Ok(extra);
         }
 
         // Parse and grab information on extra streams, since we might also need that
         let debug_info = self.debug_information()?;
-        let extra = dbi::DBIExtraStreams::new(&debug_info)?;
+        let extra = DBIExtraStreams::new(&debug_info)?;
         self.dbi_extra_streams = Some(extra);
 
         Ok(extra)

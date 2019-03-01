@@ -6,14 +6,14 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::borrow::Cow;
-use std::convert;
-use std::error;
 use std::fmt;
 use std::io;
 use std::result;
 
-use scroll::{self, Endian, Pread, LE};
 use scroll::ctx::TryFromCtx;
+use scroll::{self, Endian, Pread, LE};
+
+use crate::tpi::constants;
 
 /// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
@@ -32,9 +32,10 @@ pub enum Error {
     /// This likely indicates file corruption.
     PageReferenceOutOfRange(u32),
 
-    // The requested stream is not stored in this file.
+    /// The requested stream is not stored in this file.
     StreamNotFound(u32),
 
+    /// A stream requested by name was not found.
     StreamNameNotFound,
 
     /// An IO error occurred while reading from the data source.
@@ -78,10 +79,12 @@ pub enum Error {
     ScrollError(scroll::Error),
 }
 
-impl error::Error for Error {
+impl std::error::Error for Error {
     fn description(&self) -> &str {
         match *self {
-            Error::UnrecognizedFileFormat => "The input data was not recognized as a MSF (PDB) file",
+            Error::UnrecognizedFileFormat => {
+                "The input data was not recognized as a MSF (PDB) file"
+            }
             Error::InvalidPageSize(_) => "The MSF header specifies an invalid page size",
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
@@ -90,46 +93,83 @@ impl error::Error for Error {
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
             Error::SymbolTooShort => "A symbol record's length value was impossibly small",
-            Error::UnimplementedSymbolKind(_) => "Support for symbols of this kind is not implemented",
+            Error::UnimplementedSymbolKind(_) => {
+                "Support for symbols of this kind is not implemented"
+            }
             Error::InvalidTypeInformationHeader(_) => "The type information header was invalid",
             Error::TypeTooShort => "A type record's length value was impossibly small",
             Error::TypeNotFound(_) => "Type not found",
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
-            Error::UnexpectedNumericPrefix(_) => "Variable-length numeric parsing encountered an unexpected prefix",
-            Error::AddressMapNotFound => "Required mapping for virtual addresses (OMAP) was not found",
+            Error::UnexpectedNumericPrefix(_) => {
+                "Variable-length numeric parsing encountered an unexpected prefix"
+            }
+            Error::AddressMapNotFound => {
+                "Required mapping for virtual addresses (OMAP) was not found"
+            }
             Error::ScrollError(ref e) => e.description(),
         }
     }
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> ::std::result::Result<(), fmt::Error> {
         match *self {
-            Error::PageReferenceOutOfRange(p) => write!(f, "MSF referred to page number ({}) out of range", p),
-            Error::InvalidPageSize(n) => write!(f, "The MSF header specifies an invalid page size ({} bytes)", n),
-            Error::StreamNotFound(s) => write!(f, "The requested stream ({}) is not stored in this file", s),
+            Error::PageReferenceOutOfRange(p) => {
+                write!(f, "MSF referred to page number ({}) out of range", p)
+            }
+            Error::InvalidPageSize(n) => write!(
+                f,
+                "The MSF header specifies an invalid page size ({} bytes)",
+                n
+            ),
+            Error::StreamNotFound(s) => {
+                write!(f, "The requested stream ({}) is not stored in this file", s)
+            }
             Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
-            Error::UnimplementedFeature(feature) => write!(f, "Unimplemented PDB feature: {}", feature),
-            Error::UnimplementedSymbolKind(kind) => write!(f, "Support for symbols of kind 0x{:04x} is not implemented", kind),
-            Error::InvalidTypeInformationHeader(reason) => write!(f, "The type information header was invalid: {}", reason),
+            Error::UnimplementedFeature(feature) => {
+                write!(f, "Unimplemented PDB feature: {}", feature)
+            }
+            Error::UnimplementedSymbolKind(kind) => write!(
+                f,
+                "Support for symbols of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::InvalidTypeInformationHeader(reason) => {
+                write!(f, "The type information header was invalid: {}", reason)
+            }
             Error::TypeNotFound(type_index) => write!(f, "Type {} not found", type_index),
-            Error::TypeNotIndexed(type_index, indexed_count) => write!(f, "Type {} not indexed (index covers {})", type_index, indexed_count),
-            Error::UnimplementedTypeKind(kind) => write!(f, "Support for types of kind 0x{:04x} is not implemented", kind),
-            Error::UnexpectedNumericPrefix(prefix) => write!(f, "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}", prefix),
-            Error::AddressMapNotFound => write!(f, "Required mapping for virtual addresses (OMAP) was not found"),
-            _ => fmt::Debug::fmt(self, f)
+            Error::TypeNotIndexed(type_index, indexed_count) => write!(
+                f,
+                "Type {} not indexed (index covers {})",
+                type_index, indexed_count
+            ),
+            Error::UnimplementedTypeKind(kind) => write!(
+                f,
+                "Support for types of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::UnexpectedNumericPrefix(prefix) => write!(
+                f,
+                "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}",
+                prefix
+            ),
+            Error::AddressMapNotFound => write!(
+                f,
+                "Required mapping for virtual addresses (OMAP) was not found"
+            ),
+            _ => fmt::Debug::fmt(self, f),
         }
     }
 }
 
-impl convert::From<io::Error> for Error {
+impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::IoError(e)
     }
 }
 
-impl convert::From<scroll::Error> for Error {
+impl From<scroll::Error> for Error {
     fn from(e: scroll::Error) -> Self {
         match e {
             // Convert a couple of scroll errors into EOF.
@@ -139,6 +179,7 @@ impl convert::From<scroll::Error> for Error {
     }
 }
 
+/// The result type returned by this crate.
 pub type Result<T> = result::Result<T, Error>;
 
 /// A Relative Virtual Address as it appears in a PE file.
@@ -162,13 +203,13 @@ impl From<Rva> for u32 {
 }
 
 impl fmt::Display for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#08x}", self.0)
     }
 }
 
 impl fmt::Debug for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Rva({})", self)
     }
 }
@@ -191,13 +232,19 @@ pub struct SectionOffset {
 }
 
 impl SectionOffset {
+    /// Creates a new PE section offset.
     pub fn new(section: u16, offset: u32) -> Self {
         SectionOffset { offset, section }
+    }
+
+    /// Returns whether this section offset points to a valid section or into the void.
+    pub fn is_valid(self) -> bool {
+        self.section != 0
     }
 }
 
 impl fmt::Debug for SectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
             .field("section", &format!("{:#x}", self.section))
             .field("offset", &format!("{:#08x}", self.offset))
@@ -207,7 +254,9 @@ impl fmt::Debug for SectionOffset {
 
 /// A Relative Virtual Address in an unoptimized PE file.
 ///
-/// This instance can be converted into an actual [`Rva`] using [`rva`].
+/// An internal RVA points into the PDB internal address space and may not correspond to RVAs of the
+/// executable. It can be converted into an actual [`Rva`] suitable for debugging purposes using
+/// [`rva`].
 ///
 /// [`Rva`]: struct.Rva.html
 /// [`rva`]: struct.PdbInternalRva.html#method.rva
@@ -227,13 +276,13 @@ impl From<PdbInternalRva> for u32 {
 }
 
 impl fmt::Display for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#08x}", self.0)
     }
 }
 
 impl fmt::Debug for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PdbInternalRva({})", self)
     }
 }
@@ -253,18 +302,28 @@ impl fmt::Debug for PdbInternalRva {
 /// [`SectionOffset`]: struct.SectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PdbInternalSectionOffset {
+    /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
+
+    /// The index of the section in the PDB's section headers list, incremented by `1`. A value of
+    /// `0` indicates an invalid or missing reference.
     pub section: u16,
 }
 
 impl PdbInternalSectionOffset {
+    /// Creates a new PDB internal section offset.
     pub fn new(section: u16, offset: u32) -> Self {
         PdbInternalSectionOffset { offset, section }
+    }
+
+    /// Returns whether this section offset points to a valid section or into the void.
+    pub fn is_valid(self) -> bool {
+        self.section != 0
     }
 }
 
 impl fmt::Debug for PdbInternalSectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PdbInternalSectionOffset")
             .field("section", &format!("{:#x}", self.section))
             .field("offset", &format!("{:#08x}", self.offset))
@@ -274,8 +333,8 @@ impl fmt::Debug for PdbInternalSectionOffset {
 
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]
-#[derive(Debug,Clone)]
-pub struct ParseBuffer<'b> (&'b [u8], usize);
+#[derive(Debug, Clone)]
+pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
 
 macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
@@ -327,7 +386,8 @@ impl<'b> ParseBuffer<'b> {
     }
 
     pub fn parse<T>(&mut self) -> Result<T>
-        where T: TryFromCtx<'b, Endian, [u8], Error=scroll::Error, Size=usize>,
+    where
+        T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
     {
         Ok(self.0.gread_with(&mut self.1, LE)?)
     }
@@ -342,10 +402,7 @@ impl<'b> ParseBuffer<'b> {
         (parse_i64, i64),
     );
 
-    def_peek!(
-        (peek_u8, u8),
-        (peek_u16, u16),
-    );
+    def_peek!((peek_u8, u8), (peek_u16, u16),);
 
     /// Parse a NUL-terminated string from the input.
     #[doc(hidden)]
@@ -385,19 +442,19 @@ impl<'b> ParseBuffer<'b> {
 
     pub fn parse_variant(&mut self) -> Result<Variant> {
         let leaf = self.parse_u16()?;
-        if leaf < ::tpi::constants::LF_NUMERIC {
+        if leaf < constants::LF_NUMERIC {
             // the u16 directly encodes a value
             return Ok(Variant::U16(leaf));
         }
 
         match leaf {
-            ::tpi::constants::LF_CHAR =>      { Ok(Variant::U8 (self.parse_u8()? )) },
-            ::tpi::constants::LF_SHORT =>     { Ok(Variant::I16(self.parse_i16()?)) },
-            ::tpi::constants::LF_LONG =>      { Ok(Variant::I32(self.parse_i32()?)) },
-            ::tpi::constants::LF_QUADWORD =>  { Ok(Variant::I64(self.parse_i64()?)) },
-            ::tpi::constants::LF_USHORT =>    { Ok(Variant::U16(self.parse_u16()?)) },
-            ::tpi::constants::LF_ULONG =>     { Ok(Variant::U32(self.parse_u32()?)) },
-            ::tpi::constants::LF_UQUADWORD => { Ok(Variant::U64(self.parse_u64()?)) },
+            constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
+            constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
+            constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
+            constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
+            constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
+            constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
+            constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
             _ => {
                 debug_assert!(false);
                 Err(Error::UnexpectedNumericPrefix(leaf))
@@ -413,7 +470,7 @@ impl<'b> From<&'b [u8]> for ParseBuffer<'b> {
 }
 
 impl<'b> fmt::LowerHex for ParseBuffer<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
         write!(f, "ParseBuf::from(\"")?;
         for byte in self.0 {
             write!(f, "\\x{:02x}", byte)?;
@@ -422,7 +479,8 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
     }
 }
 
-#[derive(Debug,Copy,Clone,PartialEq,Eq)]
+/// Value of an enumerate type.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Variant {
     U8(u8),
     U16(u16),
@@ -437,17 +495,17 @@ pub enum Variant {
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
 ///
 /// A `RawString` may not be valid UTF-8.
-#[derive(Clone,PartialEq,Eq,Hash,PartialOrd,Ord)]
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
-impl<'b> fmt::Debug for RawString<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for RawString<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RawString::from({:?})", self.to_string())
     }
 }
 
-impl<'b> fmt::Display for RawString<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Display for RawString<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.to_string())
     }
 }
@@ -504,7 +562,7 @@ impl<'b> From<&'b [u8]> for RawString<'b> {
 #[cfg(test)]
 mod tests {
     mod parse_buffer {
-        use common::*;
+        use crate::common::*;
 
         #[test]
         fn test_parse_u8() {
@@ -540,7 +598,7 @@ mod tests {
 
             match buf.parse_u8() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -559,13 +617,13 @@ mod tests {
 
             match buf.parse_u16() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u16() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -577,32 +635,32 @@ mod tests {
             let val = buf.parse_u32().unwrap();
             assert_eq!(buf.len(), 3);
             assert_eq!(buf.pos(), 4);
-            assert_eq!(val, 0x04030201);
+            assert_eq!(val, 0x0403_0201);
 
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 5);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 6);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             assert_eq!(buf.pos(), 7);
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -612,11 +670,11 @@ mod tests {
             let mut buf = ParseBuffer::from(vec.as_slice());
 
             let val = buf.parse_u64().unwrap();
-            assert_eq!(val, 0x0807060504030201);
+            assert_eq!(val, 0x0807_0605_0403_0201);
 
             match buf.parse_u64() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -632,25 +690,25 @@ mod tests {
 
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
 
             buf.take(1).unwrap();
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -661,21 +719,21 @@ mod tests {
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 8);
             assert_eq!(buf.pos(), 6);
-            assert_eq!(val, RawString::from("hello".as_bytes()));
+            assert_eq!(val, RawString::from(&b"hello"[..]));
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 2);
             assert_eq!(buf.pos(), 12);
-            assert_eq!(val, RawString::from("world".as_bytes()));
+            assert_eq!(val, RawString::from(&b"world"[..]));
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 1);
             assert_eq!(buf.pos(), 13);
-            assert_eq!(val, RawString::from("".as_bytes()));
+            assert_eq!(val, RawString::from(&b""[..]));
 
             match buf.parse_cstring() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
 
@@ -686,21 +744,21 @@ mod tests {
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 8);
             assert_eq!(buf.pos(), 6);
-            assert_eq!(val, RawString::from("hello".as_bytes()));
+            assert_eq!(val, RawString::from(&b"hello"[..]));
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 2);
             assert_eq!(buf.pos(), 12);
-            assert_eq!(val, RawString::from("world".as_bytes()));
+            assert_eq!(val, RawString::from(&b"world"[..]));
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 1);
             assert_eq!(buf.pos(), 13);
-            assert_eq!(val, RawString::from("".as_bytes()));
+            assert_eq!(val, RawString::from(&b""[..]));
 
             match buf.parse_u8_pascal_string() {
                 Err(Error::UnexpectedEof) => (),
-                _ => panic!("expected EOF")
+                _ => panic!("expected EOF"),
             }
         }
     }
