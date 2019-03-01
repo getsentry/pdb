@@ -128,7 +128,7 @@ impl<'t> TypeInformation<'t> {
             .expect("dropping TPI header");
 
         TypeIter {
-            buf: buf,
+            buf,
             type_index: self.header.minimum_type_index,
         }
     }
@@ -141,6 +141,11 @@ impl<'t> TypeInformation<'t> {
         (self.header.maximum_type_index - self.header.minimum_type_index) as usize
     }
 
+    /// Returns whether this `TypeInformation` contains any types.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns a `TypeFinder` with a default time-space tradeoff.
     ///
     /// The `TypeFinder` is initially empty and must be populated by iterating.
@@ -150,23 +155,18 @@ impl<'t> TypeInformation<'t> {
 }
 
 pub(crate) fn new_type_information(stream: Stream) -> Result<TypeInformation> {
-    let h;
-
-    {
+    let header = {
         let mut buf = stream.parse_buffer();
-        h = Header::parse(&mut buf)?;
-    }
+        Header::parse(&mut buf)?
+    };
 
-    Ok(TypeInformation {
-        stream: stream,
-        header: h,
-    })
+    Ok(TypeInformation { stream, header })
 }
 
 /// This buffer is used when a `Type` refers to a primitive type. It doesn't contain anything
 /// type-specific, but it does parse as `raw_type() == 0xffff`, which is a reserved value. Seems
 /// like a reasonable thing to do.
-const PRIMITIVE_TYPE: &'static [u8] = b"\xff\xff";
+const PRIMITIVE_TYPE: &[u8] = b"\xff\xff";
 
 /// Represents a type from the type table. A `Type` has been minimally processed and may not be
 /// correctly formed or even understood by this library.
@@ -189,6 +189,13 @@ impl<'t> Type<'t> {
         self.1.len()
     }
 
+    /// Returns whether this type's data is empty.
+    ///
+    /// Types are prefixed by length, which is not included in this operation.
+    pub fn is_empty(&self) -> bool {
+        self.1.is_empty()
+    }
+
     /// Returns the kind of type identified by this `Type`.
     ///
     /// As a special case, if this `Type` is actually a primitive type, `raw_kind()` will return
@@ -198,7 +205,7 @@ impl<'t> Type<'t> {
         debug_assert!(self.1.len() >= 2);
 
         // assemble a little-endian u16
-        (self.1[0] as u16) | ((self.1[1] as u16) << 8)
+        u16::from(self.1[0]) | (u16::from(self.1[1]) << 8)
     }
 
     /// Parse this Type into a TypeData.
@@ -280,7 +287,7 @@ fn new_type_finder<'b, 't: 'b>(type_info: &'b TypeInformation<'t>, shift: u8) ->
     let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
     let shifted_count = (count >> shift) as usize;
 
-    let mut positions: Vec<u32> = Vec::with_capacity(shifted_count);
+    let mut positions = Vec::with_capacity(shifted_count);
 
     // add record zero, which is identical regardless of shift
     positions.push(type_info.header.header_size);
@@ -289,8 +296,8 @@ fn new_type_finder<'b, 't: 'b>(type_info: &'b TypeInformation<'t>, shift: u8) ->
         buffer: type_info.stream.parse_buffer(),
         minimum_type_index: type_info.header.minimum_type_index,
         maximum_type_index: type_info.header.maximum_type_index,
-        positions: positions,
-        shift: shift,
+        positions,
+        shift,
     }
 }
 

@@ -72,7 +72,7 @@ fn view<'s>(source: &mut Source<'s>, page_list: &PageList) -> Result<Box<SourceV
 mod big {
     use super::*;
 
-    pub const MAGIC: &'static [u8] = b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00\x00\x00";
+    pub const MAGIC: &[u8] = b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00\x00\x00";
 
     /// The PDB header as stored on disk.
     /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
@@ -137,7 +137,7 @@ mod big {
 
             Ok(BigMSF {
                 header: header_object,
-                source: source,
+                source,
                 stream_table: StreamTable::HeaderOnly {
                     size_in_bytes: header.directory_size as usize,
                     stream_table_location_location: stream_table_page_list_page_list,
@@ -189,19 +189,14 @@ mod big {
             }
 
             // do we need to map the stream table itself?
-            let mut new_stream_table: Option<StreamTable> = None;
+            let mut new_stream_table = None;
             if let StreamTable::TableFound {
                 ref stream_table_location,
             } = self.stream_table
             {
-                // yep
                 // ask the source to view it
                 let stream_table_view = view(&mut self.source, stream_table_location)?;
-
-                // done
-                new_stream_table = Some(StreamTable::Available {
-                    stream_table_view: stream_table_view,
-                });
+                new_stream_table = Some(StreamTable::Available { stream_table_view });
             }
 
             if let Some(st) = new_stream_table {
@@ -209,8 +204,8 @@ mod big {
             }
 
             // stream table is available
-            assert!(match &self.stream_table {
-                &StreamTable::Available { .. } => true,
+            assert!(match self.stream_table {
+                StreamTable::Available { .. } => true,
                 _ => false,
             });
 
@@ -258,7 +253,7 @@ mod big {
                 let mut page_numbers_to_skip: usize = 0;
                 for _ in 0..stream_number {
                     let bytes = stream_table.parse_u32()?;
-                    if bytes == 0xffffffff {
+                    if bytes == u32::max_value() {
                         // stream is not present, ergo nothing to skip
                     } else {
                         page_numbers_to_skip += header.pages_needed_to_store(bytes as usize);
@@ -267,7 +262,7 @@ mod big {
 
                 // read our stream's size
                 bytes_in_stream = stream_table.parse_u32()?;
-                if bytes_in_stream == 0xffffffff {
+                if bytes_in_stream == u32::max_value() {
                     return Err(Error::StreamNotFound(stream_number));
                 }
                 let pages_in_stream = header.pages_needed_to_store(bytes_in_stream as usize);
@@ -321,7 +316,7 @@ mod big {
 }
 
 mod small {
-    pub const MAGIC: &'static [u8] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47";
+    pub const MAGIC: &[u8] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47";
     // TODO: implement SmallMSF
 }
 

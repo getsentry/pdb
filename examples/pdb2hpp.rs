@@ -134,7 +134,7 @@ impl<'p> Class<'p> {
     ) -> pdb::Result<()> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::FieldList(data) => {
-                for ref field in data.fields {
+                for field in &data.fields {
                     self.add_field(type_finder, field, needed_types)?;
                 }
 
@@ -161,8 +161,8 @@ impl<'p> Class<'p> {
         field: &pdb::TypeData<'p>,
         needed_types: &mut TypeSet,
     ) -> pdb::Result<()> {
-        match field {
-            &pdb::TypeData::Member(ref data) => {
+        match *field {
+            pdb::TypeData::Member(ref data) => {
                 // TODO: attributes (static, virtual, etc.)
                 self.fields.push(Field {
                     type_name: type_name(type_finder, data.field_type, needed_types)?,
@@ -171,7 +171,7 @@ impl<'p> Class<'p> {
                 });
             }
 
-            &pdb::TypeData::Method(ref data) => {
+            pdb::TypeData::Method(ref data) => {
                 let method = Method::find(
                     data.name.clone(),
                     data.attributes,
@@ -186,17 +186,16 @@ impl<'p> Class<'p> {
                 }
             }
 
-            &pdb::TypeData::OverloadedMethod(ref data) => {
+            pdb::TypeData::OverloadedMethod(ref data) => {
                 // this just means we have more than one method with the same name
                 // find the method list
                 match type_finder.find(data.method_list)?.parse()? {
                     pdb::TypeData::MethodList(method_list) => {
-                        let mut iter = method_list.methods.into_iter();
-                        while let Some(pdb::MethodListEntry {
+                        for pdb::MethodListEntry {
                             attributes,
                             method_type,
                             ..
-                        }) = iter.next()
+                        } in method_list.methods
                         {
                             // hooray
                             let method = Method::find(
@@ -206,6 +205,7 @@ impl<'p> Class<'p> {
                                 method_type,
                                 needed_types,
                             )?;
+
                             if attributes.is_static() {
                                 self.static_methods.push(method);
                             } else {
@@ -223,12 +223,12 @@ impl<'p> Class<'p> {
                 }
             }
 
-            &pdb::TypeData::BaseClass(ref data) => self.base_classes.push(BaseClass {
+            pdb::TypeData::BaseClass(ref data) => self.base_classes.push(BaseClass {
                 type_name: type_name(type_finder, data.base_class, needed_types)?,
                 offset: data.offset,
             }),
 
-            &pdb::TypeData::VirtualBaseClass(ref data) => self.base_classes.push(BaseClass {
+            pdb::TypeData::VirtualBaseClass(ref data) => self.base_classes.push(BaseClass {
                 type_name: type_name(type_finder, data.base_class, needed_types)?,
                 offset: data.base_pointer_offset,
             }),
@@ -255,7 +255,7 @@ impl<'p> fmt::Display for Class<'p> {
             self.name.to_string()
         )?;
 
-        if self.base_classes.len() > 0 {
+        if !self.base_classes.is_empty() {
             for (i, base) in self.base_classes.iter().enumerate() {
                 let prefix = match i {
                     0 => ":",
@@ -275,7 +275,7 @@ impl<'p> fmt::Display for Class<'p> {
             )?;
         }
 
-        for ref field in &self.fields {
+        for field in &self.fields {
             writeln!(
                 f,
                 "\t/* offset {:3} */ {} {};",
@@ -350,7 +350,7 @@ impl<'p> Method<'p> {
     ) -> pdb::Result<Method<'p>> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::MemberFunction(data) => Ok(Method {
-                name: name,
+                name,
                 return_type_name: type_name(type_finder, data.return_type, needed_types)?,
                 arguments: argument_list(type_finder, data.argument_list, needed_types)?,
                 is_virtual: attributes.is_virtual(),
@@ -399,7 +399,7 @@ impl<'p> Enum<'p> {
     ) -> pdb::Result<()> {
         match type_finder.find(type_index)?.parse()? {
             pdb::TypeData::FieldList(data) => {
-                for ref field in data.fields {
+                for field in &data.fields {
                     self.add_field(type_finder, field, needed_types)?;
                 }
 
@@ -426,17 +426,12 @@ impl<'p> Enum<'p> {
         field: &pdb::TypeData<'p>,
         _: &mut TypeSet,
     ) -> pdb::Result<()> {
-        match field {
-            &pdb::TypeData::Enumerate(ref data) => {
-                self.values.push(EnumValue {
-                    name: data.name.clone(),
-                    value: data.value,
-                });
-            }
-
-            _ => {
-                // ignore everything else even though that's sad
-            }
+        // ignore everything else even though that's sad
+        if let pdb::TypeData::Enumerate(ref data) = field {
+            self.values.push(EnumValue {
+                name: data.name.clone(),
+                value: data.value,
+            });
         }
 
         Ok(())
@@ -514,19 +509,19 @@ impl<'p> fmt::Display for Data<'p> {
         writeln!(f, "// automatically generated by pdb2hpp\n// do not edit")?;
 
         if !self.forward_references.is_empty() {
-            writeln!(f, "")?;
+            writeln!(f)?;
             for e in self.forward_references.iter() {
                 e.fmt(f)?;
             }
         }
 
         for e in self.enums.iter() {
-            writeln!(f, "")?;
+            writeln!(f)?;
             e.fmt(f)?;
         }
 
         for class in self.classes.iter() {
-            writeln!(f, "")?;
+            writeln!(f)?;
             class.fmt(f)?;
         }
 
@@ -655,7 +650,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
         }
     }
 
-    if data.classes.len() == 0 {
+    if data.classes.is_empty() {
         writeln!(
             &mut std::io::stderr(),
             "sorry, class {} was not found",

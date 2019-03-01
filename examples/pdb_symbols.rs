@@ -11,7 +11,7 @@ fn print_usage(program: &str, opts: Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn print_row(offset: PdbInternalSectionOffset, kind: &'static str, name: pdb::RawString<'_>) {
+fn print_row(offset: PdbInternalSectionOffset, kind: &str, name: pdb::RawString<'_>) {
     println!(
         "{:x}\t{:x}\t{}\t{}",
         offset.section,

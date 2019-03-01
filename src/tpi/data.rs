@@ -233,7 +233,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
             loop {
                 let dim = parse_unsigned(&mut buf)?;
-                if dim > u32::max_value() as u64 {
+                if dim > u64::from(u32::max_value()) {
                     return Err(Error::UnimplementedFeature("u64 array sizes"));
                 }
                 dimensions.push(dim as u32);
@@ -259,10 +259,10 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             assert!(buf.len() == 0);
 
             Ok(TypeData::Array(ArrayType {
-                element_type: element_type,
-                indexing_type: indexing_type,
-                stride: stride,
-                dimensions: dimensions,
+                element_type,
+                indexing_type,
+                stride,
+                dimensions,
             }))
         }
 
@@ -334,8 +334,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             }
 
             Ok(TypeData::FieldList(FieldList {
-                fields: fields,
-                continuation: continuation,
+                fields,
+                continuation,
             }))
         }
 
@@ -367,7 +367,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 });
             }
 
-            Ok(TypeData::MethodList(MethodList { methods: methods }))
+            Ok(TypeData::MethodList(MethodList { methods }))
         }
 
         _ => Err(Error::UnimplementedTypeKind(leaf)),
@@ -377,7 +377,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 #[inline]
 fn parse_optional_type_index<'t>(buf: &mut ParseBuffer<'t>) -> Result<Option<TypeIndex>> {
     let index = buf.parse_u32()? as TypeIndex;
-    if index == 0 || index == 0xffff {
+    if index == 0 || index == u32::from(u16::max_value()) {
         Ok(None)
     } else {
         Ok(Some(index))
@@ -411,14 +411,14 @@ fn parse_unsigned<'t>(buf: &mut ParseBuffer<'t>) -> Result<u64> {
     let leaf = buf.parse_u16()?;
     if leaf < LF_NUMERIC {
         // the u16 directly encodes a value
-        return Ok(leaf as u64);
+        return Ok(u64::from(leaf));
     }
 
     match leaf {
-        LF_CHAR => Ok(buf.parse_u8()? as u64),
-        LF_USHORT => Ok(buf.parse_u16()? as u64),
-        LF_ULONG => Ok(buf.parse_u32()? as u64),
-        LF_UQUADWORD => Ok(buf.parse_u64()? as u64),
+        LF_CHAR => Ok(u64::from(buf.parse_u8()?)),
+        LF_USHORT => Ok(u64::from(buf.parse_u16()?)),
+        LF_ULONG => Ok(u64::from(buf.parse_u32()?)),
+        LF_UQUADWORD => Ok(buf.parse_u64()?),
         _ => {
             debug_assert!(false);
             Err(Error::UnexpectedNumericPrefix(leaf))
@@ -448,35 +448,35 @@ unsigned short  mocom       :2;     // CV_MOCOM_UDT_e
 pub struct TypeProperties(u16);
 impl TypeProperties {
     /// Indicates if a type is packed via `#pragma pack` or similar.
-    pub fn packed(&self) -> bool {
+    pub fn packed(self) -> bool {
         self.0 & 0x0001 != 0
     }
 
     /// Indicates if a type has constructors or destructors.
-    pub fn constructors(&self) -> bool {
+    pub fn constructors(self) -> bool {
         self.0 & 0x0002 != 0
     }
 
     /// Indicates if a type has any overloaded operators.
-    pub fn overloaded_operators(&self) -> bool {
+    pub fn overloaded_operators(self) -> bool {
         self.0 & 0x0004 != 0
     }
 
     /// Indicates if a type is a nested type, e.g. a `union` defined inside a `class`.
-    pub fn is_nested_type(&self) -> bool {
+    pub fn is_nested_type(self) -> bool {
         self.0 & 0x0008 != 0
     }
 
     /// Indicates if a type contains nested types.
-    pub fn contains_nested_types(&self) -> bool {
+    pub fn contains_nested_types(self) -> bool {
         self.0 & 0x0010 != 0
     }
 
     /// Indicates if a class has overloaded the assignment operator.
-    pub fn overloaded_assignment(&self) -> bool {
+    pub fn overloaded_assignment(self) -> bool {
         self.0 & 0x0020 != 0
     }
-    pub fn overloaded_casting(&self) -> bool {
+    pub fn overloaded_casting(self) -> bool {
         self.0 & 0x0040 != 0
     }
 
@@ -484,26 +484,26 @@ impl TypeProperties {
     /// placeholder until a complete Type can be built. This is necessary for e.g. self-referential
     /// data structures, but other more common declaration/definition idioms can cause forward
     /// references too.
-    pub fn forward_reference(&self) -> bool {
+    pub fn forward_reference(self) -> bool {
         self.0 & 0x0080 != 0
     }
 
-    pub fn scoped_definition(&self) -> bool {
+    pub fn scoped_definition(self) -> bool {
         self.0 & 0x0100 != 0
     }
-    pub fn has_unique_name(&self) -> bool {
+    pub fn has_unique_name(self) -> bool {
         self.0 & 0x0200 != 0
     }
-    pub fn sealed(&self) -> bool {
+    pub fn sealed(self) -> bool {
         self.0 & 0x0400 != 0
     }
-    pub fn hfa(&self) -> u8 {
+    pub fn hfa(self) -> u8 {
         ((self.0 & 0x1800) >> 11) as u8
     }
-    pub fn intrinsic_type(&self) -> bool {
+    pub fn intrinsic_type(self) -> bool {
         self.0 & 0x1000 != 0
     }
-    pub fn mocom(&self) -> u8 {
+    pub fn mocom(self) -> u8 {
         ((self.0 & 0x6000) >> 14) as u8
     }
 }
@@ -535,31 +535,31 @@ typedef enum CV_methodprop_e {
 pub struct FieldAttributes(u16);
 impl FieldAttributes {
     #[inline]
-    pub fn access(&self) -> u8 {
+    pub fn access(self) -> u8 {
         (self.0 & 0x0003) as u8
     }
     #[inline]
-    fn method_properties(&self) -> u8 {
+    fn method_properties(self) -> u8 {
         ((self.0 & 0x001c) >> 2) as u8
     }
 
     #[inline]
-    pub fn is_static(&self) -> bool {
+    pub fn is_static(self) -> bool {
         self.method_properties() == 0x02
     }
 
     #[inline]
-    pub fn is_virtual(&self) -> bool {
+    pub fn is_virtual(self) -> bool {
         self.method_properties() == 0x01
     }
 
     #[inline]
-    pub fn is_pure_virtual(&self) -> bool {
+    pub fn is_pure_virtual(self) -> bool {
         self.method_properties() == 0x05
     }
 
     #[inline]
-    pub fn is_intro_virtual(&self) -> bool {
+    pub fn is_intro_virtual(self) -> bool {
         match self.method_properties() {
             0x04 | 0x06 => true,
             _ => false,
@@ -591,16 +591,16 @@ typedef struct CV_funcattr_t {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct FunctionAttributes(u16);
 impl FunctionAttributes {
-    pub fn calling_convention(&self) -> u8 {
+    pub fn calling_convention(self) -> u8 {
         (self.0 & 0xff) as u8
     }
-    pub fn cxx_return_udt(&self) -> bool {
+    pub fn cxx_return_udt(self) -> bool {
         (self.0 & 0x0100) > 0
     }
-    pub fn is_constructor(&self) -> bool {
+    pub fn is_constructor(self) -> bool {
         (self.0 & 0x0200) > 0
     }
-    pub fn is_constructor_with_virtual_bases(&self) -> bool {
+    pub fn is_constructor_with_virtual_bases(self) -> bool {
         (self.0 & 0x0400) > 0
     }
 }
@@ -655,17 +655,17 @@ impl PointerAttributes {
     // TODO
 
     /// Indicates the type of pointer.
-    pub fn pointer_type(&self) -> u8 {
+    pub fn pointer_type(self) -> u8 {
         (self.0 & 0x1f) as u8
     }
 
     /// Indicates if this pointer is `const`.
-    pub fn is_const(&self) -> bool {
+    pub fn is_const(self) -> bool {
         (self.0 & 0x40) != 0
     }
 
     /// Is this a C++ reference, as opposed to a C pointer?
-    pub fn is_reference(&self) -> bool {
+    pub fn is_reference(self) -> bool {
         match (self.0 >> 5) & 0x07 {
             0x01 | 0x04 => true,
             _ => false,
@@ -673,7 +673,7 @@ impl PointerAttributes {
     }
 
     /// The size of the pointer in bytes.
-    pub fn size(&self) -> u8 {
+    pub fn size(self) -> u8 {
         let size = ((self.0 >> 13) & 0x3f) as u8;
         if size != 0 {
             return size;

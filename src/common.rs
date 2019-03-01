@@ -614,7 +614,7 @@ mod tests {
             let val = buf.parse_u32().unwrap();
             assert_eq!(buf.len(), 3);
             assert_eq!(buf.pos(), 4);
-            assert_eq!(val, 0x04030201);
+            assert_eq!(val, 0x0403_0201);
 
             match buf.parse_u32() {
                 Err(Error::UnexpectedEof) => (),
@@ -649,7 +649,7 @@ mod tests {
             let mut buf = ParseBuffer::from(vec.as_slice());
 
             let val = buf.parse_u64().unwrap();
-            assert_eq!(val, 0x0807060504030201);
+            assert_eq!(val, 0x0807_0605_0403_0201);
 
             match buf.parse_u64() {
                 Err(Error::UnexpectedEof) => (),
@@ -698,17 +698,17 @@ mod tests {
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 8);
             assert_eq!(buf.pos(), 6);
-            assert_eq!(val, RawString::from("hello".as_bytes()));
+            assert_eq!(val, RawString::from(&b"hello"[..]));
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 2);
             assert_eq!(buf.pos(), 12);
-            assert_eq!(val, RawString::from("world".as_bytes()));
+            assert_eq!(val, RawString::from(&b"world"[..]));
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 1);
             assert_eq!(buf.pos(), 13);
-            assert_eq!(val, RawString::from("".as_bytes()));
+            assert_eq!(val, RawString::from(&b""[..]));
 
             match buf.parse_cstring() {
                 Err(Error::UnexpectedEof) => (),
@@ -723,17 +723,17 @@ mod tests {
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 8);
             assert_eq!(buf.pos(), 6);
-            assert_eq!(val, RawString::from("hello".as_bytes()));
+            assert_eq!(val, RawString::from(&b"hello"[..]));
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 2);
             assert_eq!(buf.pos(), 12);
-            assert_eq!(val, RawString::from("world".as_bytes()));
+            assert_eq!(val, RawString::from(&b"world"[..]));
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 1);
             assert_eq!(buf.pos(), 13);
-            assert_eq!(val, RawString::from("".as_bytes()));
+            assert_eq!(val, RawString::from(&b""[..]));
 
             match buf.parse_u8_pascal_string() {
                 Err(Error::UnexpectedEof) => (),

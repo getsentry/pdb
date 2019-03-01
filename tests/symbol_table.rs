@@ -1,7 +1,7 @@
 extern crate pdb;
 use pdb::FallibleIterator;
 
-use std::collections::HashMap;
+use std::collections::hash_map::{Entry, HashMap};
 
 fn setup<F>(func: F)
 where
@@ -50,7 +50,7 @@ fn count_symbols() {
                 );
                 println!("    assert_eq!(name, {:?});", sym.name().expect("name"));
                 println!("}}");
-                println!("");
+                println!();
             }
 
             *entry += 1;
@@ -84,16 +84,16 @@ fn find_symbols() {
 
         // look for:
         // main(), defined in the program
-        map.insert("main".as_bytes(), None);
+        map.insert(b"main", None);
 
         // malloc(), defined in libc
-        map.insert("memcpy".as_bytes(), None);
+        map.insert(b"memcpy", None);
 
         // HeapAlloc(), defined... somewhere
-        map.insert("HeapAlloc".as_bytes(), None);
+        map.insert(b"HeapAlloc", None);
 
         // Baz::static_f_public(), except MSVC-mangled
-        map.insert("?static_f_public@Baz@@SAXXZ".as_bytes(), None);
+        map.insert(b"?static_f_public@Baz@@SAXXZ", None);
 
         // walk the symbol table
         let mut iter = global_symbols.iter();
@@ -104,13 +104,10 @@ fn find_symbols() {
             // ensure we can parse all the symbols, even though we only want a few
             let data = sym.parse().expect("symbol parsing");
 
-            match map.entry(name.as_bytes()) {
-                std::collections::hash_map::Entry::Occupied(mut e) => {
-                    // this is a symbol we wanted to find
-                    // store our data
-                    e.insert(Some(data));
-                }
-                _ => {}
+            if let Entry::Occupied(mut e) = map.entry(name.as_bytes()) {
+                // this is a symbol we wanted to find
+                // store our data
+                e.insert(Some(data));
             }
         }
 

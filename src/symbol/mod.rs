@@ -84,7 +84,7 @@ impl<'t> Symbol<'t> {
         debug_assert!(self.0.len() >= 2);
 
         // assemble a little-endian u16
-        (self.0[0] as u16) | ((self.0[1] as u16) << 8)
+        u16::from(self.0[0]) | (u16::from(self.0[1]) << 8)
     }
 
     /// Returns the raw bytes of this symbol record, including the symbol type but not including
@@ -188,10 +188,10 @@ impl<'t> fmt::Debug for Symbol<'t> {
 //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/cvdump/dumpsym7.cpp#L264
 
 // CV_PUBSYMFLAGS_e:
-const CVPSF_CODE: u32 = 0x00000001;
-const CVPSF_FUNCTION: u32 = 0x00000002;
-const CVPSF_MANAGED: u32 = 0x00000004;
-const CVPSF_MSIL: u32 = 0x00000008;
+const CVPSF_CODE: u32 = 0x1;
+const CVPSF_FUNCTION: u32 = 0x2;
+const CVPSF_MANAGED: u32 = 0x4;
+const CVPSF_MSIL: u32 = 0x8;
 
 fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
     let mut buf = ParseBuffer::from(data);

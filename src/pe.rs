@@ -86,9 +86,13 @@ impl ImageSectionHeader {
     }
 
     pub fn name(&self) -> RawString {
-        let first_nul = self.name.iter().position(|ch| *ch == 0);
-        let name_bytes = &self.name[0..first_nul.unwrap_or(self.name.len())];
-        RawString::from(name_bytes)
+        let end = self
+            .name
+            .iter()
+            .position(|ch| *ch == 0)
+            .unwrap_or_else(|| self.name.len());
+
+        RawString::from(&self.name[0..end])
     }
 }
 
@@ -145,13 +149,13 @@ mod tests {
         assert_eq!(&ish.name, b".data\0\0\0");
         assert_eq!(ish.name(), RawString::from(".data"));
         assert_eq!(ish.physical_address, 0x93548);
-        assert_eq!(ish.virtual_address, 0x1ed000);
+        assert_eq!(ish.virtual_address, 0x001e_d000);
         assert_eq!(ish.size_of_raw_data, 0xfe00);
-        assert_eq!(ish.pointer_to_raw_data, 0x1ea200);
+        assert_eq!(ish.pointer_to_raw_data, 0x001e_a200);
         assert_eq!(ish.pointer_to_relocations, 0);
         assert_eq!(ish.pointer_to_line_numbers, 0);
         assert_eq!(ish.number_of_relocations, 0);
         assert_eq!(ish.number_of_line_numbers, 0);
-        assert_eq!(ish.characteristics, 0xc8000040);
+        assert_eq!(ish.characteristics, 0xc800_0040);
     }
 }

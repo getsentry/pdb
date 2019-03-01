@@ -22,7 +22,7 @@ impl PageList {
     /// Create a new PageList for a given page size.
     pub fn new(page_size: usize) -> PageList {
         PageList {
-            page_size: page_size,
+            page_size,
             source_slices: Vec::new(),
             last_page: None,
             truncated: false,
@@ -41,12 +41,12 @@ impl PageList {
 
         if is_continuous {
             // extend by one page
-            debug_assert!(self.source_slices.len() > 0);
+            debug_assert!(!self.source_slices.is_empty());
             let last_slice = self.source_slices.last_mut().unwrap();
             last_slice.size += self.page_size;
         } else {
             self.source_slices.push(SourceSlice {
-                offset: (self.page_size as u64) * (page as u64),
+                offset: (self.page_size as u64) * u64::from(page),
                 size: self.page_size,
             });
         }

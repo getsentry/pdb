@@ -231,8 +231,5 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         }
     };
 
-    Ok(TypeData::Primitive(PrimitiveType {
-        kind: kind,
-        indirection: indirection,
-    }))
+    Ok(TypeData::Primitive(PrimitiveType { kind, indirection }))
 }

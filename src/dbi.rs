@@ -70,16 +70,16 @@ impl<'s> DebugInformation<'s> {
     }
 
     pub(crate) fn new(stream: Stream) -> Result<DebugInformation> {
-        let (header, len) = {
+        let (header, header_len) = {
             let mut buf = stream.parse_buffer();
             let header = parse_header(&mut buf)?;
             (header, buf.pos())
         };
 
         Ok(DebugInformation {
-            stream: stream,
-            header: header,
-            header_len: len,
+            stream,
+            header,
+            header_len,
         })
     }
 }
@@ -97,11 +97,11 @@ pub enum HeaderVersion {
 impl From<u32> for HeaderVersion {
     fn from(v: u32) -> Self {
         match v {
-            930803 => HeaderVersion::V41,
-            19960307 => HeaderVersion::V50,
-            19970606 => HeaderVersion::V60,
-            19990903 => HeaderVersion::V70,
-            20091201 => HeaderVersion::V110,
+            930_803 => HeaderVersion::V41,
+            19_960_307 => HeaderVersion::V50,
+            19_970_606 => HeaderVersion::V60,
+            19_990_903 => HeaderVersion::V70,
+            20_091_201 => HeaderVersion::V110,
             _ => HeaderVersion::OtherValue(v),
         }
     }
@@ -196,7 +196,7 @@ pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
         reserved: buf.parse_u32()?,
     };
 
-    if header.signature != 0xffffffff {
+    if header.signature != u32::max_value() {
         // this is likely a DBIHdr, not a NewDBIHdr
         // it could be promoted:
         //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
@@ -512,11 +512,11 @@ pub(crate) struct DBIExtraStreams {
     original_section_headers: u16,
 }
 
-fn optional_stream_number(sn: u16) -> Option<u16> {
-    if sn == 0xffff {
+fn optional_stream_number(sn: u16) -> Option<u32> {
+    if sn == u16::max_value() {
         None
     } else {
-        Some(sn)
+        Some(u32::from(sn))
     }
 }
 
@@ -576,37 +576,54 @@ impl DBIExtraStreams {
         })
     }
 
-    pub fn fpo(&self) -> Option<u16> {
+    #[allow(unused)]
+    pub fn fpo(&self) -> Option<u32> {
         optional_stream_number(self.fpo)
     }
-    pub fn exception(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn exception(&self) -> Option<u32> {
         optional_stream_number(self.exception)
     }
-    pub fn fixup(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn fixup(&self) -> Option<u32> {
         optional_stream_number(self.fixup)
     }
-    pub fn omap_to_src(&self) -> Option<u16> {
+
+    pub fn omap_to_src(&self) -> Option<u32> {
         optional_stream_number(self.omap_to_src)
     }
-    pub fn omap_from_src(&self) -> Option<u16> {
+
+    pub fn omap_from_src(&self) -> Option<u32> {
         optional_stream_number(self.omap_from_src)
     }
-    pub fn section_headers(&self) -> Option<u16> {
+
+    pub fn section_headers(&self) -> Option<u32> {
         optional_stream_number(self.section_headers)
     }
-    pub fn token_rid_map(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn token_rid_map(&self) -> Option<u32> {
         optional_stream_number(self.token_rid_map)
     }
-    pub fn xdata(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn xdata(&self) -> Option<u32> {
         optional_stream_number(self.xdata)
     }
-    pub fn pdata(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn pdata(&self) -> Option<u32> {
         optional_stream_number(self.pdata)
     }
-    pub fn new_fpo(&self) -> Option<u16> {
+
+    #[allow(unused)]
+    pub fn new_fpo(&self) -> Option<u32> {
         optional_stream_number(self.new_fpo)
     }
-    pub fn original_section_headers(&self) -> Option<u16> {
+
+    pub fn original_section_headers(&self) -> Option<u32> {
         optional_stream_number(self.original_section_headers)
     }
 }
