@@ -40,7 +40,7 @@ fn iteration() {
 #[test]
 fn type_finder() {
     setup(|type_information| {
-        let mut type_finder = type_information.new_type_finder();
+        let mut type_finder = type_information.type_finder();
         let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
         assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
@@ -68,7 +68,7 @@ fn type_finder() {
 #[test]
 fn find_classes() {
     setup(|type_information| {
-        let mut type_finder = type_information.new_type_finder();
+        let mut type_finder = type_information.type_finder();
 
         // iterate over all the types
         let mut iter = type_information.iter();

@@ -1,6 +1,5 @@
 use std::collections::BTreeSet;
 use std::fmt;
-use std::io::Write;
 
 use pdb::FallibleIterator;
 
@@ -588,15 +587,8 @@ impl<'p> Data<'p> {
                 self.enums.insert(0, e);
             }
 
-            other => {
-                // ignore
-                writeln!(
-                    &mut std::io::stderr(),
-                    "warning: don't know how to add {:?}",
-                    other
-                )
-                .expect("stderr write");;
-            }
+            // ignore
+            other => eprintln!("warning: don't know how to add {:?}", other),
         }
 
         Ok(())
@@ -608,7 +600,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
     let mut pdb = pdb::PDB::open(file)?;
 
     let type_information = pdb.type_information()?;
-    let mut type_finder = type_information.new_type_finder();
+    let mut type_finder = type_information.type_finder();
 
     let mut needed_types = TypeSet::new();
     let mut data = Data::new();
@@ -648,12 +640,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
     }
 
     if data.classes.is_empty() {
-        writeln!(
-            &mut std::io::stderr(),
-            "sorry, class {} was not found",
-            class_name
-        )
-        .expect("stderr write");
+        eprintln!("sorry, class {} was not found", class_name);
     } else {
         println!("{}", data);
     }
@@ -686,9 +673,7 @@ fn main() {
     };
 
     match write_class(&filename, &class_name) {
-        Ok(_) => {}
-        Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");
-        }
+        Ok(_) => (),
+        Err(e) => eprintln!("error dumping PDB: {}", e),
     }
 }

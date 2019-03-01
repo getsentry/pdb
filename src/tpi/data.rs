@@ -569,7 +569,7 @@ impl FieldAttributes {
     // TODO
 }
 
-#[allow(dead_code)]
+#[allow(unused)]
 #[repr(u8)]
 enum Access {
     None = 0x00,

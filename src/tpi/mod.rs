@@ -111,12 +111,19 @@ pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 /// # assert!(test().expect("test") > 8000);
 /// ```
 #[derive(Debug)]
-pub struct TypeInformation<'t> {
-    stream: Stream<'t>,
+pub struct TypeInformation<'s> {
+    stream: Stream<'s>,
     header: Header,
 }
 
-impl<'t> TypeInformation<'t> {
+impl<'s> TypeInformation<'s> {
+    /// Parses `TypeInformation` from raw stream data.
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        let mut buf = stream.parse_buffer();
+        let header = Header::parse(&mut buf)?;
+        Ok(TypeInformation { stream, header })
+    }
+
     /// Returns an iterator that can traverse the type table in sequential order.
     pub fn iter(&self) -> TypeIter<'_> {
         // get a parse buffer
@@ -149,18 +156,15 @@ impl<'t> TypeInformation<'t> {
     /// Returns a `TypeFinder` with a default time-space tradeoff.
     ///
     /// The `TypeFinder` is initially empty and must be populated by iterating.
-    pub fn new_type_finder(&self) -> TypeFinder<'_> {
-        new_type_finder(self, 3)
+    pub fn type_finder(&self) -> TypeFinder<'_> {
+        TypeFinder::new(self, 3)
     }
-}
 
-pub(crate) fn new_type_information(stream: Stream<'_>) -> Result<TypeInformation<'_>> {
-    let header = {
-        let mut buf = stream.parse_buffer();
-        Header::parse(&mut buf)?
-    };
-
-    Ok(TypeInformation { stream, header })
+    #[doc(hidden)]
+    #[deprecated(note = "use type_finder() instead")]
+    pub fn new_type_finder(&self) -> TypeFinder<'_> {
+        self.type_finder()
+    }
 }
 
 /// This buffer is used when a `Type` refers to a primitive type. It doesn't contain anything
@@ -283,25 +287,25 @@ pub struct TypeFinder<'t> {
     shift: u8,
 }
 
-fn new_type_finder<'b, 't: 'b>(type_info: &'b TypeInformation<'t>, shift: u8) -> TypeFinder<'b> {
-    let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
-    let shifted_count = (count >> shift) as usize;
-
-    let mut positions = Vec::with_capacity(shifted_count);
-
-    // add record zero, which is identical regardless of shift
-    positions.push(type_info.header.header_size);
-
-    TypeFinder {
-        buffer: type_info.stream.parse_buffer(),
-        minimum_type_index: type_info.header.minimum_type_index,
-        maximum_type_index: type_info.header.maximum_type_index,
-        positions,
-        shift,
-    }
-}
-
 impl<'t> TypeFinder<'t> {
+    fn new(type_info: &'t TypeInformation<'_>, shift: u8) -> Self {
+        let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
+        let shifted_count = (count >> shift) as usize;
+
+        let mut positions = Vec::with_capacity(shifted_count);
+
+        // add record zero, which is identical regardless of shift
+        positions.push(type_info.header.header_size);
+
+        TypeFinder {
+            buffer: type_info.stream.parse_buffer(),
+            minimum_type_index: type_info.header.minimum_type_index,
+            maximum_type_index: type_info.header.maximum_type_index,
+            positions,
+            shift,
+        }
+    }
+
     /// Given a `TypeIndex`, find which position in the Vec we should jump to and how many times we
     /// need to iterate to find the requested type.
     ///

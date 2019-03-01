@@ -6,15 +6,15 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::common::*;
-use crate::dbi::{self, DebugInformation, Module};
-use crate::module_info::{self, ModuleInfo};
+use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
+use crate::module_info::ModuleInfo;
 use crate::msf::{self, Stream, MSF};
 use crate::omap::{AddressMap, OMAPTable};
-use crate::pdbi::{self, PDBInformation};
+use crate::pdbi::PDBInformation;
 use crate::pe::ImageSectionHeader;
 use crate::source::Source;
-use crate::symbol::{self, SymbolTable};
-use crate::tpi::{self, TypeInformation};
+use crate::symbol::SymbolTable;
+use crate::tpi::TypeInformation;
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -22,7 +22,7 @@ use crate::tpi::{self, TypeInformation};
 const PDB_STREAM: u32 = 1;
 const TPI_STREAM: u32 = 2;
 const DBI_STREAM: u32 = 3;
-#[allow(dead_code)]
+#[allow(unused)]
 const IPI_STREAM: u32 = 4;
 
 /// `PDB` provides access to the data within a PDB file.
@@ -36,10 +36,10 @@ pub struct PDB<'s, S> {
     msf: Box<dyn MSF<'s, S> + 's>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
-    dbi_header: Option<dbi::Header>,
+    dbi_header: Option<DBIHeader>,
 
     /// Memoize the `dbi::DBIExtraStreams`, since it too contains stream numbers we sometimes need
-    dbi_extra_streams: Option<dbi::DBIExtraStreams>,
+    dbi_extra_streams: Option<DBIExtraStreams>,
 }
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
@@ -74,8 +74,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     pub fn pdb_information(&mut self) -> Result<PDBInformation<'s>> {
-        let stream: Stream<'_> = self.msf.get(PDB_STREAM, None)?;
-        pdbi::new_pdb_information(stream)
+        let stream = self.msf.get(PDB_STREAM, None)?;
+        PDBInformation::parse(stream)
     }
 
     /// Retrieve the `TypeInformation` for this PDB.
@@ -91,8 +91,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
     ///   understood
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
-        let stream: Stream<'_> = self.msf.get(TPI_STREAM, None)?;
-        tpi::new_type_information(stream)
+        let stream = self.msf.get(TPI_STREAM, None)?;
+        TypeInformation::parse(stream)
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
@@ -107,14 +107,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn debug_information(&mut self) -> Result<DebugInformation<'s>> {
         let stream = self.raw_stream(DBI_STREAM)?;
-        let debug_info = dbi::DebugInformation::new(stream)?;
+        let debug_info = DebugInformation::parse(stream)?;
 
         // Grab its header, since we need that for unrelated operations
-        self.dbi_header = Some(debug_info.get_header());
+        self.dbi_header = Some(debug_info.header());
         Ok(debug_info)
     }
 
-    fn dbi_header(&mut self) -> Result<dbi::Header> {
+    fn dbi_header(&mut self) -> Result<DBIHeader> {
         // see if we've already got a header
         if let Some(ref h) = self.dbi_header {
             return Ok(*h);
@@ -122,7 +122,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
 
         // get just the first little bit of the DBI stream
         let stream = self.msf.get(DBI_STREAM, Some(1024))?;
-        let header = dbi::parse_header(&mut stream.parse_buffer())?;
+        let header = DBIHeader::parse(stream)?;
 
         self.dbi_header = Some(header);
         Ok(header)
@@ -155,7 +155,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
 
         // open the appropriate stream
         let stream = self.raw_stream(dbi_header.symbol_records_stream.into())?;
-        Ok(symbol::new_symbol_table(stream))
+        SymbolTable::parse(stream)
     }
 
     /// Retrieve the module info stream for a specific `Module`.
@@ -197,7 +197,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// [`modules`]: struct.DebugInformation.html#method.modules
     pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
         let stream = self.raw_stream(module.info().stream.into())?;
-        module_info::new_module_info(stream, module)
+        ModuleInfo::parse(stream, module)
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
@@ -375,14 +375,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// present in the PDB.
     ///
     /// The optional header begins at offset 0 immediately after the EC Substream ends.
-    fn extra_streams(&mut self) -> Result<dbi::DBIExtraStreams> {
+    fn extra_streams(&mut self) -> Result<DBIExtraStreams> {
         if let Some(extra) = self.dbi_extra_streams {
             return Ok(extra);
         }
 
         // Parse and grab information on extra streams, since we might also need that
         let debug_info = self.debug_information()?;
-        let extra = dbi::DBIExtraStreams::new(&debug_info)?;
+        let extra = DBIExtraStreams::new(&debug_info)?;
         self.dbi_extra_streams = Some(extra);
 
         Ok(extra)

@@ -8,6 +8,7 @@
 // DBI = "Debug Information"
 
 use std::borrow::Cow;
+use std::fmt;
 use std::result;
 
 use crate::common::*;
@@ -44,11 +45,27 @@ use crate::FallibleIterator;
 #[derive(Debug)]
 pub struct DebugInformation<'s> {
     stream: Stream<'s>,
-    header: Header,
+    header: DBIHeader,
     header_len: usize,
 }
 
 impl<'s> DebugInformation<'s> {
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        let mut buf = stream.parse_buffer();
+        let header = DBIHeader::parse_buf(&mut buf)?;
+        let header_len = buf.pos();
+
+        Ok(DebugInformation {
+            stream,
+            header,
+            header_len,
+        })
+    }
+
+    pub(crate) fn header(&self) -> DBIHeader {
+        self.header
+    }
+
     /// Returns the target's machine type (architecture).
     pub fn machine_type(&self) -> Result<MachineType> {
         Ok(self.header.machine_type.into())
@@ -62,24 +79,6 @@ impl<'s> DebugInformation<'s> {
         let modules_buf = buf.take(self.header.module_list_size as usize)?;
         Ok(ModuleIter {
             buf: modules_buf.into(),
-        })
-    }
-
-    pub(crate) fn get_header(&self) -> Header {
-        self.header
-    }
-
-    pub(crate) fn new(stream: Stream<'s>) -> Result<Self> {
-        let (header, header_len) = {
-            let mut buf = stream.parse_buffer();
-            let header = parse_header(&mut buf)?;
-            (header, buf.pos())
-        };
-
-        Ok(DebugInformation {
-            stream,
-            header,
-            header_len,
         })
     }
 }
@@ -111,7 +110,7 @@ impl From<u32> for HeaderVersion {
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
 #[derive(Debug, Copy, Clone)]
-pub struct Header {
+pub struct DBIHeader {
     pub signature: u32,
     pub version: HeaderVersion,
     pub age: u32,
@@ -172,40 +171,46 @@ pub struct Header {
     pub reserved: u32,
 }
 
-pub fn parse_header(buf: &mut ParseBuffer<'_>) -> Result<Header> {
-    let header = Header {
-        signature: buf.parse_u32()?,
-        version: From::from(buf.parse_u32()?),
-        age: buf.parse_u32()?,
-        gs_symbols_stream: buf.parse_u16()?,
-        internal_version: buf.parse_u16()?,
-        ps_symbols_stream: buf.parse_u16()?,
-        pdb_dll_build_version: buf.parse_u16()?,
-        symbol_records_stream: buf.parse_u16()?,
-        pdb_dll_rbld_version: buf.parse_u16()?,
-        module_list_size: buf.parse_u32()?,
-        section_contribution_size: buf.parse_u32()?,
-        section_map_size: buf.parse_u32()?,
-        file_info_size: buf.parse_u32()?,
-        type_server_map_size: buf.parse_u32()?,
-        mfc_type_server_index: buf.parse_u32()?,
-        debug_header_size: buf.parse_u32()?,
-        ec_substream_size: buf.parse_u32()?,
-        flags: buf.parse_u16()?,
-        machine_type: buf.parse_u16()?,
-        reserved: buf.parse_u32()?,
-    };
-
-    if header.signature != u32::max_value() {
-        // this is likely a DBIHdr, not a NewDBIHdr
-        // it could be promoted:
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
-        //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L1180-L1184
-        // but that seems like a lot of work
-        return Err(Error::UnimplementedFeature("ancient DBI header"));
+impl DBIHeader {
+    pub fn parse(stream: Stream<'_>) -> Result<Self> {
+        Self::parse_buf(&mut stream.parse_buffer())
     }
 
-    Ok(header)
+    fn parse_buf(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        let header = DBIHeader {
+            signature: buf.parse_u32()?,
+            version: From::from(buf.parse_u32()?),
+            age: buf.parse_u32()?,
+            gs_symbols_stream: buf.parse_u16()?,
+            internal_version: buf.parse_u16()?,
+            ps_symbols_stream: buf.parse_u16()?,
+            pdb_dll_build_version: buf.parse_u16()?,
+            symbol_records_stream: buf.parse_u16()?,
+            pdb_dll_rbld_version: buf.parse_u16()?,
+            module_list_size: buf.parse_u32()?,
+            section_contribution_size: buf.parse_u32()?,
+            section_map_size: buf.parse_u32()?,
+            file_info_size: buf.parse_u32()?,
+            type_server_map_size: buf.parse_u32()?,
+            mfc_type_server_index: buf.parse_u32()?,
+            debug_header_size: buf.parse_u32()?,
+            ec_substream_size: buf.parse_u32()?,
+            flags: buf.parse_u16()?,
+            machine_type: buf.parse_u16()?,
+            reserved: buf.parse_u32()?,
+        };
+
+        if header.signature != u32::max_value() {
+            // this is likely a DBIHdr, not a NewDBIHdr
+            // it could be promoted:
+            //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
+            //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L1180-L1184
+            // but that seems like a lot of work
+            return Err(Error::UnimplementedFeature("ancient DBI header"));
+        }
+
+        Ok(header)
+    }
 }
 
 /// The target machine's architecture.
@@ -266,8 +271,8 @@ pub enum MachineType {
     Invalid = 0xffff,
 }
 
-impl ::std::fmt::Display for MachineType {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+impl fmt::Display for MachineType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             MachineType::Invalid => write!(f, "Invalid"),
             MachineType::Unknown => write!(f, "Unknown"),

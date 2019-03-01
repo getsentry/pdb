@@ -9,7 +9,7 @@
 // from:
 //  https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2735
 
-#![allow(dead_code, non_upper_case_globals, non_camel_case_types)]
+#![allow(unused, non_upper_case_globals, non_camel_case_types)]
 
 use std::fmt;
 

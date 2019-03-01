@@ -1,5 +1,4 @@
 use std::ffi::OsStr;
-use std::io::Write;
 
 fn dump_stream_names(filename: &OsStr) -> pdb::Result<()> {
     let file = std::fs::File::open(filename)?;
@@ -23,9 +22,7 @@ fn main() {
     let filename = std::env::args_os().nth(1).expect("Missing PDB filename");
 
     match dump_stream_names(&filename) {
-        Ok(_) => {}
-        Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");
-        }
+        Ok(_) => (),
+        Err(e) => eprintln!("error dumping PDB: {}", e),
     }
 }

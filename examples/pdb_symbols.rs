@@ -1,5 +1,4 @@
 use std::env;
-use std::io::Write;
 
 use getopts::Options;
 use pdb::{FallibleIterator, PdbInternalSectionOffset};
@@ -43,16 +42,8 @@ fn walk_symbols(mut symbols: pdb::SymbolIter<'_>) -> pdb::Result<()> {
 
     while let Some(symbol) = symbols.next()? {
         match print_symbol(&symbol) {
-            Ok(_) => {}
-            Err(e) => {
-                writeln!(
-                    &mut std::io::stderr(),
-                    "error printing symbol {:?}: {}",
-                    symbol,
-                    e
-                )
-                .expect("stderr write");
-            }
+            Ok(_) => (),
+            Err(e) => eprintln!("error printing symbol {:?}: {}", symbol, e),
         }
     }
 
@@ -96,9 +87,7 @@ fn main() {
     };
 
     match dump_pdb(&filename) {
-        Ok(_) => {}
-        Err(e) => {
-            writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");
-        }
+        Ok(_) => (),
+        Err(e) => eprintln!("error dumping PDB: {}", e),
     }
 }

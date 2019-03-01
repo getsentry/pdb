@@ -52,15 +52,16 @@ use self::constants::*;
 /// # assert!(test().expect("test") > 2000);
 /// ```
 #[derive(Debug)]
-pub struct SymbolTable<'t> {
-    stream: Stream<'t>,
+pub struct SymbolTable<'s> {
+    stream: Stream<'s>,
 }
 
-pub(crate) fn new_symbol_table(s: Stream<'_>) -> SymbolTable<'_> {
-    SymbolTable { stream: s }
-}
+impl<'s> SymbolTable<'s> {
+    /// Parses a symbol table from raw stream data.
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        Ok(SymbolTable { stream })
+    }
 
-impl<'t> SymbolTable<'t> {
     /// Returns an iterator that can traverse the symbol table in sequential order.
     pub fn iter(&self) -> SymbolIter<'_> {
         SymbolIter::new(self.stream.parse_buffer())
