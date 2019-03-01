@@ -21,7 +21,7 @@ use crate::pe::ImageSectionHeader;
 /// `next_record.source_address` ).
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct OMAPRecord {
+pub(crate) struct OMAPRecord {
     source_address: u32,
     target_address: u32,
 }
@@ -86,7 +86,7 @@ impl Ord for OMAPRecord {
 /// [module level documentation]: ./index.html
 /// [`AddressMap`]: struct.AddressMap.html
 #[derive(Debug)]
-pub struct OMAPTable<'s> {
+pub(crate) struct OMAPTable<'s> {
     stream: Stream<'s>,
 }
 

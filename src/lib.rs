@@ -58,16 +58,13 @@ mod symbol;
 mod tpi;
 
 // exports
-pub use crate::common::{
-    Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
-    TypeIndex, Variant,
-};
-pub use crate::dbi::{DebugInformation, MachineType, Module, ModuleIter};
-pub use crate::module_info::ModuleInfo;
-pub use crate::omap::AddressMap;
-pub use crate::pdb::PDB;
-pub use crate::pdbi::{NameIter, PDBInformation, StreamName, StreamNames};
-pub use crate::pe::ImageSectionHeader;
+pub use crate::common::*;
+pub use crate::dbi::*;
+pub use crate::module_info::*;
+pub use crate::omap::*;
+pub use crate::pdb::*;
+pub use crate::pdbi::*;
+pub use crate::pe::*;
 pub use crate::source::*;
 pub use crate::symbol::*;
 pub use crate::tpi::*;

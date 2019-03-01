@@ -339,10 +339,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// let mut pdb = pdb::PDB::open(file)?;
     /// // This is the index of the "mystream" stream that was added using pdbstr.exe.
     /// let s = pdb.raw_stream(208)?;
-    /// let mut buf = s.parse_buffer();
-    /// let len = buf.len();
-    /// let bytes = buf.take(len)?;
-    /// assert_eq!(bytes, b"hello world\n");
+    /// assert_eq!(s.as_slice(), b"hello world\n");
     /// # Ok(())
     /// # }
     /// ```

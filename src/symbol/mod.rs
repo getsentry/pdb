@@ -532,7 +532,7 @@ pub struct SymbolIter<'t> {
 }
 
 impl<'t> SymbolIter<'t> {
-    pub fn new(buf: ParseBuffer<'t>) -> SymbolIter<'t> {
+    pub(crate) fn new(buf: ParseBuffer<'t>) -> SymbolIter<'t> {
         SymbolIter { buf }
     }
 }

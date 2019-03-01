@@ -83,6 +83,9 @@ impl<'s> DebugInformation<'s> {
     }
 }
 
+/// The version of the PDB format.
+///
+/// This version type is used in multiple locations: the DBI header, and the PDBI header.
 #[derive(Debug, Copy, Clone)]
 pub enum HeaderVersion {
     V41,
@@ -110,7 +113,7 @@ impl From<u32> for HeaderVersion {
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
 #[derive(Debug, Copy, Clone)]
-pub struct DBIHeader {
+pub(crate) struct DBIHeader {
     pub signature: u32,
     pub version: HeaderVersion,
     pub age: u32,
@@ -342,7 +345,7 @@ impl From<u16> for MachineType {
 /// `struct SC` in Microsoft's code:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
 #[derive(Debug, Copy, Clone)]
-pub struct DBISectionContribution {
+pub(crate) struct DBISectionContribution {
     /// The index of the section.
     section: u16,
     _padding1: u16,
@@ -363,11 +366,27 @@ pub struct DBISectionContribution {
     reloc_crc: u32,
 }
 
+impl DBISectionContribution {
+    fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        Ok(DBISectionContribution {
+            section: buf.parse_u16()?,
+            _padding1: buf.parse_u16()?,
+            offset: buf.parse_u32()?,
+            size: buf.parse_u32()?,
+            characteristics: buf.parse_u32()?,
+            module: buf.parse_u16()?,
+            _padding2: buf.parse_u16()?,
+            data_crc: buf.parse_u32()?,
+            reloc_crc: buf.parse_u32()?,
+        })
+    }
+}
+
 /// Information about a module parsed from the DBI stream. Named `MODI` in
 /// the Microsoft PDB source:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197
 #[derive(Debug, Copy, Clone)]
-pub struct DBIModuleInfo {
+pub(crate) struct DBIModuleInfo {
     /// Currently open module.
     pub opened: u32,
     /// This module's first section contribution.
@@ -395,35 +414,23 @@ pub struct DBIModuleInfo {
     pub compiler: u32,
 }
 
-fn parse_module_info(buf: &mut ParseBuffer<'_>) -> Result<DBIModuleInfo> {
-    Ok(DBIModuleInfo {
-        opened: buf.parse_u32()?,
-        section: parse_section_contribution(buf)?,
-        flags: buf.parse_u16()?,
-        stream: buf.parse_u16()?,
-        symbols_size: buf.parse_u32()?,
-        lines_size: buf.parse_u32()?,
-        c13_lines_size: buf.parse_u32()?,
-        files: buf.parse_u16()?,
-        _padding: buf.parse_u16()?,
-        filename_offsets: buf.parse_u32()?,
-        source: buf.parse_u32()?,
-        compiler: buf.parse_u32()?,
-    })
-}
-
-fn parse_section_contribution(buf: &mut ParseBuffer<'_>) -> Result<DBISectionContribution> {
-    Ok(DBISectionContribution {
-        section: buf.parse_u16()?,
-        _padding1: buf.parse_u16()?,
-        offset: buf.parse_u32()?,
-        size: buf.parse_u32()?,
-        characteristics: buf.parse_u32()?,
-        module: buf.parse_u16()?,
-        _padding2: buf.parse_u16()?,
-        data_crc: buf.parse_u32()?,
-        reloc_crc: buf.parse_u32()?,
-    })
+impl DBIModuleInfo {
+    fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        Ok(DBIModuleInfo {
+            opened: buf.parse_u32()?,
+            section: DBISectionContribution::parse(buf)?,
+            flags: buf.parse_u16()?,
+            stream: buf.parse_u16()?,
+            symbols_size: buf.parse_u32()?,
+            lines_size: buf.parse_u32()?,
+            c13_lines_size: buf.parse_u32()?,
+            files: buf.parse_u16()?,
+            _padding: buf.parse_u16()?,
+            filename_offsets: buf.parse_u32()?,
+            source: buf.parse_u32()?,
+            compiler: buf.parse_u32()?,
+        })
+    }
 }
 
 /// Represents a module from the DBI stream.
@@ -444,7 +451,7 @@ pub struct Module<'m> {
 
 impl<'m> Module<'m> {
     /// The `DBIModuleInfo` from the module info substream in the DBI stream.
-    pub fn info(&self) -> &DBIModuleInfo {
+    pub(crate) fn info(&self) -> &DBIModuleInfo {
         &self.info
     }
     /// The module name.
@@ -479,7 +486,7 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
             return Ok(None);
         }
 
-        let info = parse_module_info(&mut self.buf)?;
+        let info = DBIModuleInfo::parse(&mut self.buf)?;
         let module_name = self.buf.parse_cstring()?;
         let object_file_name = self.buf.parse_cstring()?;
         self.buf.align(4)?;
@@ -488,6 +495,14 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
             module_name,
             object_file_name,
         }))
+    }
+}
+
+fn optional_stream_number(sn: u16) -> Option<u32> {
+    if sn == u16::max_value() {
+        None
+    } else {
+        Some(u32::from(sn))
     }
 }
 
@@ -515,14 +530,6 @@ pub(crate) struct DBIExtraStreams {
     pdata: u16,
     new_fpo: u16,
     original_section_headers: u16,
-}
-
-fn optional_stream_number(sn: u16) -> Option<u32> {
-    if sn == u16::max_value() {
-        None
-    } else {
-        Some(u32::from(sn))
-    }
 }
 
 impl DBIExtraStreams {

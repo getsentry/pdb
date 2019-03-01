@@ -315,7 +315,7 @@ impl fmt::Debug for PdbInternalSectionOffset {
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]
 #[derive(Debug, Clone)]
-pub struct ParseBuffer<'b>(&'b [u8], usize);
+pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
 
 macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
@@ -460,6 +460,7 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
     }
 }
 
+/// Value of an enumerate type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Variant {
     U8(u8),

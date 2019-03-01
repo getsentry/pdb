@@ -33,7 +33,7 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+    pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         assert!(buf.pos() == 0);
 
         let header = Header {

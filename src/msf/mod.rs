@@ -6,6 +6,7 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::fmt;
+use std::ops::Deref;
 
 use scroll::Pread;
 
@@ -330,14 +331,23 @@ pub struct Stream<'s> {
 
 impl<'s> Stream<'s> {
     #[inline]
-    pub fn parse_buffer(&self) -> ParseBuffer<'_> {
+    pub(crate) fn parse_buffer(&self) -> ParseBuffer<'_> {
         let slice = self.source_view.as_slice();
         ParseBuffer::from(slice)
     }
 
     #[inline]
-    pub(crate) fn as_slice(&self) -> &[u8] {
+    pub fn as_slice(&self) -> &[u8] {
         self.source_view.as_slice()
+    }
+}
+
+impl Deref for Stream<'_> {
+    type Target = [u8];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
     }
 }
 
