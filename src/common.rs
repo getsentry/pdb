@@ -32,9 +32,10 @@ pub enum Error {
     /// This likely indicates file corruption.
     PageReferenceOutOfRange(u32),
 
-    // The requested stream is not stored in this file.
+    /// The requested stream is not stored in this file.
     StreamNotFound(u32),
 
+    /// A stream requested by name was not found.
     StreamNameNotFound,
 
     /// An IO error occurred while reading from the data source.
