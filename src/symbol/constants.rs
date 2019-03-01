@@ -9,7 +9,9 @@
 // from:
 //  https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2735
 
-#![allow(dead_code,non_upper_case_globals,non_camel_case_types)]
+#![allow(dead_code, non_upper_case_globals, non_camel_case_types)]
+
+use std::fmt;
 
 pub const S_COMPILE: u16 = 0x0001; // Compile flags symbol
 pub const S_REGISTER_16t: u16 = 0x0002; // Register variable
@@ -330,8 +332,8 @@ pub enum CPUType {
     D3D11_Shader = 0x100,
 }
 
-impl ::std::fmt::Display for CPUType {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for CPUType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             CPUType::Intel8080 => write!(f, "Intel8080"),
             CPUType::Intel8086 => write!(f, "Intel8086"),
@@ -492,8 +494,8 @@ pub enum SourceLanguage {
     D = 0x44,
 }
 
-impl ::std::fmt::Display for SourceLanguage {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for SourceLanguage {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             SourceLanguage::C => write!(f, "C"),
             SourceLanguage::Cpp => write!(f, "Cpp"),

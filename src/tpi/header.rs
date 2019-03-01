@@ -33,10 +33,10 @@ pub struct Header {
 }
 
 impl Header {
-    pub fn parse(buf: &mut ParseBuffer) -> Result<Header> {
+    pub fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         assert!(buf.pos() == 0);
 
-        let h = Header {
+        let header = Header {
             version: buf.parse_u32()?,
             header_size: buf.parse_u32()?,
             minimum_type_index: buf.parse_u32()?,
@@ -63,32 +63,32 @@ impl Header {
         // we read 56 bytes
         // make sure that's okay
         let bytes_read = buf.pos() as u32;
-        if h.header_size < bytes_read {
+        if header.header_size < bytes_read {
             return Err(Error::InvalidTypeInformationHeader(
                 "header size is impossibly small",
             ));
-        } else if h.header_size > 1024 {
+        } else if header.header_size > 1024 {
             return Err(Error::InvalidTypeInformationHeader(
                 "header size is unreasonably large",
             ));
         }
 
         // consume anything else the header says belongs to the header
-        buf.take((h.header_size - bytes_read) as usize)?;
+        buf.take((header.header_size - bytes_read) as usize)?;
 
         // do some final validations
-        if h.minimum_type_index < 4096 {
+        if header.minimum_type_index < 4096 {
             return Err(Error::InvalidTypeInformationHeader(
                 "minimum type index is < 4096",
             ));
         }
-        if h.maximum_type_index < h.minimum_type_index {
+        if header.maximum_type_index < header.minimum_type_index {
             return Err(Error::InvalidTypeInformationHeader(
                 "maximum type index is < minimum type index",
             ));
         }
 
         // success
-        Ok(h)
+        Ok(header)
     }
 }

@@ -118,7 +118,7 @@ pub struct TypeInformation<'t> {
 
 impl<'t> TypeInformation<'t> {
     /// Returns an iterator that can traverse the type table in sequential order.
-    pub fn iter(&self) -> TypeIter {
+    pub fn iter(&self) -> TypeIter<'_> {
         // get a parse buffer
         let mut buf = self.stream.parse_buffer();
 
@@ -149,12 +149,12 @@ impl<'t> TypeInformation<'t> {
     /// Returns a `TypeFinder` with a default time-space tradeoff.
     ///
     /// The `TypeFinder` is initially empty and must be populated by iterating.
-    pub fn new_type_finder(&self) -> TypeFinder {
+    pub fn new_type_finder(&self) -> TypeFinder<'_> {
         new_type_finder(self, 3)
     }
 }
 
-pub(crate) fn new_type_information(stream: Stream) -> Result<TypeInformation> {
+pub(crate) fn new_type_information(stream: Stream<'_>) -> Result<TypeInformation<'_>> {
     let header = {
         let mut buf = stream.parse_buffer();
         Header::parse(&mut buf)?
@@ -227,7 +227,7 @@ impl<'t> Type<'t> {
 }
 
 impl<'t> fmt::Debug for Type<'t> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Type{{ kind: 0x{:4x} [{} bytes] }}",
@@ -334,7 +334,7 @@ impl<'t> TypeFinder<'t> {
     ///
     /// Do this each time you call `.next()`.
     #[inline]
-    pub fn update(&mut self, iterator: &TypeIter) {
+    pub fn update(&mut self, iterator: &TypeIter<'_>) {
         let (vec_index, iteration_count) = self.resolve(iterator.type_index);
         if iteration_count == 0 && vec_index == self.positions.len() {
             let pos = iterator.buf.pos();

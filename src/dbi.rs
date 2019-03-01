@@ -55,7 +55,7 @@ impl<'s> DebugInformation<'s> {
     }
 
     /// Returns an iterator that can traverse the modules list in sequential order.
-    pub fn modules(&self) -> Result<ModuleIter> {
+    pub fn modules(&self) -> Result<ModuleIter<'_>> {
         let mut buf = self.stream.parse_buffer();
         // drop the header
         buf.take(self.header_len)?;
@@ -69,7 +69,7 @@ impl<'s> DebugInformation<'s> {
         self.header
     }
 
-    pub(crate) fn new(stream: Stream) -> Result<DebugInformation> {
+    pub(crate) fn new(stream: Stream<'s>) -> Result<Self> {
         let (header, header_len) = {
             let mut buf = stream.parse_buffer();
             let header = parse_header(&mut buf)?;
@@ -172,7 +172,7 @@ pub struct Header {
     pub reserved: u32,
 }
 
-pub fn parse_header(buf: &mut ParseBuffer) -> Result<Header> {
+pub fn parse_header(buf: &mut ParseBuffer<'_>) -> Result<Header> {
     let header = Header {
         signature: buf.parse_u32()?,
         version: From::from(buf.parse_u32()?),
@@ -267,7 +267,7 @@ pub enum MachineType {
 }
 
 impl ::std::fmt::Display for MachineType {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         match *self {
             MachineType::Invalid => write!(f, "Invalid"),
             MachineType::Unknown => write!(f, "Unknown"),
@@ -390,7 +390,7 @@ pub struct DBIModuleInfo {
     pub compiler: u32,
 }
 
-fn parse_module_info(buf: &mut ParseBuffer) -> Result<DBIModuleInfo> {
+fn parse_module_info(buf: &mut ParseBuffer<'_>) -> Result<DBIModuleInfo> {
     Ok(DBIModuleInfo {
         opened: buf.parse_u32()?,
         section: parse_section_contribution(buf)?,
@@ -407,7 +407,7 @@ fn parse_module_info(buf: &mut ParseBuffer) -> Result<DBIModuleInfo> {
     })
 }
 
-fn parse_section_contribution(buf: &mut ParseBuffer) -> Result<DBISectionContribution> {
+fn parse_section_contribution(buf: &mut ParseBuffer<'_>) -> Result<DBISectionContribution> {
     Ok(DBISectionContribution {
         section: buf.parse_u16()?,
         _padding1: buf.parse_u16()?,
@@ -521,7 +521,7 @@ fn optional_stream_number(sn: u16) -> Option<u32> {
 }
 
 impl DBIExtraStreams {
-    pub(crate) fn new(debug_info: &DebugInformation) -> Result<DBIExtraStreams> {
+    pub(crate) fn new(debug_info: &DebugInformation<'_>) -> Result<Self> {
         // calculate the location of the extra stream information
         let header = debug_info.header;
         let offset = debug_info.header_len
@@ -545,7 +545,7 @@ impl DBIExtraStreams {
         Self::parse(&mut extra_streams_buf)
     }
 
-    pub(crate) fn parse(buf: &mut ParseBuffer) -> Result<DBIExtraStreams> {
+    pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         // short reads are okay, as are long reads -- this struct is actually an array
         // what's _not_ okay are
         if buf.len() % 2 == 1 {

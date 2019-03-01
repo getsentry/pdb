@@ -5,11 +5,13 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::mem;
+
+use uuid::Uuid;
+
 use crate::common::*;
 use crate::dbi::HeaderVersion;
 use crate::msf::*;
-use std::mem;
-use uuid::Uuid;
 
 /// A PDB info stream header parsed from a stream.
 ///
@@ -57,7 +59,7 @@ impl<'s> PDBInformation<'s> {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn stream_names(&self) -> Result<StreamNames> {
+    pub fn stream_names(&self) -> Result<StreamNames<'_>> {
         parse_names(self)
     }
 }
@@ -144,7 +146,7 @@ fn parse_names<'b, 's: 'b>(info: &'b PDBInformation<'s>) -> Result<StreamNames<'
     Ok(StreamNames { buf, names })
 }
 
-pub fn new_pdb_information(stream: Stream) -> Result<PDBInformation> {
+pub fn new_pdb_information(stream: Stream<'_>) -> Result<PDBInformation<'_>> {
     let (version, signature, age, guid, names_size, names_offset) = {
         let mut buf = stream.parse_buffer();
         let version = From::from(buf.parse_u32()?);

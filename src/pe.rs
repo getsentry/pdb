@@ -60,7 +60,7 @@ pub struct ImageSectionHeader {
 }
 
 impl ImageSectionHeader {
-    pub(crate) fn parse(parse_buffer: &mut ParseBuffer) -> Result<Self> {
+    pub(crate) fn parse(parse_buffer: &mut ParseBuffer<'_>) -> Result<Self> {
         let name_bytes = parse_buffer.take(8)?;
 
         Ok(ImageSectionHeader {
@@ -86,7 +86,7 @@ impl ImageSectionHeader {
         })
     }
 
-    pub fn name(&self) -> RawString {
+    pub fn name(&self) -> RawString<'_> {
         let end = self
             .name
             .iter()
@@ -98,7 +98,7 @@ impl ImageSectionHeader {
 }
 
 impl fmt::Debug for ImageSectionHeader {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageSectionHeader")
             .field("name()", &self.name().to_string())
             .field(

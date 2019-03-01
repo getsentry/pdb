@@ -5,13 +5,15 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::fmt;
+
+use scroll::Pread;
+
 use crate::common::*;
 use crate::source::*;
 
 mod page_list;
 use self::page_list::PageList;
-
-use std::fmt;
 
 type PageNumber = u32;
 
@@ -52,11 +54,11 @@ enum StreamTable<'s> {
 
     // Given the table location, we can access the stream table itself
     Available {
-        stream_table_view: Box<SourceView<'s>>,
+        stream_table_view: Box<dyn SourceView<'s>>,
     },
 }
 
-fn view<'s>(source: &mut Source<'s>, page_list: &PageList) -> Result<Box<SourceView<'s>>> {
+fn view<'s>(source: &mut dyn Source<'s>, page_list: &PageList) -> Result<Box<dyn SourceView<'s>>> {
     // view it
     let view = source.view(page_list.source_slices())?;
 
@@ -95,7 +97,7 @@ mod big {
     }
 
     impl<'s, S: Source<'s>> BigMSF<'s, S> {
-        pub fn new(source: S, header_view: Box<SourceView>) -> Result<BigMSF<'s, S>> {
+        pub fn new(source: S, header_view: Box<dyn SourceView<'_>>) -> Result<BigMSF<'s, S>> {
             let mut buf = ParseBuffer::from(header_view.as_slice());
             let header: RawHeader = buf.parse()?;
 
@@ -146,7 +148,7 @@ mod big {
         }
 
         fn find_stream_table(&mut self) -> Result<()> {
-            let mut new_stream_table: Option<StreamTable> = None;
+            let mut new_stream_table: Option<StreamTable<'_>> = None;
 
             if let StreamTable::HeaderOnly {
                 size_in_bytes,
@@ -323,12 +325,12 @@ mod small {
 /// Represents a single Stream within the multi-stream file.
 #[derive(Debug)]
 pub struct Stream<'s> {
-    source_view: Box<SourceView<'s>>,
+    source_view: Box<dyn SourceView<'s>>,
 }
 
 impl<'s> Stream<'s> {
     #[inline]
-    pub fn parse_buffer(&self) -> ParseBuffer {
+    pub fn parse_buffer(&self) -> ParseBuffer<'_> {
         let slice = self.source_view.as_slice();
         ParseBuffer::from(slice)
     }
@@ -349,7 +351,7 @@ fn header_matches(actual: &[u8], expected: &[u8]) -> bool {
     actual.len() >= expected.len() && &actual[0..expected.len()] == expected
 }
 
-pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<MSF<'s, S> + 's>> {
+pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s, S> + 's>> {
     // map the header
     let mut header_location = PageList::new(4096);
     header_location.push(0);

@@ -44,12 +44,6 @@
 //! # assert!(test().expect("test") > 2000);
 //! ```
 
-extern crate byteorder;
-extern crate fallible_iterator;
-#[macro_use]
-extern crate scroll;
-extern crate uuid;
-
 // modules
 mod common;
 mod dbi;
@@ -64,8 +58,10 @@ mod symbol;
 mod tpi;
 
 // exports
-pub use crate::common::{Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
-    TypeIndex, Variant,};
+pub use crate::common::{
+    Error, PdbInternalRva, PdbInternalSectionOffset, RawString, Result, Rva, SectionOffset,
+    TypeIndex, Variant,
+};
 pub use crate::dbi::{DebugInformation, MachineType, Module, ModuleIter};
 pub use crate::module_info::ModuleInfo;
 pub use crate::omap::AddressMap;

@@ -1,10 +1,8 @@
-extern crate getopts;
-extern crate pdb;
+use std::env;
+use std::io::Write;
 
 use getopts::Options;
 use pdb::{FallibleIterator, PdbInternalSectionOffset};
-use std::env;
-use std::io::Write;
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} input.pdb", program);
@@ -21,7 +19,7 @@ fn print_row(offset: PdbInternalSectionOffset, kind: &str, name: pdb::RawString<
     );
 }
 
-fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
+fn print_symbol(symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
     match symbol.parse()? {
         pdb::SymbolData::PublicSymbol(data) => {
             print_row(data.offset, "function", symbol.name()?);
@@ -40,7 +38,7 @@ fn print_symbol(symbol: &pdb::Symbol) -> pdb::Result<()> {
     Ok(())
 }
 
-fn walk_symbols(mut symbols: pdb::SymbolIter) -> pdb::Result<()> {
+fn walk_symbols(mut symbols: pdb::SymbolIter<'_>) -> pdb::Result<()> {
     println!("segment\toffset\tkind\tname");
 
     while let Some(symbol) = symbols.next()? {

@@ -1,7 +1,3 @@
-extern crate pdb;
-extern crate reqwest;
-extern crate uuid;
-
 use pdb::{FallibleIterator, PdbInternalSectionOffset, Rva};
 use std::path::Path;
 use std::str::FromStr;
@@ -49,7 +45,7 @@ fn test_omap() {
     // find the target symbol
     let target_symbol = {
         let target_name = pdb::RawString::from("NtWaitForSingleObject");
-        let mut iter = global_symbols.iter();
+        let iter = global_symbols.iter();
         iter.filter(|sym| sym.name().expect("symbol name") == target_name)
             .next()
             .expect("iterate symbols")

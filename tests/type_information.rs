@@ -1,11 +1,10 @@
-extern crate pdb;
-use pdb::FallibleIterator;
-
 use std::collections::HashMap;
+
+use pdb::FallibleIterator;
 
 fn setup<F>(func: F)
 where
-    F: FnOnce(&pdb::TypeInformation) -> (),
+    F: FnOnce(&pdb::TypeInformation<'_>) -> (),
 {
     let file = if let Ok(filename) = std::env::var("PDB_FILE") {
         std::fs::File::open(filename)
@@ -42,7 +41,7 @@ fn iteration() {
 fn type_finder() {
     setup(|type_information| {
         let mut type_finder = type_information.new_type_finder();
-        let mut map: HashMap<pdb::TypeIndex, pdb::Type> = HashMap::new();
+        let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
         assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
 

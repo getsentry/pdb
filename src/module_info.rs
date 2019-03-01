@@ -1,8 +1,8 @@
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use std::mem;
 use crate::symbol::SymbolIter;
+use std::mem;
 
 /// The signature at the start of a module information stream.
 const MODI_SIGNATURE: u32 = 4;
@@ -24,7 +24,7 @@ pub struct ModuleInfo<'m> {
 
 impl<'m> ModuleInfo<'m> {
     /// Get an iterator over the private symbols of this module.
-    pub fn symbols(&self) -> Result<SymbolIter> {
+    pub fn symbols(&self) -> Result<SymbolIter<'_>> {
         let mut buf = self.stream.parse_buffer();
         buf.parse_u32()?;
         let symbols = buf.take(self.symbols_size - mem::size_of::<u32>())?;
@@ -32,7 +32,7 @@ impl<'m> ModuleInfo<'m> {
     }
 }
 
-pub fn new_module_info<'s, 'm>(stream: Stream<'s>, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
+pub fn new_module_info<'s>(stream: Stream<'s>, module: &Module<'_>) -> Result<ModuleInfo<'s>> {
     let info = module.info();
     {
         let mut buf = stream.parse_buffer();

@@ -5,23 +5,16 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::dbi;
-use crate::module_info;
-use crate::msf;
-use crate::pdbi;
-use crate::symbol;
-use crate::tpi;
-
 use crate::common::*;
-use crate::dbi::{DebugInformation, Module};
-use crate::module_info::ModuleInfo;
-use crate::msf::{Stream, MSF};
+use crate::dbi::{self, DebugInformation, Module};
+use crate::module_info::{self, ModuleInfo};
+use crate::msf::{self, Stream, MSF};
 use crate::omap::{AddressMap, OMAPTable};
-use crate::pdbi::PDBInformation;
+use crate::pdbi::{self, PDBInformation};
 use crate::pe::ImageSectionHeader;
 use crate::source::Source;
-use crate::symbol::SymbolTable;
-use crate::tpi::TypeInformation;
+use crate::symbol::{self, SymbolTable};
+use crate::tpi::{self, TypeInformation};
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -40,7 +33,7 @@ const IPI_STREAM: u32 = 4;
 #[derive(Debug)]
 pub struct PDB<'s, S> {
     /// `msf` provides access to the underlying data streams
-    msf: Box<MSF<'s, S> + 's>,
+    msf: Box<dyn MSF<'s, S> + 's>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<dbi::Header>,
@@ -81,7 +74,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     pub fn pdb_information(&mut self) -> Result<PDBInformation<'s>> {
-        let stream: Stream = self.msf.get(PDB_STREAM, None)?;
+        let stream: Stream<'_> = self.msf.get(PDB_STREAM, None)?;
         pdbi::new_pdb_information(stream)
     }
 
@@ -98,7 +91,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
     ///   understood
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
-        let stream: Stream = self.msf.get(TPI_STREAM, None)?;
+        let stream: Stream<'_> = self.msf.get(TPI_STREAM, None)?;
         tpi::new_type_information(stream)
     }
 

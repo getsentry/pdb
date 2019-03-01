@@ -7,10 +7,10 @@
 
 use std::fmt;
 use std::result;
-use crate::FallibleIterator;
 
 use crate::common::*;
 use crate::msf::*;
+use crate::FallibleIterator;
 
 mod constants;
 use self::constants::*;
@@ -56,13 +56,13 @@ pub struct SymbolTable<'t> {
     stream: Stream<'t>,
 }
 
-pub(crate) fn new_symbol_table(s: Stream) -> SymbolTable {
+pub(crate) fn new_symbol_table(s: Stream<'_>) -> SymbolTable<'_> {
     SymbolTable { stream: s }
 }
 
 impl<'t> SymbolTable<'t> {
     /// Returns an iterator that can traverse the symbol table in sequential order.
-    pub fn iter(&self) -> SymbolIter {
+    pub fn iter(&self) -> SymbolIter<'_> {
         SymbolIter::new(self.stream.parse_buffer())
     }
 }
@@ -170,7 +170,7 @@ impl<'t> Symbol<'t> {
 }
 
 impl<'t> fmt::Debug for Symbol<'t> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "Symbol{{ kind: 0x{:4x} [{} bytes] }}",
@@ -466,7 +466,7 @@ pub struct ProcedureFlags {
 }
 
 impl ProcedureFlags {
-    fn new(flags: u8) -> ProcedureFlags {
+    fn new(flags: u8) -> Self {
         ProcedureFlags {
             nofpo: flags & CV_PFLAG_NOFPO != 0,
             int: flags & CV_PFLAG_INT != 0,
@@ -531,7 +531,7 @@ pub struct SymbolIter<'t> {
 }
 
 impl<'t> SymbolIter<'t> {
-    pub fn new(buf: ParseBuffer<'t>) -> SymbolIter {
+    pub fn new(buf: ParseBuffer<'t>) -> SymbolIter<'t> {
         SymbolIter { buf }
     }
 }

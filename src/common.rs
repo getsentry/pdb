@@ -6,8 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::borrow::Cow;
-use std::convert;
-use std::error;
 use std::fmt;
 use std::io;
 use std::result;
@@ -80,7 +78,7 @@ pub enum Error {
     ScrollError(scroll::Error),
 }
 
-impl error::Error for Error {
+impl std::error::Error for Error {
     fn description(&self) -> &str {
         match *self {
             Error::UnrecognizedFileFormat => {
@@ -114,7 +112,7 @@ impl error::Error for Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> ::std::result::Result<(), fmt::Error> {
         match *self {
             Error::PageReferenceOutOfRange(p) => {
                 write!(f, "MSF referred to page number ({}) out of range", p)
@@ -164,13 +162,13 @@ impl fmt::Display for Error {
     }
 }
 
-impl convert::From<io::Error> for Error {
+impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
         Error::IoError(e)
     }
 }
 
-impl convert::From<scroll::Error> for Error {
+impl From<scroll::Error> for Error {
     fn from(e: scroll::Error) -> Self {
         match e {
             // Convert a couple of scroll errors into EOF.
@@ -203,13 +201,13 @@ impl From<Rva> for u32 {
 }
 
 impl fmt::Display for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#08x}", self.0)
     }
 }
 
 impl fmt::Debug for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Rva({})", self)
     }
 }
@@ -238,7 +236,7 @@ impl SectionOffset {
 }
 
 impl fmt::Debug for SectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
             .field("section", &format!("{:#x}", self.section))
             .field("offset", &format!("{:#08x}", self.offset))
@@ -268,13 +266,13 @@ impl From<PdbInternalRva> for u32 {
 }
 
 impl fmt::Display for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:#08x}", self.0)
     }
 }
 
 impl fmt::Debug for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PdbInternalRva({})", self)
     }
 }
@@ -305,7 +303,7 @@ impl PdbInternalSectionOffset {
 }
 
 impl fmt::Debug for PdbInternalSectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PdbInternalSectionOffset")
             .field("section", &format!("{:#x}", self.section))
             .field("offset", &format!("{:#08x}", self.offset))
@@ -452,7 +450,7 @@ impl<'b> From<&'b [u8]> for ParseBuffer<'b> {
 }
 
 impl<'b> fmt::LowerHex for ParseBuffer<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> result::Result<(), fmt::Error> {
         write!(f, "ParseBuf::from(\"")?;
         for byte in self.0 {
             write!(f, "\\x{:02x}", byte)?;
@@ -479,14 +477,14 @@ pub enum Variant {
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
-impl<'b> fmt::Debug for RawString<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for RawString<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RawString::from({:?})", self.to_string())
     }
 }
 
-impl<'b> fmt::Display for RawString<'b> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Display for RawString<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.to_string())
     }
 }

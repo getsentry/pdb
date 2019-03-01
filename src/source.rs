@@ -49,7 +49,7 @@ pub trait Source<'s>: fmt::Debug {
     ///
     /// Note that the SourceView's as_slice() method cannot fail, so `view()` is the time to raise
     /// IO errors.
-    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<SourceView<'s>>, io::Error>;
+    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<dyn SourceView<'s>>, io::Error>;
 }
 
 /// An owned, droppable, read-only view of the source file which can be referenced as a byte slice.
@@ -62,19 +62,19 @@ struct ReadView {
     bytes: Vec<u8>,
 }
 
-impl<'v> fmt::Debug for ReadView {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+impl fmt::Debug for ReadView {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "ReadView({} bytes)", self.bytes.len())
     }
 }
 
-impl<'s> SourceView<'s> for ReadView {
+impl SourceView<'_> for ReadView {
     fn as_slice(&self) -> &[u8] {
         self.bytes.as_slice()
     }
 }
 
-impl<'s> Drop for ReadView {
+impl Drop for ReadView {
     fn drop(&mut self) {
         // no-op
     }
@@ -84,7 +84,7 @@ impl<'s, T> Source<'s> for T
 where
     T: io::Read + io::Seek + fmt::Debug + 's,
 {
-    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<SourceView<'s>>, io::Error> {
+    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<dyn SourceView<'s>>, io::Error> {
         let len = slices.iter().fold(0 as usize, |acc, s| acc + s.size);
 
         let mut v = ReadView {
@@ -118,7 +118,7 @@ mod tests {
             let mut data = vec![0; 4096];
             data[42] = 42;
 
-            let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
+            let mut source: Box<dyn Source<'_>> = Box::new(Cursor::new(data.as_slice()));
 
             let source_slices = vec![SourceSlice {
                 offset: 40,
@@ -136,7 +136,7 @@ mod tests {
             data[42] = 42;
             data[88] = 88;
 
-            let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
+            let mut source: Box<dyn Source<'_>> = Box::new(Cursor::new(data.as_slice()));
 
             let source_slices = vec![
                 SourceSlice {
@@ -160,7 +160,7 @@ mod tests {
             data[42] = 42;
             data[88] = 88;
 
-            let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
+            let mut source: Box<dyn Source<'_>> = Box::new(Cursor::new(data.as_slice()));
 
             let source_slices = vec![
                 SourceSlice {
@@ -186,7 +186,7 @@ mod tests {
         fn test_eof_reading() {
             let data = vec![0; 4096];
 
-            let mut source: Box<Source> = Box::new(Cursor::new(data.as_slice()));
+            let mut source: Box<dyn Source<'_>> = Box::new(Cursor::new(data.as_slice()));
 
             // one byte is readable, but we asked for two
             let source_slices = vec![SourceSlice {

@@ -1,6 +1,3 @@
-extern crate pdb;
-
-use std::env;
 use std::ffi::OsStr;
 use std::io::Write;
 
@@ -23,7 +20,7 @@ fn dump_stream_names(filename: &OsStr) -> pdb::Result<()> {
 }
 
 fn main() {
-    let filename = env::args_os().nth(1).expect("Missing PDB filename");
+    let filename = std::env::args_os().nth(1).expect("Missing PDB filename");
 
     match dump_stream_names(&filename) {
         Ok(_) => {}

@@ -20,7 +20,7 @@ pub struct PageList {
 
 impl PageList {
     /// Create a new PageList for a given page size.
-    pub fn new(page_size: usize) -> PageList {
+    pub fn new(page_size: usize) -> Self {
         PageList {
             page_size,
             source_slices: Vec::new(),
