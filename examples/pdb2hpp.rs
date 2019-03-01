@@ -283,7 +283,7 @@ impl fmt::Display for Class<'_> {
 
         if !self.instance_methods.is_empty() {
             writeln!(f, "\t")?;
-            for method in self.instance_methods.iter() {
+            for method in &self.instance_methods {
                 writeln!(
                     f,
                     "\t{}{} {}({});",
@@ -297,7 +297,7 @@ impl fmt::Display for Class<'_> {
 
         if !self.static_methods.is_empty() {
             writeln!(f, "\t")?;
-            for method in self.static_methods.iter() {
+            for method in &self.static_methods {
                 writeln!(
                     f,
                     "\t{}static {} {}({});",
@@ -506,17 +506,17 @@ impl fmt::Display for Data<'_> {
 
         if !self.forward_references.is_empty() {
             writeln!(f)?;
-            for e in self.forward_references.iter() {
+            for e in &self.forward_references {
                 e.fmt(f)?;
             }
         }
 
-        for e in self.enums.iter() {
+        for e in &self.enums {
             writeln!(f)?;
             e.fmt(f)?;
         }
 
-        for class in self.classes.iter() {
+        for class in &self.classes {
             writeln!(f)?;
             class.fmt(f)?;
         }

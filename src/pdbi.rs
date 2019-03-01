@@ -169,6 +169,7 @@ pub type NameIter<'a, 'n> = std::slice::Iter<'a, StreamName<'n>>;
 
 impl<'s> StreamNames<'s> {
     /// Return an iterator over named streams and their stream indices.
+    #[inline]
     pub fn iter(&self) -> NameIter<'_, 's> {
         self.names.iter()
     }
@@ -178,6 +179,7 @@ impl<'a, 's> IntoIterator for &'a StreamNames<'s> {
     type Item = &'a StreamName<'s>;
     type IntoIter = NameIter<'a, 's>;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         self.names.iter()
     }
