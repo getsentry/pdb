@@ -86,14 +86,17 @@ impl ImageSectionHeader {
         })
     }
 
-    pub fn name(&self) -> RawString<'_> {
+    /// Returns the name of the section.
+    pub fn name(&self) -> &str {
         let end = self
             .name
             .iter()
             .position(|ch| *ch == 0)
             .unwrap_or_else(|| self.name.len());
 
-        RawString::from(&self.name[0..end])
+        // The spec guarantees that the name is a proper UTF-8 string.
+        // TODO: Look up long names from the string table.
+        std::str::from_utf8(&self.name[0..end]).unwrap_or("")
     }
 }
 
@@ -148,7 +151,7 @@ mod tests {
 
         let ish = ImageSectionHeader::parse(&mut parse_buffer).expect("parse");
         assert_eq!(&ish.name, b".data\0\0\0");
-        assert_eq!(ish.name(), RawString::from(".data"));
+        assert_eq!(ish.name(), ".data");
         assert_eq!(ish.physical_address, 0x93548);
         assert_eq!(ish.virtual_address, 0x001e_d000);
         assert_eq!(ish.size_of_raw_data, 0xfe00);

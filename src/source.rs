@@ -14,7 +14,9 @@ use std::io;
 /// to satisfy its requests, and it describes those requests as a `&[SourceSlice]`.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct SourceSlice {
+    /// Offset into the source file.
     pub offset: u64,
+    /// Size of the slice.
     pub size: usize,
 }
 
@@ -54,6 +56,7 @@ pub trait Source<'s>: fmt::Debug {
 
 /// An owned, droppable, read-only view of the source file which can be referenced as a byte slice.
 pub trait SourceView<'s>: Drop + fmt::Debug {
+    /// Returns a view to the raw data.
     fn as_slice(&self) -> &[u8];
 }
 

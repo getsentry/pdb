@@ -179,6 +179,7 @@ impl From<scroll::Error> for Error {
     }
 }
 
+/// The result type returned by this crate.
 pub type Result<T> = result::Result<T, Error>;
 
 /// A Relative Virtual Address as it appears in a PE file.
@@ -231,8 +232,14 @@ pub struct SectionOffset {
 }
 
 impl SectionOffset {
+    /// Creates a new PE section offset.
     pub fn new(section: u16, offset: u32) -> Self {
         SectionOffset { offset, section }
+    }
+
+    /// Returns whether this section offset points to a valid section or into the void.
+    pub fn is_valid(self) -> bool {
+        self.section != 0
     }
 }
 
@@ -247,7 +254,9 @@ impl fmt::Debug for SectionOffset {
 
 /// A Relative Virtual Address in an unoptimized PE file.
 ///
-/// This instance can be converted into an actual [`Rva`] using [`rva`].
+/// An internal RVA points into the PDB internal address space and may not correspond to RVAs of the
+/// executable. It can be converted into an actual [`Rva`] suitable for debugging purposes using
+/// [`rva`].
 ///
 /// [`Rva`]: struct.Rva.html
 /// [`rva`]: struct.PdbInternalRva.html#method.rva
@@ -293,13 +302,23 @@ impl fmt::Debug for PdbInternalRva {
 /// [`SectionOffset`]: struct.SectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PdbInternalSectionOffset {
+    /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
+
+    /// The index of the section in the PDB's section headers list, incremented by `1`. A value of
+    /// `0` indicates an invalid or missing reference.
     pub section: u16,
 }
 
 impl PdbInternalSectionOffset {
+    /// Creates a new PDB internal section offset.
     pub fn new(section: u16, offset: u32) -> Self {
         PdbInternalSectionOffset { offset, section }
+    }
+
+    /// Returns whether this section offset points to a valid section or into the void.
+    pub fn is_valid(self) -> bool {
+        self.section != 0
     }
 }
 

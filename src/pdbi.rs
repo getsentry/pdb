@@ -162,11 +162,23 @@ pub struct StreamNames<'s> {
     names: Vec<StreamName<'s>>,
 }
 
+/// An iterator over [`StreamName`][1]s.
+///
+/// [1]: struct.StreamName.html
 pub type NameIter<'a, 'n> = std::slice::Iter<'a, StreamName<'n>>;
 
 impl<'s> StreamNames<'s> {
     /// Return an iterator over named streams and their stream indices.
-    pub fn iter<'a>(&'a self) -> NameIter<'a, 's> {
+    pub fn iter(&self) -> NameIter<'_, 's> {
+        self.names.iter()
+    }
+}
+
+impl<'a, 's> IntoIterator for &'a StreamNames<'s> {
+    type Item = &'a StreamName<'s>;
+    type IntoIter = NameIter<'a, 's>;
+
+    fn into_iter(self) -> Self::IntoIter {
         self.names.iter()
     }
 }

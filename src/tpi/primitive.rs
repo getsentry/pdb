@@ -33,16 +33,19 @@ pub struct PrimitiveType {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
+    /// Void type
     Void,
 
+    /// Character (byte)
     Char,
 
+    /// Unsigned character
     UChar,
 
     /// "Really a char"
     RChar,
 
-    //// Wide characters, i.e. 16 bits
+    /// Wide characters, i.e. 16 bits
     WChar,
 
     /// "Really a 16-bit char"
@@ -126,11 +129,16 @@ pub enum PrimitiveKind {
     /// 16-bit boolean value
     Bool64,
 
+    /// Windows `HRESULT` error code.
+    ///
+    /// See: https://docs.microsoft.com/en-us/windows/desktop/seccrypto/common-hresult-values
     HRESULT,
 }
 
+/// Pointer kinds.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Indirection {
+    ///
     None,
 
     /// 16-bit ("near") pointer
