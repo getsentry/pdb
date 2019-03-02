@@ -123,6 +123,8 @@ impl<'t> Symbol<'t> {
 
             S_UNAMESPACE | S_UNAMESPACE_ST => 0,
 
+            S_LOCAL => 6,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind)),
         };
 
@@ -320,6 +322,11 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
 
         S_UNAMESPACE | S_UNAMESPACE_ST => Ok(SymbolData::Namespace(NamespaceSymbol {})),
 
+        S_LOCAL => Ok(SymbolData::Local(LocalSymbol {
+            type_index: buf.parse_u32()?,
+            flags: LocalVariableFlags::new(buf.parse_u16()?),
+        })),
+
         _ => Err(Error::UnimplementedSymbolKind(kind)),
     }
 }
@@ -372,6 +379,9 @@ pub enum SymbolData {
 
     // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
     Namespace(NamespaceSymbol),
+
+    // S_LOCAL (0x113e)
+    Local(LocalSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -520,6 +530,58 @@ pub struct Compile3Symbol {
 /// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct NamespaceSymbol {}
+
+// CV_LVARFLAGS:
+const CV_LVARFLAG_ISPARAM: u16 = 0x01;
+const CV_LVARFLAG_ADDRTAKEN: u16 = 0x02;
+const CV_LVARFLAG_COMPGENX: u16 = 0x04;
+const CV_LVARFLAG_ISAGGREGATE: u16 = 0x08;
+const CV_LVARFLAG_ISALIASED: u16 = 0x10;
+const CV_LVARFLAG_ISALIAS: u16 = 0x20;
+const CV_LVARFLAG_ISRETVALUE: u16 = 0x40;
+const CV_LVARFLAG_ISOPTIMIZEDOUT: u16 = 0x80;
+const CV_LVARFLAG_ISENREG_GLOB: u16 = 0x100;
+const CV_LVARFLAG_ISENREG_STAT: u16 = 0x200;
+
+/// The information parsed from a CV_LVARFLAGS bit field
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct LocalVariableFlags {
+    pub isparam: bool,        // Variable is a parameter
+    pub addrtaken: bool,      // Address is taken
+    pub compgenx: bool,       // Variable is compiler generated
+    pub isaggregate: bool, // The symbol is splitted in temporaries, which are treated by compiler as independent entities
+    pub isaliased: bool,   // Variable has multiple simultaneous lifetimes
+    pub isalias: bool,     // Represents one of the multiple simultaneous lifetimes
+    pub isretvalue: bool,  // Represents a function return value
+    pub isoptimizedout: bool, // Variable has no lifetimes
+    pub isenreg_glob: bool, // Variable is an enregistered global
+    pub isenreg_stat: bool, // Variable is an enregistered static
+}
+
+impl LocalVariableFlags {
+    fn new(flags: u16) -> Self {
+        LocalVariableFlags {
+            isparam: flags & CV_LVARFLAG_ISPARAM != 0,
+            addrtaken: flags & CV_LVARFLAG_ADDRTAKEN != 0,
+            compgenx: flags & CV_LVARFLAG_COMPGENX != 0,
+            isaggregate: flags & CV_LVARFLAG_ISAGGREGATE != 0,
+            isaliased: flags & CV_LVARFLAG_ISALIASED != 0,
+            isalias: flags & CV_LVARFLAG_ISALIAS != 0,
+            isretvalue: flags & CV_LVARFLAG_ISRETVALUE != 0,
+            isoptimizedout: flags & CV_LVARFLAG_ISOPTIMIZEDOUT != 0,
+            isenreg_glob: flags & CV_LVARFLAG_ISENREG_GLOB != 0,
+            isenreg_stat: flags & CV_LVARFLAG_ISENREG_STAT != 0,
+        }
+    }
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_LOCAL`
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct LocalSymbol {
+    pub type_index: TypeIndex,
+    pub flags: LocalVariableFlags,
+}
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
 ///
