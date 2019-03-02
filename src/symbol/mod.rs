@@ -123,6 +123,8 @@ impl<'t> Symbol<'t> {
 
             S_UNAMESPACE | S_UNAMESPACE_ST => 0,
 
+            S_EXPORT => 4,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind)),
         };
 
@@ -320,6 +322,11 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
 
         S_UNAMESPACE | S_UNAMESPACE_ST => Ok(SymbolData::Namespace(NamespaceSymbol {})),
 
+        S_EXPORT => Ok(SymbolData::Export(ExportSymbol {
+            ordinal: buf.parse_u16()?,
+            flags: buf.parse_u16()?,
+        })),
+
         _ => Err(Error::UnimplementedSymbolKind(kind)),
     }
 }
@@ -372,6 +379,9 @@ pub enum SymbolData {
 
     // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
     Namespace(NamespaceSymbol),
+
+    // S_EXPORT (0x1138)
+    Export(ExportSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -520,6 +530,14 @@ pub struct Compile3Symbol {
 /// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct NamespaceSymbol {}
+
+/// The information parsed from a symbol record with kind
+/// `S_EXPORT`
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExportSymbol {
+    pub ordinal: u16,
+    pub flags: u16, // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
+}
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
 ///
