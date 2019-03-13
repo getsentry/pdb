@@ -47,7 +47,7 @@
 // modules
 mod common;
 mod dbi;
-mod module_info;
+mod modi;
 mod msf;
 mod omap;
 mod pdb;
@@ -61,7 +61,7 @@ mod tpi;
 // exports
 pub use crate::common::*;
 pub use crate::dbi::*;
-pub use crate::module_info::*;
+pub use crate::modi::*;
 pub use crate::omap::*;
 pub use crate::pdb::*;
 pub use crate::pdbi::*;

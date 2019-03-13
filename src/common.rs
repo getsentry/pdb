@@ -78,6 +78,18 @@ pub enum Error {
 
     /// A parse error from scroll.
     ScrollError(scroll::Error),
+
+    /// This debug subsection kind is unknown or unimplemented.
+    UnimplementedDebugSubsection(u32),
+
+    /// This source file checksum kind is unknown or unimplemented.
+    UnimplementedFileChecksumKind(u8),
+
+    /// There is no source file checksum at the given offset.
+    InvalidFileChecksumOffset(u32),
+
+    /// The lines table is missing.
+    LinesNotFound,
 }
 
 impl std::error::Error for Error {
@@ -109,6 +121,12 @@ impl std::error::Error for Error {
                 "Required mapping for virtual addresses (OMAP) was not found"
             }
             Error::ScrollError(ref e) => e.description(),
+            Error::UnimplementedDebugSubsection(_) => {
+                "Debug module subsection of this kind is not implemented"
+            }
+            Error::UnimplementedFileChecksumKind(_) => "Unknown source file checksum kind",
+            Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
+            Error::LinesNotFound => "Line information not found for a module",
         }
     }
 }
@@ -159,6 +177,17 @@ impl fmt::Display for Error {
                 f,
                 "Required mapping for virtual addresses (OMAP) was not found"
             ),
+            Error::UnimplementedDebugSubsection(kind) => write!(
+                f,
+                "Debug module subsection of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::UnimplementedFileChecksumKind(kind) => {
+                write!(f, "Unknown source file checksum kind {}", kind)
+            }
+            Error::InvalidFileChecksumOffset(offset) => {
+                write!(f, "Invalid source file checksum offset {:#x}", offset)
+            }
             _ => fmt::Debug::fmt(self, f),
         }
     }

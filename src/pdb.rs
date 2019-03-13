@@ -7,7 +7,7 @@
 
 use crate::common::*;
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
-use crate::module_info::ModuleInfo;
+use crate::modi::ModuleInfo;
 use crate::msf::{self, Stream, MSF};
 use crate::omap::{AddressMap, OMAPTable};
 use crate::pdbi::PDBInformation;
