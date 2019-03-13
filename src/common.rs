@@ -204,7 +204,7 @@ impl From<Rva> for u32 {
 
 impl fmt::Display for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#08x}", self.0)
+        write!(f, "{:#010x}", self.0)
     }
 }
 
@@ -247,7 +247,7 @@ impl fmt::Debug for SectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
             .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#08x}", self.offset))
+            .field("offset", &format!("{:#010x}", self.offset))
             .finish()
     }
 }
@@ -277,7 +277,7 @@ impl From<PdbInternalRva> for u32 {
 
 impl fmt::Display for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#08x}", self.0)
+        write!(f, "{:#010x}", self.0)
     }
 }
 
@@ -326,7 +326,7 @@ impl fmt::Debug for PdbInternalSectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PdbInternalSectionOffset")
             .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#08x}", self.offset))
+            .field("offset", &format!("{:#010x}", self.offset))
             .finish()
     }
 }
