@@ -54,6 +54,7 @@ mod pdb;
 mod pdbi;
 mod pe;
 mod source;
+mod strings;
 mod symbol;
 mod tpi;
 
@@ -66,6 +67,7 @@ pub use crate::pdb::*;
 pub use crate::pdbi::*;
 pub use crate::pe::*;
 pub use crate::source::*;
+pub use crate::strings::*;
 pub use crate::symbol::*;
 pub use crate::tpi::*;
 

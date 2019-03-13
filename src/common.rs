@@ -331,6 +331,41 @@ impl fmt::Debug for PdbInternalSectionOffset {
     }
 }
 
+/// A reference to a string in the string table.
+///
+/// This type stores an offset into the global string table of the PDB. To retrieve the string
+/// value, use [`to_raw_string`], [`to_string_lossy`] or methods on [`StringTable`].
+///
+/// [`to_raw_string`]: struct.StringRef.html#method.to_raw_string
+/// [`to_string_lossy`]: struct.StringRef.html#method.to_string_lossy
+/// [`StringTable`]: struct.StringTable.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StringRef(pub u32);
+
+impl From<u32> for StringRef {
+    fn from(offset: u32) -> Self {
+        StringRef(offset)
+    }
+}
+
+impl From<StringRef> for u32 {
+    fn from(string_ref: StringRef) -> Self {
+        string_ref.0
+    }
+}
+
+impl fmt::Display for StringRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#010x}", self.0)
+    }
+}
+
+impl fmt::Debug for StringRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "StringRef({})", self)
+    }
+}
+
 /// Provides little-endian access to a &[u8].
 #[doc(hidden)]
 #[derive(Debug, Clone)]
