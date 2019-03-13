@@ -1,4 +1,4 @@
-use pdb::{PDB, FallibleIterator, Rva};
+use pdb::{FallibleIterator, Rva, PDB};
 
 #[test]
 fn test_module_lines() {
@@ -18,8 +18,13 @@ fn test_module_lines() {
     let line_info = lines.next().expect("parse line info").expect("no lines");
 
     let rva = line_info.offset.to_rva(&address_map).expect("line rva");
-    let file_info = line_program.get_file_info(line_info.file_index).expect("file info");
-    let file_name = file_info.name.to_string_lossy(&string_table).expect("file name");
+    let file_info = line_program
+        .get_file_info(line_info.file_index)
+        .expect("file info");
+    let file_name = file_info
+        .name
+        .to_string_lossy(&string_table)
+        .expect("file name");
 
     assert_eq!(line_info.line_start, 29);
     assert_eq!(line_info.column_start, Some(0)); // looks like useless column info
