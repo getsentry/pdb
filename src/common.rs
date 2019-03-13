@@ -8,6 +8,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
+use std::ops::Add;
 use std::result;
 
 use scroll::ctx::TryFromCtx;
@@ -243,6 +244,19 @@ impl SectionOffset {
     }
 }
 
+impl Add<u32> for SectionOffset {
+    type Output = Self;
+
+    /// Adds the given offset to this section offset.
+    ///
+    /// This does not check whether the offset is still valid within the given section. If the
+    /// offset is out of bounds, the conversion to `Rva` will return `None`.
+    fn add(mut self, offset: u32) -> Self {
+        self.offset += offset;
+        self
+    }
+}
+
 impl fmt::Debug for SectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
@@ -300,7 +314,7 @@ impl fmt::Debug for PdbInternalRva {
 ///
 /// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
 /// [`SectionOffset`]: struct.SectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Pread)]
 pub struct PdbInternalSectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -319,6 +333,19 @@ impl PdbInternalSectionOffset {
     /// Returns whether this section offset points to a valid section or into the void.
     pub fn is_valid(self) -> bool {
         self.section != 0
+    }
+}
+
+impl Add<u32> for PdbInternalSectionOffset {
+    type Output = Self;
+
+    /// Adds the given offset to this section offset.
+    ///
+    /// This does not check whether the offset is still valid within the given section. If the
+    /// offset is out of bounds, the conversion to `Rva` will return `None`.
+    fn add(mut self, offset: u32) -> Self {
+        self.offset += offset;
+        self
     }
 }
 
