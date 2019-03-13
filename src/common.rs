@@ -420,21 +420,24 @@ macro_rules! def_peek {
 
 impl<'b> ParseBuffer<'b> {
     /// Return the remaining length of the buffer.
-    #[doc(hidden)]
     #[inline]
     pub fn len(&self) -> usize {
         self.0.len() - self.1
     }
 
+    /// Determines whether this ParseBuffer has been consumed.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Return the position within the parent slice.
-    #[doc(hidden)]
     #[inline]
     pub fn pos(&self) -> usize {
         self.1
     }
 
     /// Align the current position to the next multiple of `alignment` bytes.
-    #[doc(hidden)]
     #[inline]
     pub fn align(&mut self, alignment: usize) -> Result<()> {
         let diff = self.1 % alignment;
@@ -447,6 +450,7 @@ impl<'b> ParseBuffer<'b> {
         Ok(())
     }
 
+    /// Parse an object that implements `Pread`.
     pub fn parse<T>(&mut self) -> Result<T>
     where
         T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
@@ -522,6 +526,12 @@ impl<'b> ParseBuffer<'b> {
                 Err(Error::UnexpectedNumericPrefix(leaf))
             }
         }
+    }
+}
+
+impl Default for ParseBuffer<'_> {
+    fn default() -> Self {
+        ParseBuffer(&[], 0)
     }
 }
 

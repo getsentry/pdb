@@ -238,7 +238,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 }
                 dimensions.push(dim as u32);
 
-                if buf.len() == 0 {
+                if buf.is_empty() {
                     // shouldn't run out here
                     return Err(Error::UnexpectedEof);
                 }
@@ -256,7 +256,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             //println!("array: {:x}", buf);
             //println!("dimensions: {:?}", dimensions);
 
-            assert!(buf.len() == 0);
+            assert!(buf.is_empty());
 
             Ok(TypeData::Array(ArrayType {
                 element_type,
@@ -312,7 +312,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let mut fields: Vec<TypeData<'t>> = Vec::new();
             let mut continuation: Option<TypeIndex> = None;
 
-            while buf.len() > 0 {
+            while !buf.is_empty() {
                 match buf.peek_u16()? {
                     LF_INDEX => {
                         // continuation record
@@ -351,7 +351,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_METHODLIST => {
             let mut methods: Vec<MethodListEntry> = Vec::new();
 
-            while buf.len() > 0 {
+            while !buf.is_empty() {
                 // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2131-L2136
                 let attr = FieldAttributes(buf.parse_u16()?);
                 buf.parse_u16()?; // padding
@@ -395,7 +395,7 @@ fn parse_string<'t>(leaf: u16, buf: &mut ParseBuffer<'t>) -> Result<RawString<'t
 
 #[inline]
 fn parse_padding<'t>(buf: &mut ParseBuffer<'t>) -> Result<()> {
-    while buf.len() > 0 && buf.peek_u8()? >= 0xf0 {
+    while !buf.is_empty() && buf.peek_u8()? >= 0xf0 {
         let padding = buf.parse_u8()?;
         if padding > 0xf0 {
             // low four bits indicate amount of padding

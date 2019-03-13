@@ -229,7 +229,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             headers.push(ImageSectionHeader::parse(&mut buf)?);
         }
 
@@ -245,7 +245,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             headers.push(ImageSectionHeader::parse(&mut buf)?);
         }
 

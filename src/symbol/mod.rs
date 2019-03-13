@@ -543,7 +543,7 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
 
     fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
         // see if we're at EOF
-        if self.buf.len() == 0 {
+        if self.buf.is_empty() {
             return Ok(None);
         }
 
