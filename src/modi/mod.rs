@@ -110,10 +110,19 @@ pub struct FileInfo<'a> {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FileIndex(pub u32);
 
+/// The kind of source construct a line info is referring to.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LineInfoKind {
+    /// A source code expression.
+    Expression,
+    /// A source code statement.
+    Statement,
+}
+
 /// Mapping of a source code offset to a source file location.
 ///
 /// A line entry is always valid up to the subsequent entry.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct LineInfo {
     /// Source code offset.
     pub offset: PdbInternalSectionOffset,
@@ -133,6 +142,8 @@ pub struct LineInfo {
     /// This value is only present if column information is provided by the PDB. Even then, it is
     /// often zero.
     pub column_end: Option<u16>,
+    /// Kind of this line information.
+    pub kind: LineInfoKind,
 }
 
 enum LineProgramInner<'a> {
@@ -147,8 +158,9 @@ pub struct LineProgram<'a> {
 impl<'a> LineProgram<'a> {
     /// Returns an iterator over all line information records of this module.
     ///
-    /// Line records are returned grouped by the source file. They are not guaranteed to be ordered
-    /// by source code offset.
+    /// Line records appear ordered by their section offset. This may or may not correspond to the
+    /// same ordering when these offsets are converted to `Rva`. Therefore, if a monotonic order by
+    /// `Rva` is required, the lines have to be sorted manually.
     pub fn lines(&self) -> LineIterator {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {

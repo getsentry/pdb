@@ -1,7 +1,7 @@
 use scroll::Pread;
 
 use crate::common::*;
-use crate::modi::{constants, FileChecksum, FileIndex, FileInfo, LineInfo};
+use crate::modi::{constants, FileChecksum, FileIndex, FileInfo, LineInfo, LineInfoKind};
 use crate::FallibleIterator;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -133,66 +133,111 @@ impl<'a> DebugLinesSubsection<'a> {
     }
 }
 
+/// Marker instructions for a line offset.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum LineNumberKind {
-    Expression,
-    Statement,
+enum LineMarkerKind {
+    /// A debugger should skip this address.
+    DoNotStepOnto,
+    /// A debugger should not step into this address.
+    DoNotStepInto,
 }
 
+/// The raw line number entry in a PDB.
 #[repr(C, packed)]
 #[derive(Clone, Copy, Debug, Pread)]
-pub struct LineNumberEntry {
+struct LineNumberHeader {
     /// Offset to start of code bytes for line number.
     offset: u32,
     /// Combined information on the start line, end line and entry type:
     ///
     /// ```ignore
-    /// unsigned long   linenumStart:24;    // line where statement/expression starts
-    /// unsigned long   deltaLineEnd:7;     // delta to line where statement ends (optional)
-    /// unsigned long   fStatement:1;       // true if a statement linenumber, else an expression line num
+    /// unsigned long   linenumStart:24;  // line where statement/expression starts
+    /// unsigned long   deltaLineEnd:7;   // delta to line where statement ends (optional)
+    /// unsigned long   fStatement  :1;   // true if a statement line number, else an expression
     /// ```
     flags: u32,
 }
 
-impl LineNumberEntry {
-    fn offset(self) -> u32 {
-        self.offset
-    }
+/// A mapping of code section offsets to source line numbers.
+#[derive(Clone, Debug)]
+struct LineNumberEntry {
+    /// Delta offset to the start of this line contribution (debug lines subsection).
+    pub offset: u32,
+    /// Start line number of the statement or expression.
+    pub start_line: u32,
+    /// End line number of the statement or expression.
+    pub end_line: u32,
+    /// The type of code construct this line entry refers to.
+    pub kind: LineInfoKind,
+}
 
-    fn start_line(self) -> u32 {
-        self.flags & 0x00ff_ffff
-    }
+/// Marker for debugging purposes.
+#[derive(Clone, Debug)]
+struct LineMarkerEntry {
+    /// Delta offset to the start of this line contribution (debug lines subsection).
+    pub offset: u32,
+    /// The marker kind, hinting a debugger how to deal with code at this offset.
+    pub kind: LineMarkerKind,
+}
 
-    fn line_delta(self) -> u32 {
-        // NB: It has been observed in some PDBs that this does not store a delta to start_line but
-        // actually just the truncated value of end_line.
-        self.flags & 0x7f00_0000 >> 24
-    }
+/// A parsed line entry.
+#[derive(Clone, Debug)]
+enum LineEntry {
+    /// Declares a source line number.
+    Number(LineNumberEntry),
+    /// Declares a debugging marker.
+    Marker(LineMarkerEntry),
+}
 
-    fn end_line(self) -> u32 {
+impl LineNumberHeader {
+    /// Parse this line number header into a line entry.
+    pub fn parse(self) -> LineEntry {
+        // The compiler generates special line numbers to hint the debugger. Separate these out so
+        // that they are not confused with actual line number entries.
+        let start_line = self.flags & 0x00ff_ffff;
+        let marker = match start_line {
+            0xfee_fee => Some(LineMarkerKind::DoNotStepOnto),
+            0xf00_f00 => Some(LineMarkerKind::DoNotStepInto),
+            _ => None,
+        };
+
+        if let Some(kind) = marker {
+            return LineEntry::Marker(LineMarkerEntry {
+                offset: self.offset,
+                kind,
+            });
+        }
+
+        // It has been observed in some PDBs that this does not store a delta to start_line but
+        // actually just the truncated value of `end_line`. Therefore, prefer to use `end_line` and
+        // compute the deta from `end_line` and `start_line`, if needed.
+        let line_delta = self.flags & 0x7f00_0000 >> 24;
+
         // The line_delta contains the lower 7 bits of the end line number. We take all higher bits
         // from the start line and OR them with the lower delta bits. This combines to the full
         // original end line number.
-        let high_start = self.start_line() & !0x7f;
-        let end_line = high_start | self.line_delta();
+        let high_start = start_line & !0x7f;
+        let mut end_line = high_start | line_delta;
 
         // If the end line number is smaller than the start line, we have to assume an overflow.
         // The end line will most likely be within 128 lines from the start line. Thus, we account
         // for the overflow by adding 1 to the 8th bit.
-        if end_line < self.start_line() {
-            end_line + (1 << 7)
-        } else {
-            end_line
+        if end_line < start_line {
+            end_line += 1 << 7;
         }
-    }
 
-    #[allow(unused)]
-    fn kind(self) -> LineNumberKind {
-        if self.flags & 0x8000_0000 != 0 {
-            LineNumberKind::Statement
+        let kind = if self.flags & 0x8000_0000 != 0 {
+            LineInfoKind::Statement
         } else {
-            LineNumberKind::Expression
-        }
+            LineInfoKind::Expression
+        };
+
+        LineEntry::Number(LineNumberEntry {
+            offset: self.offset,
+            start_line,
+            end_line,
+            kind,
+        })
     }
 }
 
@@ -203,7 +248,7 @@ struct DebugLinesIterator<'a> {
 }
 
 impl FallibleIterator for DebugLinesIterator<'_> {
-    type Item = LineNumberEntry;
+    type Item = LineEntry;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
@@ -211,7 +256,7 @@ impl FallibleIterator for DebugLinesIterator<'_> {
             return Ok(None);
         }
 
-        self.buf.parse().map(Some)
+        self.buf.parse().map(LineNumberHeader::parse).map(Some)
     }
 }
 
@@ -259,7 +304,7 @@ struct DebugLinesBlockHeader {
 impl DebugLinesBlockHeader {
     /// The byte size of all line number entries combined.
     fn line_size(&self) -> usize {
-        self.num_lines as usize * std::mem::size_of::<LineNumberEntry>()
+        self.num_lines as usize * std::mem::size_of::<LineNumberHeader>()
     }
 
     /// The byte size of all column number entries combined.
@@ -450,24 +495,32 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
         loop {
-            if let Some(line_entry) = self.lines.next()? {
-                let section_header = self.blocks.header;
-                let block_header = self.lines.block;
-
+            if let Some(entry) = self.lines.next()? {
                 // A column entry is only returned if the debug lines subsection contains column
                 // information. Otherwise, the columns iterator is empty. We can safely assume that
                 // the number of line entries and column entries returned from the two iterators is
                 // equivalent. If it were not, the creation of the block would already have failed.
                 let column_entry = self.columns.next()?;
 
+                // The high-level line iterator is only interested in actual line entries. It might
+                // make sense to eventually fold markers at the same offset into the `LineInfo`
+                // record.
+                let line_entry = match entry {
+                    LineEntry::Number(line_entry) => line_entry,
+                    LineEntry::Marker(_) => continue,
+                };
+
+                let section_header = self.blocks.header;
+                let block_header = self.lines.block;
+
                 return Ok(Some(LineInfo {
-                    offset: section_header.offset + line_entry.offset(),
+                    offset: section_header.offset + line_entry.offset,
                     file_index: FileIndex(block_header.file_index),
-                    line_start: line_entry.start_line(),
-                    line_end: line_entry.end_line(),
-                    // TODO(ja): Verify that these values are accurate
+                    line_start: line_entry.start_line,
+                    line_end: line_entry.end_line,
                     column_start: column_entry.map(|e| e.start_column),
                     column_end: column_entry.map(|e| e.end_column),
+                    kind: line_entry.kind,
                 }));
             }
 
