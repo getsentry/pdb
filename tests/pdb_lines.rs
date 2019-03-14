@@ -11,7 +11,10 @@ fn test_module_lines() {
     let dbi = pdb.debug_information().expect("dbi");
     let mut modules = dbi.modules().expect("modules");
     let module = modules.next().expect("parse module").expect("no module");
-    let module_info = pdb.module_info(&module).expect("module info");
+    let module_info = pdb
+        .module_info(&module)
+        .expect("parse module info")
+        .expect("module info");
 
     let line_program = module_info.line_program().expect("line program");
     let mut lines = line_program.lines();

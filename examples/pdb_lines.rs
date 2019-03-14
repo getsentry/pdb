@@ -15,7 +15,13 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
     let mut modules = dbi.modules()?;
     while let Some(module) = modules.next()? {
         println!("Module: {}", module.module_name());
-        let info = pdb.module_info(&module)?;
+        let info = match pdb.module_info(&module)? {
+            Some(info) => info,
+            None => {
+                println!("  no module info");
+                continue;
+            }
+        };
 
         let program = info.line_program()?;
         let mut lines = program.lines();

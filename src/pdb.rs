@@ -186,8 +186,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// if let Some(module) = modules.next()? {
     ///     println!("module name: {}, object file name: {}",
     ///              module.module_name(), module.object_file_name());
-    ///     let info = pdb.module_info(&module)?;
-    ///     println!("contains {} symbols", info.symbols()?.count()?);
+    ///     match pdb.module_info(&module)? {
+    ///         Some(info) => println!("contains {} symbols", info.symbols()?.count()?),
+    ///         None => println!("module information not available"),
+    ///     }
     /// }
     ///
     /// # Ok(())
@@ -196,9 +198,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// [`debug_information`]: #method.debug_information
     /// [`modules`]: struct.DebugInformation.html#method.modules
-    pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
-        let stream = self.raw_stream(module.info().stream.into())?;
-        ModuleInfo::parse(stream, module)
+    pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<Option<ModuleInfo<'s>>> {
+        let stream_index = module.info().stream;
+        if stream_index == !0 {
+            return Ok(None);
+        }
+
+        let stream = self.raw_stream(stream_index.into())?;
+        ModuleInfo::parse(stream, module).map(Some)
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
