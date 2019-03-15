@@ -286,6 +286,7 @@ impl FallibleIterator for DebugColumnsIterator<'_> {
     }
 }
 
+#[repr(C, packed)]
 #[derive(Clone, Copy, Debug, Default, Pread)]
 struct DebugLinesBlockHeader {
     /// Offset of the file checksum in the file checksums debug subsection.
@@ -297,22 +298,28 @@ struct DebugLinesBlockHeader {
     /// same number of column entries will be present after the line entries.
     num_lines: u32,
 
-    /// Code size of this block in bytes.
-    code_size: u32,
+    /// Total byte size of this block, including following line and column entries.
+    block_size: u32,
 }
 
 impl DebugLinesBlockHeader {
+    /// The byte size of all line and column records combined.
+    fn data_size(&self) -> usize {
+        self.block_size as usize - std::mem::size_of::<Self>()
+    }
+
     /// The byte size of all line number entries combined.
     fn line_size(&self) -> usize {
         self.num_lines as usize * std::mem::size_of::<LineNumberHeader>()
     }
 
     /// The byte size of all column number entries combined.
-    ///
-    /// This value is invalid if the debug lines subsection does not contain column information.
-    /// Check `has_columns` before using this value.
-    fn column_size(&self) -> usize {
-        self.num_lines as usize * std::mem::size_of::<ColumnNumberEntry>()
+    fn column_size(&self, subsection: DebugLinesHeader) -> usize {
+        if subsection.has_columns() {
+            self.num_lines as usize * std::mem::size_of::<ColumnNumberEntry>()
+        } else {
+            0
+        }
     }
 }
 
@@ -327,11 +334,6 @@ impl<'a> DebugLinesBlock<'a> {
     #[allow(unused)]
     fn file_index(&self) -> FileIndex {
         FileIndex(self.header.file_index)
-    }
-
-    #[allow(unused)]
-    fn code_size(&self) -> u32 {
-        self.header.code_size
     }
 
     fn lines(&self) -> DebugLinesIterator<'a> {
@@ -364,13 +366,19 @@ impl<'a> FallibleIterator for DebugLinesBlockIterator<'a> {
             return Ok(None);
         }
 
+        // The header is followed by a variable-size chunk of data, specified by `data_size`. Load
+        // all of it at once to ensure we're not reading garbage in case there is more information
+        // we do not yet understand.
         let header = self.buf.parse::<DebugLinesBlockHeader>()?;
-        let line_data = self.buf.take(header.line_size())?;
-        let column_data = if self.header.has_columns() {
-            self.buf.take(header.column_size())?
-        } else {
-            &[]
-        };
+        let data = self.buf.take(header.data_size())?;
+
+        // The first data is a set of line entries, optionally followed by column entries. Load both
+        // and discard eventual data that follows
+        let (line_data, data) = data.split_at(header.line_size());
+        let (column_data, remainder) = data.split_at(header.column_size(self.header));
+
+        // In case the PDB format is extended with more information, we'd like to know here.
+        debug_assert!(remainder.is_empty());
 
         Ok(Some(DebugLinesBlock {
             header,
