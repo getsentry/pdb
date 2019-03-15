@@ -581,6 +581,38 @@ impl<'b> ParseBuffer<'b> {
             }
         }
     }
+
+    #[doc(hidden)]
+    #[inline]
+    pub(crate) fn get_variant_size(&mut self) -> usize {
+        let leaf = self.parse_u16();
+        match leaf {
+            Ok(leaf) => {
+                if leaf < constants::LF_NUMERIC {
+                    // the u16 directly encodes a value
+                    return 2;
+                }
+
+                match leaf {
+                    constants::LF_CHAR => 2 + 1,
+                    constants::LF_SHORT => 2 + 2,
+                    constants::LF_LONG => 2 + 4,
+                    constants::LF_QUADWORD => 2 + 8,
+                    constants::LF_USHORT => 2 + 2,
+                    constants::LF_ULONG => 2 + 4,
+                    constants::LF_UQUADWORD => 2 + 8,
+                    _ => {
+                        debug_assert!(false);
+                        2
+                    }
+                }
+            }
+            Err(_) => {
+                debug_assert!(false);
+                2
+            }
+        }
+    }
 }
 
 impl Default for ParseBuffer<'_> {
@@ -616,6 +648,21 @@ pub enum Variant {
     I16(i16),
     I32(i32),
     I64(i64),
+}
+
+impl ::std::fmt::Display for Variant {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match *self {
+            Variant::U8(value) => write!(f, "{}", value),
+            Variant::U16(value) => write!(f, "{}", value),
+            Variant::U32(value) => write!(f, "{}", value),
+            Variant::U64(value) => write!(f, "{}", value),
+            Variant::I8(value) => write!(f, "{}", value),
+            Variant::I16(value) => write!(f, "{}", value),
+            Variant::I32(value) => write!(f, "{}", value),
+            Variant::I64(value) => write!(f, "{}", value),
+        }
+    }
 }
 
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
