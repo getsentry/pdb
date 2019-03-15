@@ -601,13 +601,13 @@ pub struct RawString<'b>(&'b [u8]);
 
 impl fmt::Debug for RawString<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RawString::from({:?})", self.to_string())
+        write!(f, "RawString({:?})", self.to_string())
     }
 }
 
 impl fmt::Display for RawString<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.to_string())
+        write!(f, "{}", self.to_string())
     }
 }
 
