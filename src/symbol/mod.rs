@@ -132,6 +132,8 @@ impl<'t> Symbol<'t> {
 
             S_LOCAL => 6,
 
+            S_EXPORT => 4,
+
             _ => return Err(Error::UnimplementedSymbolKind(kind)),
         };
 
@@ -334,6 +336,11 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             flags: LocalVariableFlags::new(buf.parse_u16()?),
         })),
 
+        S_EXPORT => Ok(SymbolData::Export(ExportSymbol {
+            ordinal: buf.parse_u16()?,
+            flags: ExportSymbolFlags::new(buf.parse_u16()?),
+        })),
+
         _ => Err(Error::UnimplementedSymbolKind(kind)),
     }
 }
@@ -389,6 +396,9 @@ pub enum SymbolData {
 
     // S_LOCAL (0x113e)
     Local(LocalSymbol),
+
+    // S_EXPORT (0x1138)
+    Export(ExportSymbol),
 }
 
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
@@ -588,6 +598,38 @@ impl LocalVariableFlags {
 pub struct LocalSymbol {
     pub type_index: TypeIndex,
     pub flags: LocalVariableFlags,
+}
+
+// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExportSymbolFlags {
+    pub constant: bool,
+    pub data: bool,
+    pub private: bool,
+    pub no_name: bool,
+    pub ordinal: bool,
+    pub forwarder: bool,
+}
+
+impl ExportSymbolFlags {
+    fn new(flags: u16) -> Self {
+        ExportSymbolFlags {
+            constant: flags & 0x01 != 0,
+            data: flags & 0x02 != 0,
+            private: flags & 0x04 != 0,
+            no_name: flags & 0x08 != 0,
+            ordinal: flags & 0x10 != 0,
+            forwarder: flags & 0x20 != 0,
+        }
+    }
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_EXPORT`
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ExportSymbol {
+    pub ordinal: u16,
+    pub flags: ExportSymbolFlags,
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
