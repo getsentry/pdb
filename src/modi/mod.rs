@@ -62,7 +62,7 @@ impl<'s> ModuleInfo<'s> {
     pub fn line_program(&self) -> Result<LineProgram<'_>> {
         let start = self.symbols_size as usize;
         let inner = match self.lines_size {
-            LinesSize::C11(_size) => unimplemented!(),
+            LinesSize::C11(_size) => return Err(Error::UnimplementedFeature("C11 line programs")),
             LinesSize::C13(size) => {
                 let data = &self.stream[start..start + size];
                 LineProgramInner::C13(c13::C13LineProgram::parse(data)?)
