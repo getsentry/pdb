@@ -420,7 +420,7 @@ impl fmt::Debug for PdbInternalSectionOffset {
 /// [`to_raw_string`]: struct.StringRef.html#method.to_raw_string
 /// [`to_string_lossy`]: struct.StringRef.html#method.to_string_lossy
 /// [`StringTable`]: struct.StringTable.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StringRef(pub u32);
 
 impl From<u32> for StringRef {
