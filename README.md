@@ -68,6 +68,9 @@ Run with `cargo run --release --example <name>`:
 * [`pdb2hpp`](examples/pdb2hpp.rs) is a somewhat larger program that prints an approximation of a C++ header file for
   a requested type given only a PDB.
 
+* [`pdb_lines`](examples/pdb_lines.rs) outputs line number information for every symbol in every module contained in
+  a PDB.
+
 License
 ---
 
@@ -84,27 +87,3 @@ Contribution
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any
 additional terms or conditions.
-
-
-TODO
----
-
-* Go from one-copy to zero-copy. The library works with data in-place for as
-  long as possible, and it can in principle operate on a memory mapped PDB,
-  but there's a catch.
-  
-  The underlying file format is laid out such that a single logical data
-  stream (which `pdb` wants to view as a `&[u8]`) is actually  discontinuous
-  on-disk. That shouldn't be a problem – operating systems let you memory map
-  files in appropriate ways – except `memmap-rs` doesn't currently support
-  mapping discontinuous segments into a continuous memory block.
-   
-  `pdb` today resorts to making a copy using `io::Seek` + `io::Read`, and
-  then works on data in-place from there. If we had a way to [get
-  discontinuous memory
-  maps](https://github.com/danburkert/memmap-rs/issues/30), we could drop it
-  in and eliminate that copy.
-
-* Expose module information.
-
-* Expose line number information.
