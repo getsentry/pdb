@@ -251,7 +251,7 @@ impl fmt::Debug for Rva {
 /// stores [`PdbInternalSectionOffsets`].
 ///
 /// [`PdbInternalSectionOffsets`]: struct.PdbInternalSectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct SectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -283,6 +283,18 @@ impl Add<u32> for SectionOffset {
     fn add(mut self, offset: u32) -> Self {
         self.offset += offset;
         self
+    }
+}
+
+impl PartialOrd for SectionOffset {
+    /// Compares offsets if they reside in the same section.
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.section == other.section {
+            Some(self.offset.cmp(&other.offset))
+        } else {
+            None
+        }
     }
 }
 
@@ -343,7 +355,7 @@ impl fmt::Debug for PdbInternalRva {
 ///
 /// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
 /// [`SectionOffset`]: struct.SectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd, Pread)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, Pread)]
 pub struct PdbInternalSectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -372,9 +384,22 @@ impl Add<u32> for PdbInternalSectionOffset {
     ///
     /// This does not check whether the offset is still valid within the given section. If the
     /// offset is out of bounds, the conversion to `Rva` will return `None`.
+    #[inline]
     fn add(mut self, offset: u32) -> Self {
         self.offset += offset;
         self
+    }
+}
+
+impl PartialOrd for PdbInternalSectionOffset {
+    /// Compares offsets if they reside in the same section.
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.section == other.section {
+            Some(self.offset.cmp(&other.offset))
+        } else {
+            None
+        }
     }
 }
 
