@@ -582,9 +582,24 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn lines_at_offset(&self, _offset: PdbInternalSectionOffset) -> C13LineIterator<'a> {
-        // TODO(ja): Figure out if this is the way to go
-        self.lines()
+    pub(crate) fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> C13LineIterator<'a> {
+        // Since we only care about the start offset of an entire debug lines subsection, we can
+        // quickly advance to the first (and only) subsection that matches that offset. Since they
+        // are non-overlapping and not empty, we can bail out at the first match.
+        let section = DebugSubsectionIterator::new(self.data)
+            .filter(|section| section.kind == DebugSubsectionKind::Lines)
+            .and_then(|section| DebugLinesSubsection::parse(section.data))
+            .find(|lines_section| lines_section.header.offset == offset);
+
+        match section {
+            Ok(Some(section)) => C13LineIterator {
+                sections: DebugSubsectionIterator::default(),
+                blocks: section.blocks(),
+                lines: DebugLinesIterator::default(),
+                columns: DebugColumnsIterator::default(),
+            },
+            _ => Default::default(),
+        }
     }
 
     pub(crate) fn get_file_info(&self, index: FileIndex) -> Result<FileInfo<'a>> {

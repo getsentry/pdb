@@ -66,8 +66,8 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
             Some(info) => info,
             None => {
                 println!("  no module info");
-                continue
-            },
+                continue;
+            }
         };
 
         walk_symbols(info.symbols()?)?;

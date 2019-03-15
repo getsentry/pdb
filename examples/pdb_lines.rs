@@ -1,11 +1,13 @@
-use getopts::Options;
-use pdb::FallibleIterator;
 use std::env;
 use std::io::Write;
 
+use getopts::Options;
+
+use pdb::{FallibleIterator, SymbolData, PDB};
+
 fn dump_pdb(filename: &str) -> pdb::Result<()> {
     let file = std::fs::File::open(filename)?;
-    let mut pdb = pdb::PDB::open(file)?;
+    let mut pdb = PDB::open(file)?;
 
     let address_map = pdb.address_map()?;
     let string_table = pdb.string_table()?;
@@ -14,7 +16,9 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
     let dbi = pdb.debug_information()?;
     let mut modules = dbi.modules()?;
     while let Some(module) = modules.next()? {
+        println!();
         println!("Module: {}", module.module_name());
+
         let info = match pdb.module_info(&module)? {
             Some(info) => info,
             None => {
@@ -24,13 +28,21 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
         };
 
         let program = info.line_program()?;
-        let mut lines = program.lines();
-        while let Some(line_info) = lines.next()? {
-            let rva = line_info.offset.to_rva(&address_map).expect("invalid rva");
-            let file_info = program.get_file_info(line_info.file_index)?;
-            let file_name = file_info.name.to_string_lossy(&string_table)?;
+        let mut symbols = info.symbols()?;
 
-            println!("  {} {}:{}", rva, file_name, line_info.line_start);
+        while let Some(symbol) = symbols.next()? {
+            if let Ok(SymbolData::Procedure(proc)) = symbol.parse() {
+                let sign = if proc.global { "+" } else { "-" };
+                println!("{} {}", sign, symbol.name()?.to_string());
+
+                let mut lines = program.lines_at_offset(proc.offset);
+                while let Some(line_info) = lines.next()? {
+                    let rva = line_info.offset.to_rva(&address_map).expect("invalid rva");
+                    let file_info = program.get_file_info(line_info.file_index)?;
+                    let file_name = file_info.name.to_string_lossy(&string_table)?;
+                    println!("  {} {}:{}", rva, file_name, line_info.line_start);
+                }
+            }
         }
     }
 

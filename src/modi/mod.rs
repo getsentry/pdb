@@ -169,7 +169,11 @@ impl<'a> LineProgram<'a> {
         }
     }
 
-    /// Returns an iterator over all line records starting from a given section offset.
+    /// Returns an iterator over line records for the given section offset.
+    ///
+    /// This does not work with any arbitrary section offset. The iterator only returns lines if the
+    /// section offset is the start of a line block. This is true for procedure or symbol offsets
+    /// that specify line information. For all other offsets, the iterator will be empty.
     ///
     /// Note that line records are not guaranteed to be ordered by source code offset. If a
     /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
