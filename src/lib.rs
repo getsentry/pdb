@@ -47,25 +47,27 @@
 // modules
 mod common;
 mod dbi;
-mod module_info;
+mod modi;
 mod msf;
 mod omap;
 mod pdb;
 mod pdbi;
 mod pe;
 mod source;
+mod strings;
 mod symbol;
 mod tpi;
 
 // exports
 pub use crate::common::*;
 pub use crate::dbi::*;
-pub use crate::module_info::*;
+pub use crate::modi::*;
 pub use crate::omap::*;
 pub use crate::pdb::*;
 pub use crate::pdbi::*;
 pub use crate::pe::*;
 pub use crate::source::*;
+pub use crate::strings::*;
 pub use crate::symbol::*;
 pub use crate::tpi::*;
 

@@ -8,6 +8,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
+use std::ops::Add;
 use std::result;
 
 use scroll::ctx::TryFromCtx;
@@ -77,6 +78,18 @@ pub enum Error {
 
     /// A parse error from scroll.
     ScrollError(scroll::Error),
+
+    /// This debug subsection kind is unknown or unimplemented.
+    UnimplementedDebugSubsection(u32),
+
+    /// This source file checksum kind is unknown or unimplemented.
+    UnimplementedFileChecksumKind(u8),
+
+    /// There is no source file checksum at the given offset.
+    InvalidFileChecksumOffset(u32),
+
+    /// The lines table is missing.
+    LinesNotFound,
 }
 
 impl std::error::Error for Error {
@@ -108,6 +121,12 @@ impl std::error::Error for Error {
                 "Required mapping for virtual addresses (OMAP) was not found"
             }
             Error::ScrollError(ref e) => e.description(),
+            Error::UnimplementedDebugSubsection(_) => {
+                "Debug module subsection of this kind is not implemented"
+            }
+            Error::UnimplementedFileChecksumKind(_) => "Unknown source file checksum kind",
+            Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
+            Error::LinesNotFound => "Line information not found for a module",
         }
     }
 }
@@ -158,6 +177,17 @@ impl fmt::Display for Error {
                 f,
                 "Required mapping for virtual addresses (OMAP) was not found"
             ),
+            Error::UnimplementedDebugSubsection(kind) => write!(
+                f,
+                "Debug module subsection of kind 0x{:04x} is not implemented",
+                kind
+            ),
+            Error::UnimplementedFileChecksumKind(kind) => {
+                write!(f, "Unknown source file checksum kind {}", kind)
+            }
+            Error::InvalidFileChecksumOffset(offset) => {
+                write!(f, "Invalid source file checksum offset {:#x}", offset)
+            }
             _ => fmt::Debug::fmt(self, f),
         }
     }
@@ -204,7 +234,7 @@ impl From<Rva> for u32 {
 
 impl fmt::Display for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#08x}", self.0)
+        write!(f, "{:#010x}", self.0)
     }
 }
 
@@ -221,7 +251,7 @@ impl fmt::Debug for Rva {
 /// stores [`PdbInternalSectionOffsets`].
 ///
 /// [`PdbInternalSectionOffsets`]: struct.PdbInternalSectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct SectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -243,11 +273,36 @@ impl SectionOffset {
     }
 }
 
+impl Add<u32> for SectionOffset {
+    type Output = Self;
+
+    /// Adds the given offset to this section offset.
+    ///
+    /// This does not check whether the offset is still valid within the given section. If the
+    /// offset is out of bounds, the conversion to `Rva` will return `None`.
+    fn add(mut self, offset: u32) -> Self {
+        self.offset += offset;
+        self
+    }
+}
+
+impl PartialOrd for SectionOffset {
+    /// Compares offsets if they reside in the same section.
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.section == other.section {
+            Some(self.offset.cmp(&other.offset))
+        } else {
+            None
+        }
+    }
+}
+
 impl fmt::Debug for SectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
             .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#08x}", self.offset))
+            .field("offset", &format!("{:#010x}", self.offset))
             .finish()
     }
 }
@@ -277,7 +332,7 @@ impl From<PdbInternalRva> for u32 {
 
 impl fmt::Display for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#08x}", self.0)
+        write!(f, "{:#010x}", self.0)
     }
 }
 
@@ -300,7 +355,7 @@ impl fmt::Debug for PdbInternalRva {
 ///
 /// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
 /// [`SectionOffset`]: struct.SectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, Pread)]
 pub struct PdbInternalSectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -322,12 +377,73 @@ impl PdbInternalSectionOffset {
     }
 }
 
+impl Add<u32> for PdbInternalSectionOffset {
+    type Output = Self;
+
+    /// Adds the given offset to this section offset.
+    ///
+    /// This does not check whether the offset is still valid within the given section. If the
+    /// offset is out of bounds, the conversion to `Rva` will return `None`.
+    #[inline]
+    fn add(mut self, offset: u32) -> Self {
+        self.offset += offset;
+        self
+    }
+}
+
+impl PartialOrd for PdbInternalSectionOffset {
+    /// Compares offsets if they reside in the same section.
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        if self.section == other.section {
+            Some(self.offset.cmp(&other.offset))
+        } else {
+            None
+        }
+    }
+}
+
 impl fmt::Debug for PdbInternalSectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PdbInternalSectionOffset")
             .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#08x}", self.offset))
+            .field("offset", &format!("{:#010x}", self.offset))
             .finish()
+    }
+}
+
+/// A reference to a string in the string table.
+///
+/// This type stores an offset into the global string table of the PDB. To retrieve the string
+/// value, use [`to_raw_string`], [`to_string_lossy`] or methods on [`StringTable`].
+///
+/// [`to_raw_string`]: struct.StringRef.html#method.to_raw_string
+/// [`to_string_lossy`]: struct.StringRef.html#method.to_string_lossy
+/// [`StringTable`]: struct.StringTable.html
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StringRef(pub u32);
+
+impl From<u32> for StringRef {
+    fn from(offset: u32) -> Self {
+        StringRef(offset)
+    }
+}
+
+impl From<StringRef> for u32 {
+    fn from(string_ref: StringRef) -> Self {
+        string_ref.0
+    }
+}
+
+impl fmt::Display for StringRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#010x}", self.0)
+    }
+}
+
+impl fmt::Debug for StringRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "StringRef({})", self)
     }
 }
 
@@ -358,21 +474,24 @@ macro_rules! def_peek {
 
 impl<'b> ParseBuffer<'b> {
     /// Return the remaining length of the buffer.
-    #[doc(hidden)]
     #[inline]
     pub fn len(&self) -> usize {
         self.0.len() - self.1
     }
 
+    /// Determines whether this ParseBuffer has been consumed.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Return the position within the parent slice.
-    #[doc(hidden)]
     #[inline]
     pub fn pos(&self) -> usize {
         self.1
     }
 
     /// Align the current position to the next multiple of `alignment` bytes.
-    #[doc(hidden)]
     #[inline]
     pub fn align(&mut self, alignment: usize) -> Result<()> {
         let diff = self.1 % alignment;
@@ -385,6 +504,7 @@ impl<'b> ParseBuffer<'b> {
         Ok(())
     }
 
+    /// Parse an object that implements `Pread`.
     pub fn parse<T>(&mut self) -> Result<T>
     where
         T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
@@ -463,6 +583,12 @@ impl<'b> ParseBuffer<'b> {
     }
 }
 
+impl Default for ParseBuffer<'_> {
+    fn default() -> Self {
+        ParseBuffer(&[], 0)
+    }
+}
+
 impl<'b> From<&'b [u8]> for ParseBuffer<'b> {
     fn from(buf: &'b [u8]) -> Self {
         ParseBuffer(buf, 0)
@@ -500,13 +626,13 @@ pub struct RawString<'b>(&'b [u8]);
 
 impl fmt::Debug for RawString<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "RawString::from({:?})", self.to_string())
+        write!(f, "RawString({:?})", self.to_string())
     }
 }
 
 impl fmt::Display for RawString<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.to_string())
+        write!(f, "{}", self.to_string())
     }
 }
 

@@ -7,12 +7,13 @@
 
 use crate::common::*;
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
-use crate::module_info::ModuleInfo;
+use crate::modi::ModuleInfo;
 use crate::msf::{self, Stream, MSF};
 use crate::omap::{AddressMap, OMAPTable};
 use crate::pdbi::PDBInformation;
 use crate::pe::ImageSectionHeader;
 use crate::source::Source;
+use crate::strings::StringTable;
 use crate::symbol::SymbolTable;
 use crate::tpi::TypeInformation;
 
@@ -185,8 +186,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// if let Some(module) = modules.next()? {
     ///     println!("module name: {}, object file name: {}",
     ///              module.module_name(), module.object_file_name());
-    ///     let info = pdb.module_info(&module)?;
-    ///     println!("contains {} symbols", info.symbols()?.count()?);
+    ///     match pdb.module_info(&module)? {
+    ///         Some(info) => println!("contains {} symbols", info.symbols()?.count()?),
+    ///         None => println!("module information not available"),
+    ///     }
     /// }
     ///
     /// # Ok(())
@@ -195,9 +198,14 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// [`debug_information`]: #method.debug_information
     /// [`modules`]: struct.DebugInformation.html#method.modules
-    pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<ModuleInfo<'s>> {
-        let stream = self.raw_stream(module.info().stream.into())?;
-        ModuleInfo::parse(stream, module)
+    pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<Option<ModuleInfo<'s>>> {
+        let stream_index = module.info().stream;
+        if stream_index == !0 {
+            return Ok(None);
+        }
+
+        let stream = self.raw_stream(stream_index.into())?;
+        ModuleInfo::parse(stream, module).map(Some)
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
@@ -228,7 +236,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             headers.push(ImageSectionHeader::parse(&mut buf)?);
         }
 
@@ -244,7 +252,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
-        while buf.len() > 0 {
+        while !buf.is_empty() {
             headers.push(ImageSectionHeader::parse(&mut buf)?);
         }
 
@@ -321,6 +329,51 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
                 transformed_to_original: None,
             },
         })
+    }
+
+    /// Retrieve the global string table of this PDB.
+    ///
+    /// Long strings, such as file names, are stored in a global deduplicated string table. They are
+    /// referred to by the [`StringRef`] type, which contains an offset into that table. Strings in
+    /// the table are stored as null-terminated C strings. Modern PDBs only store valid UTF-8 data
+    /// in the string table, but for older types a decoding might be necessary.
+    ///
+    /// The string table offers cheap zero-copy access to the underlying string data. It is
+    /// therefore cheap to build.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use pdb::{FallibleIterator, StringRef, PDB};
+    /// #
+    /// # fn test() -> pdb::Result<()> {
+    /// # let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+    /// let mut pdb = PDB::open(file)?;
+    /// let strings = pdb.string_table()?;
+    ///
+    /// // obtain a string ref somehow
+    /// # let string_ref = StringRef(0);
+    /// let raw_string = strings.get(string_ref)?;
+    /// println!("{}", raw_string.to_string());
+    ///
+    /// // alternatively, use convenience methods
+    /// println!("{}", string_ref.to_string_lossy(&strings)?);
+    ///
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB somehow does not contain section headers
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::UnexpectedEof` if the string table ends prematurely
+    ///
+    /// [`StringRef`]: struct.StringRef.html
+    pub fn string_table(&mut self) -> Result<StringTable<'s>> {
+        let stream = self.named_stream(b"/names")?;
+        StringTable::parse(stream)
     }
 
     /// Retrieve a stream by its index to read its contents as bytes.

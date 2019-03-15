@@ -165,7 +165,7 @@ mod big {
                 // build a PageList
                 let mut page_list = PageList::new(self.header.page_size);
                 let mut buf = ParseBuffer::from(location_location.as_slice());
-                while buf.len() > 0 {
+                while !buf.is_empty() {
                     let n = buf.parse_u32()?;
                     page_list.push(self.header.validate_page_number(n)?);
                 }

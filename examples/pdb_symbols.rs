@@ -62,7 +62,14 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
     let mut modules = dbi.modules()?;
     while let Some(module) = modules.next()? {
         println!("Module: {}", module.object_file_name());
-        let info = pdb.module_info(&module)?;
+        let info = match pdb.module_info(&module)? {
+            Some(info) => info,
+            None => {
+                println!("  no module info");
+                continue;
+            }
+        };
+
         walk_symbols(info.symbols()?)?;
     }
     Ok(())
