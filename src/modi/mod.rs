@@ -158,9 +158,9 @@ pub struct LineProgram<'a> {
 impl<'a> LineProgram<'a> {
     /// Returns an iterator over all line information records of this module.
     ///
-    /// Line records appear ordered by their section offset. This may or may not correspond to the
-    /// same ordering when these offsets are converted to `Rva`. Therefore, if a monotonic order by
-    /// `Rva` is required, the lines have to be sorted manually.
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
     pub fn lines(&self) -> LineIterator {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
@@ -171,8 +171,9 @@ impl<'a> LineProgram<'a> {
 
     /// Returns an iterator over all line records starting from a given section offset.
     ///
-    /// Line records are returned grouped by the source file. They are not guaranteed to be ordered
-    /// by source code offset.
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
     pub fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> LineIterator {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
