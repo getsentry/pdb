@@ -212,6 +212,53 @@ impl From<scroll::Error> for Error {
 /// The result type returned by this crate.
 pub type Result<T> = result::Result<T, Error>;
 
+/// Helper to format hexadecimal numbers.
+pub(crate) struct HexFmt<T>(pub T);
+
+impl<T> fmt::Debug for HexFmt<T>
+where
+    T: fmt::LowerHex,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#x}", self.0)
+    }
+}
+
+impl<T> fmt::Display for HexFmt<T>
+where
+    T: fmt::LowerHex,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
+/// Helper to format hexadecimal numbers with fixed width.
+pub(crate) struct FixedHexFmt<T>(pub T);
+
+impl<T> fmt::Debug for FixedHexFmt<T>
+where
+    T: fmt::LowerHex,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let width = 2 * std::mem::size_of::<T>();
+        write!(f, "{:#01$x}", self.0, width + 2)
+    }
+}
+
+impl<T> fmt::Display for FixedHexFmt<T>
+where
+    T: fmt::LowerHex,
+{
+    #[inline]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, f)
+    }
+}
+
 /// A Relative Virtual Address as it appears in a PE file.
 ///
 /// RVAs are always relative to the image base address, as it is loaded into process memory. This
@@ -234,7 +281,7 @@ impl From<Rva> for u32 {
 
 impl fmt::Display for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#010x}", self.0)
+        HexFmt(self.0).fmt(f)
     }
 }
 
@@ -301,8 +348,8 @@ impl PartialOrd for SectionOffset {
 impl fmt::Debug for SectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SectionOffset")
-            .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#010x}", self.offset))
+            .field("section", &HexFmt(self.section))
+            .field("offset", &FixedHexFmt(self.offset))
             .finish()
     }
 }
@@ -332,7 +379,7 @@ impl From<PdbInternalRva> for u32 {
 
 impl fmt::Display for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#010x}", self.0)
+        HexFmt(self.0).fmt(f)
     }
 }
 
@@ -406,8 +453,8 @@ impl PartialOrd for PdbInternalSectionOffset {
 impl fmt::Debug for PdbInternalSectionOffset {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("PdbInternalSectionOffset")
-            .field("section", &format!("{:#x}", self.section))
-            .field("offset", &format!("{:#010x}", self.offset))
+            .field("section", &HexFmt(self.section))
+            .field("offset", &FixedHexFmt(self.offset))
             .finish()
     }
 }

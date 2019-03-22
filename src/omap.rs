@@ -8,6 +8,7 @@
 //! Utilities for translating addresses between PDB offsets and _Relative Virtual Addresses_ (RVAs).
 
 use std::cmp::Ordering;
+use std::fmt;
 use std::mem;
 use std::slice;
 
@@ -20,7 +21,7 @@ use crate::pe::ImageSectionHeader;
 /// This record applies to the half-open interval [ `record.source_address`,
 /// `next_record.source_address` ).
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) struct OMAPRecord {
     source_address: u32,
     target_address: u32,
@@ -37,6 +38,15 @@ impl OMAPRecord {
     #[inline]
     pub fn target_address(self) -> u32 {
         u32::from_le(self.target_address)
+    }
+}
+
+impl fmt::Debug for OMAPRecord {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("OMAPRecord")
+            .field("source_address", &FixedHexFmt(self.source_address()))
+            .field("target_address", &FixedHexFmt(self.target_address()))
+            .finish()
     }
 }
 
@@ -85,7 +95,6 @@ impl Ord for OMAPRecord {
 ///
 /// [module level documentation]: ./index.html
 /// [`AddressMap`]: struct.AddressMap.html
-#[derive(Debug)]
 pub(crate) struct OMAPTable<'s> {
     stream: Stream<'s>,
 }
@@ -138,6 +147,12 @@ impl<'s> OMAPTable<'s> {
 
         debug_assert!(record.source_address() <= source_address);
         Some((source_address - record.source_address()) + record.target_address())
+    }
+}
+
+impl fmt::Debug for OMAPTable<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("OMAPTable").field(&self.records()).finish()
     }
 }
 
@@ -233,6 +248,7 @@ impl<'s> OMAPTable<'s> {
 /// [`PdbInternalRva`]: struct.PdbInternalRva.html
 /// [`SectionOffset`]: struct.SectionOffset.html
 /// [`PdbInternalSectionOffset`]: struct.PdbInternalSectionOffset.html
+#[derive(Debug)]
 pub struct AddressMap<'s> {
     pub(crate) original_sections: Vec<ImageSectionHeader>,
     pub(crate) transformed_sections: Option<Vec<ImageSectionHeader>>,
