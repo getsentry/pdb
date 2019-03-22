@@ -107,7 +107,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn debug_information(&mut self) -> Result<DebugInformation<'s>> {
-        let stream = self.raw_stream(DBI_STREAM)?;
+        let stream = self.msf.get(DBI_STREAM, None)?;
         let debug_info = DebugInformation::parse(stream)?;
 
         // Grab its header, since we need that for unrelated operations
@@ -154,8 +154,11 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         // so, start by getting the DBI header
         let dbi_header = self.dbi_header()?;
 
-        // open the appropriate stream
-        let stream = self.raw_stream(dbi_header.symbol_records_stream.into())?;
+        // open the appropriate stream, assuming that it is always present.
+        let stream = self
+            .raw_stream(dbi_header.symbol_records_stream)?
+            .ok_or(Error::GlobalSymbolsNotFound)?;
+
         SymbolTable::parse(stream)
     }
 
@@ -199,13 +202,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// [`debug_information`]: #method.debug_information
     /// [`modules`]: struct.DebugInformation.html#method.modules
     pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<Option<ModuleInfo<'s>>> {
-        let stream_index = module.info().stream;
-        if stream_index == !0 {
-            return Ok(None);
+        match self.raw_stream(module.info().stream)? {
+            Some(stream) => ModuleInfo::parse(stream, module).map(Some),
+            None => Ok(None),
         }
-
-        let stream = self.raw_stream(stream_index.into())?;
-        ModuleInfo::parse(stream, module).map(Some)
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
@@ -227,13 +227,12 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     pub fn sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
-        // Open the appropriate stream
-        let stream_number = match self.extra_streams()?.section_headers() {
-            Some(number) => number,
+        let index = self.extra_streams()?.section_headers;
+        let stream = match self.raw_stream(index)? {
+            Some(stream) => stream,
             None => return Ok(None),
         };
 
-        let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
         while !buf.is_empty() {
@@ -244,12 +243,12 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     pub(crate) fn original_sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
-        let stream_number = match self.extra_streams()?.original_section_headers() {
-            Some(number) => number,
+        let index = self.extra_streams()?.original_section_headers;
+        let stream = match self.raw_stream(index)? {
+            Some(stream) => stream,
             None => return Ok(None),
         };
 
-        let stream = self.raw_stream(stream_number)?;
         let mut buf = stream.parse_buffer();
         let mut headers = Vec::with_capacity(buf.len() / 40);
         while !buf.is_empty() {
@@ -260,25 +259,19 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 
     pub(crate) fn omap_from_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
-        let stream_number = match self.extra_streams()?.omap_from_src() {
-            Some(number) => number,
-            None => return Ok(None),
-        };
-
-        let stream = self.raw_stream(stream_number)?;
-        let table = OMAPTable::parse(stream)?;
-        Ok(Some(table))
+        let index = self.extra_streams()?.omap_from_src;
+        match self.raw_stream(index)? {
+            Some(stream) => OMAPTable::parse(stream).map(Some),
+            None => Ok(None),
+        }
     }
 
     pub(crate) fn omap_to_src(&mut self) -> Result<Option<OMAPTable<'s>>> {
-        let stream_number = match self.extra_streams()?.omap_to_src() {
-            Some(number) => number,
-            None => return Ok(None),
-        };
-
-        let stream = self.raw_stream(stream_number)?;
-        let table = OMAPTable::parse(stream)?;
-        Ok(Some(table))
+        let index = self.extra_streams()?.omap_to_src;
+        match self.raw_stream(index)? {
+            Some(stream) => OMAPTable::parse(stream).map(Some),
+            None => Ok(None),
+        }
     }
 
     /// Build a map translating between different kinds of offsets and virtual addresses.
@@ -391,13 +384,16 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
     /// let mut pdb = pdb::PDB::open(file)?;
     /// // This is the index of the "mystream" stream that was added using pdbstr.exe.
-    /// let s = pdb.raw_stream(208)?;
+    /// let s = pdb.raw_stream(pdb::StreamIndex(208))?.expect("stream exists");
     /// assert_eq!(s.as_slice(), b"hello world\n");
     /// # Ok(())
     /// # }
     /// ```
-    pub fn raw_stream(&mut self, stream: u32) -> Result<Stream<'s>> {
-        self.msf.get(stream, None)
+    pub fn raw_stream(&mut self, index: StreamIndex) -> Result<Option<Stream<'s>>> {
+        match index.msf_number() {
+            Some(number) => self.msf.get(number, None).map(Some),
+            None => Ok(None),
+        }
     }
 
     /// Retrieve a stream by its name, as declared in the PDB info stream.
@@ -411,9 +407,11 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     pub fn named_stream(&mut self, name: &[u8]) -> Result<Stream<'s>> {
         let info = self.pdb_information()?;
         let names = info.stream_names()?;
-        for n in &names {
-            if n.name.as_bytes() == name {
-                return self.raw_stream(n.stream_id);
+        for named_stream in &names {
+            if named_stream.name.as_bytes() == name {
+                return self
+                    .raw_stream(named_stream.stream_id)?
+                    .ok_or(Error::StreamNameNotFound);
             }
         }
         Err(Error::StreamNameNotFound)
@@ -436,5 +434,24 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         self.dbi_extra_streams = Some(extra);
 
         Ok(extra)
+    }
+}
+
+impl StreamIndex {
+    /// Load the raw data of this stream from the PDB.
+    ///
+    /// Returns `None` if this index is none. Otherwise, this will try to read the stream from the
+    /// PDB, which might fail if the stream is missing.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain this stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    pub fn get<'s, S>(self, pdb: &mut PDB<'s, S>) -> Result<Option<Stream<'s>>>
+    where
+        S: Source<'s> + 's,
+    {
+        pdb.raw_stream(self)
     }
 }

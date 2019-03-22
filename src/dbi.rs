@@ -117,7 +117,7 @@ pub(crate) struct DBIHeader {
     pub signature: u32,
     pub version: HeaderVersion,
     pub age: u32,
-    pub gs_symbols_stream: u16,
+    pub gs_symbols_stream: StreamIndex,
 
     /*
     https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L143-L155:
@@ -136,11 +136,11 @@ pub(crate) struct DBIHeader {
     };
     */
     pub internal_version: u16,
-    pub ps_symbols_stream: u16,
+    pub ps_symbols_stream: StreamIndex,
     // "build version of the pdb dll that built this pdb last."
     pub pdb_dll_build_version: u16,
 
-    pub symbol_records_stream: u16,
+    pub symbol_records_stream: StreamIndex,
 
     // "rbld version of the pdb dll that built this pdb last."
     pub pdb_dll_rbld_version: u16,
@@ -184,11 +184,11 @@ impl DBIHeader {
             signature: buf.parse_u32()?,
             version: From::from(buf.parse_u32()?),
             age: buf.parse_u32()?,
-            gs_symbols_stream: buf.parse_u16()?,
+            gs_symbols_stream: buf.parse()?,
             internal_version: buf.parse_u16()?,
-            ps_symbols_stream: buf.parse_u16()?,
+            ps_symbols_stream: buf.parse()?,
             pdb_dll_build_version: buf.parse_u16()?,
-            symbol_records_stream: buf.parse_u16()?,
+            symbol_records_stream: buf.parse()?,
             pdb_dll_rbld_version: buf.parse_u16()?,
             module_list_size: buf.parse_u32()?,
             section_contribution_size: buf.parse_u32()?,
@@ -396,7 +396,7 @@ pub(crate) struct DBIModuleInfo {
     /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1201-L1204
     pub flags: u16,
     /// Stream number of module debug info (syms, lines, fpo).
-    pub stream: u16,
+    pub stream: StreamIndex,
     /// Size of local symbols debug info in `stream`.
     pub symbols_size: u32,
     /// Size of line number debug info in `stream`.
@@ -420,7 +420,7 @@ impl DBIModuleInfo {
             opened: buf.parse_u32()?,
             section: DBISectionContribution::parse(buf)?,
             flags: buf.parse_u16()?,
-            stream: buf.parse_u16()?,
+            stream: buf.parse()?,
             symbols_size: buf.parse_u32()?,
             lines_size: buf.parse_u32()?,
             c13_lines_size: buf.parse_u32()?,
@@ -498,14 +498,6 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
     }
 }
 
-fn optional_stream_number(sn: u16) -> Option<u32> {
-    if sn == u16::max_value() {
-        None
-    } else {
-        Some(u32::from(sn))
-    }
-}
-
 /// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct DBIExtraStreams {
@@ -518,18 +510,18 @@ pub(crate) struct DBIExtraStreams {
     // We'll map those to fields.
     //
     // The struct itself can be truncated. This is an internal struct; we'll treat missing fields as
-    // 0xffff even if it's a short read, so long as the short read stops on a u16 boundary.
-    fpo: u16,
-    exception: u16,
-    fixup: u16,
-    omap_to_src: u16,
-    omap_from_src: u16,
-    section_headers: u16,
-    token_rid_map: u16,
-    xdata: u16,
-    pdata: u16,
-    new_fpo: u16,
-    original_section_headers: u16,
+    // StreamIndex::none() even if it's a short read, so long as the short read stops on a u16 boundary.
+    pub fpo: StreamIndex,
+    pub exception: StreamIndex,
+    pub fixup: StreamIndex,
+    pub omap_to_src: StreamIndex,
+    pub omap_from_src: StreamIndex,
+    pub section_headers: StreamIndex,
+    pub token_rid_map: StreamIndex,
+    pub xdata: StreamIndex,
+    pub pdata: StreamIndex,
+    pub new_fpo: StreamIndex,
+    pub original_section_headers: StreamIndex,
 }
 
 impl DBIExtraStreams {
@@ -566,77 +558,27 @@ impl DBIExtraStreams {
             ));
         }
 
-        fn eof_to_placeholder_stream(err: Error) -> Result<u16> {
-            match err {
-                Error::UnexpectedEof => Ok(0xffff),
-                other => Err(other),
+        fn next_index(buf: &mut ParseBuffer<'_>) -> Result<StreamIndex> {
+            if buf.is_empty() {
+                Ok(StreamIndex::none())
+            } else {
+                buf.parse()
             }
         }
 
         Ok(DBIExtraStreams {
-            fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            exception: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            fixup: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            omap_to_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            omap_from_src: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            token_rid_map: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            xdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            pdata: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            new_fpo: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
-            original_section_headers: buf.parse_u16().or_else(eof_to_placeholder_stream)?,
+            fpo: next_index(buf)?,
+            exception: next_index(buf)?,
+            fixup: next_index(buf)?,
+            omap_to_src: next_index(buf)?,
+            omap_from_src: next_index(buf)?,
+            section_headers: next_index(buf)?,
+            token_rid_map: next_index(buf)?,
+            xdata: next_index(buf)?,
+            pdata: next_index(buf)?,
+            new_fpo: next_index(buf)?,
+            original_section_headers: next_index(buf)?,
         })
-    }
-
-    #[allow(unused)]
-    pub fn fpo(&self) -> Option<u32> {
-        optional_stream_number(self.fpo)
-    }
-
-    #[allow(unused)]
-    pub fn exception(&self) -> Option<u32> {
-        optional_stream_number(self.exception)
-    }
-
-    #[allow(unused)]
-    pub fn fixup(&self) -> Option<u32> {
-        optional_stream_number(self.fixup)
-    }
-
-    pub fn omap_to_src(&self) -> Option<u32> {
-        optional_stream_number(self.omap_to_src)
-    }
-
-    pub fn omap_from_src(&self) -> Option<u32> {
-        optional_stream_number(self.omap_from_src)
-    }
-
-    pub fn section_headers(&self) -> Option<u32> {
-        optional_stream_number(self.section_headers)
-    }
-
-    #[allow(unused)]
-    pub fn token_rid_map(&self) -> Option<u32> {
-        optional_stream_number(self.token_rid_map)
-    }
-
-    #[allow(unused)]
-    pub fn xdata(&self) -> Option<u32> {
-        optional_stream_number(self.xdata)
-    }
-
-    #[allow(unused)]
-    pub fn pdata(&self) -> Option<u32> {
-        optional_stream_number(self.pdata)
-    }
-
-    #[allow(unused)]
-    pub fn new_fpo(&self) -> Option<u32> {
-        optional_stream_number(self.new_fpo)
-    }
-
-    pub fn original_section_headers(&self) -> Option<u32> {
-        optional_stream_number(self.original_section_headers)
     }
 }
 
@@ -652,15 +594,15 @@ mod tests {
         let extra_streams = DBIExtraStreams::parse(&mut buf).expect("parse");
 
         // check readback
-        assert_eq!(extra_streams.fpo(), None);
-        assert_eq!(extra_streams.exception(), Some(0x0201));
-        assert_eq!(extra_streams.fixup(), Some(0x0403));
-        assert_eq!(extra_streams.omap_to_src(), None);
-        assert_eq!(extra_streams.omap_from_src(), Some(0x0605));
+        assert_eq!(extra_streams.fpo, StreamIndex::none());
+        assert_eq!(extra_streams.exception, StreamIndex(0x0201));
+        assert_eq!(extra_streams.fixup, StreamIndex(0x0403));
+        assert_eq!(extra_streams.omap_to_src, StreamIndex::none());
+        assert_eq!(extra_streams.omap_from_src, StreamIndex(0x0605));
 
-        // check that short reads => None
-        assert_eq!(extra_streams.section_headers(), None);
-        assert_eq!(extra_streams.token_rid_map(), None);
-        assert_eq!(extra_streams.original_section_headers(), None);
+        // check that short reads => StreamIndex::none()
+        assert_eq!(extra_streams.section_headers, StreamIndex::none());
+        assert_eq!(extra_streams.token_rid_map, StreamIndex::none());
+        assert_eq!(extra_streams.original_section_headers, StreamIndex::none());
     }
 }

@@ -7,7 +7,7 @@ fn dump_stream_names(filename: &OsStr) -> pdb::Result<()> {
     let names = info.stream_names()?;
     println!("index, name");
     for name in &names {
-        let stream = pdb.raw_stream(name.stream_id)?;
+        let stream = pdb.raw_stream(name.stream_id)?.expect("named stream");
         println!("{:5}, {} {} bytes", name.stream_id, name.name, stream.len());
     }
     Ok(())
