@@ -476,6 +476,28 @@ fn binary_search_by_rva<F: RvaRange>(frames: &[F], rva: Rva) -> usize {
 ///
 /// Not every function in the image file must have frame data defined for it. Those functions that
 /// do not have frame data are assumed to have normal stack frames.
+///
+/// # Example
+///
+/// ```rust
+/// # use pdb::{PDB, Rva, FallibleIterator};
+/// #
+/// # fn test() -> pdb::Result<()> {
+/// # let source = std::fs::File::open("fixtures/self/foo.pdb")?;
+/// let mut pdb = PDB::open(source)?;
+///
+/// // Read the frame table once and reuse it
+/// let frame_table = pdb.frame_table()?;
+/// let mut frames = frame_table.iter();
+///
+/// // Iterate frame data in RVA order
+/// while let Some(frame) = frames.next()? {
+///     println!("{:#?}", frame);
+/// }
+/// # Ok(())
+/// # }
+/// # test().unwrap()
+/// ```
 pub struct FrameTable<'s> {
     old_stream: Option<Stream<'s>>,
     new_stream: Option<Stream<'s>>,

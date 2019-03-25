@@ -256,6 +256,28 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::StreamNotFound` if the PDB does not contain the referenced streams
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use pdb::{PDB, Rva, FallibleIterator};
+    /// #
+    /// # fn test() -> pdb::Result<()> {
+    /// # let source = std::fs::File::open("fixtures/self/foo.pdb")?;
+    /// let mut pdb = PDB::open(source)?;
+    ///
+    /// // Read the frame table once and reuse it
+    /// let frame_table = pdb.frame_table()?;
+    /// let mut frames = frame_table.iter();
+    ///
+    /// // Iterate frame data in RVA order
+    /// while let Some(frame) = frames.next()? {
+    ///     println!("{:#?}", frame);
+    /// }
+    /// # Ok(())
+    /// # }
+    /// # test().unwrap()
+    /// ```
     pub fn frame_table(&mut self) -> Result<FrameTable<'s>> {
         let extra = self.extra_streams()?;
         let old_stream = self.raw_stream(extra.fpo)?;
@@ -318,6 +340,38 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     ///
     /// [`AddressMap`]: struct.AddressMap.html
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use pdb::{Rva, FallibleIterator};
+    /// #
+    /// # fn test() -> pdb::Result<()> {
+    /// # let source = std::fs::File::open("fixtures/self/foo.pdb")?;
+    /// let mut pdb = pdb::PDB::open(source)?;
+    ///
+    /// // Compute the address map once and reuse it
+    /// let address_map = pdb.address_map()?;
+    ///
+    /// # let symbol_table = pdb.global_symbols()?;
+    /// # let symbol = symbol_table.iter().next()?.unwrap();
+    /// # match symbol.parse() { Ok(pdb::SymbolData::PublicSymbol(pubsym)) => {
+    /// // Obtain some section offset, eg from a symbol, and convert it
+    /// match pubsym.offset.to_rva(&address_map) {
+    ///     Some(rva) => {
+    ///         println!("symbol is at {}", rva);
+    /// #       assert_eq!(rva, Rva(26048));
+    ///     }
+    ///     None => {
+    ///         println!("symbol refers to eliminated code");
+    /// #       panic!("symbol should exist");
+    ///     }
+    /// }
+    /// # } _ => unreachable!() }
+    /// # Ok(())
+    /// # }
+    /// # test().unwrap()
+    /// ```
     pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
         let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
         Ok(match self.original_sections()? {
