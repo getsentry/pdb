@@ -51,8 +51,8 @@ impl fmt::Display for FrameType {
             FrameType::FPO => write!(f, "fpo"),
             FrameType::Trap => write!(f, "trap"),
             FrameType::TSS => write!(f, "tss"),
-            FrameType::Standard => write!(f, "standard"),
-            FrameType::FrameData => write!(f, "framedata"),
+            FrameType::Standard => write!(f, "std"),
+            FrameType::FrameData => write!(f, "fdata"),
         }
     }
 }
@@ -267,27 +267,12 @@ impl fmt::Debug for OldFrameData {
     }
 }
 
-/// Information on the evaluation of a `FrameData` entry.
-#[derive(Clone, Debug)]
-pub enum FrameInfo {
-    /// A compiler-specific frame type.
-    Type(FrameType),
-
-    /// A program string allowing to reconstruct register values for this frame.
-    ///
-    /// The program string is a sequence of macros that is interpreted in order to establish the
-    /// prologue. For example, a typical stack frame might use the program string `"$T0 $ebp = $eip
-    /// $T0 4 + ^ = $ebp $T0 ^ = $esp $T0 8 + ="`. The format is reverse polish notation, where the
-    /// operators follow the operands. `T0` represents a temporary variable on the stack.
-    ///
-    /// Note that the program string is specific to the CPU and to the calling convention set up for
-    /// the function represented by the current stack frame.
-    Program(StringRef),
-}
-
 /// Frame data for a code block.
 #[derive(Clone, Debug)]
 pub struct FrameData {
+    /// Compiler-specific frame type.
+    pub ty: FrameType,
+
     /// Relative virtual address of the start of the code block.
     pub code_rva: Rva,
 
@@ -321,13 +306,22 @@ pub struct FrameData {
     /// Indicates that this function uses the EBP register.
     pub uses_base_pointer: bool,
 
-    /// Evaluation information for this frame entry.
-    pub info: FrameInfo,
+    /// A program string allowing to reconstruct register values for this frame.
+    ///
+    /// The program string is a sequence of macros that is interpreted in order to establish the
+    /// prologue. For example, a typical stack frame might use the program string `"$T0 $ebp = $eip
+    /// $T0 4 + ^ = $ebp $T0 ^ = $esp $T0 8 + ="`. The format is reverse polish notation, where the
+    /// operators follow the operands. `T0` represents a temporary variable on the stack.
+    ///
+    /// Note that the program string is specific to the CPU and to the calling convention set up for
+    /// the function represented by the current stack frame.
+    pub program: Option<StringRef>,
 }
 
 impl From<&'_ OldFrameData> for FrameData {
     fn from(data: &OldFrameData) -> Self {
         FrameData {
+            ty: data.frame_type(),
             code_rva: data.code_rva(),
             code_size: data.code_size(),
             prolog_size: data.prolog_size(),
@@ -339,7 +333,7 @@ impl From<&'_ OldFrameData> for FrameData {
             has_cpp_eh: false,
             is_function_start: false,
             uses_base_pointer: data.uses_base_pointer(),
-            info: FrameInfo::Type(data.frame_type()),
+            program: None,
         }
     }
 }
@@ -347,6 +341,7 @@ impl From<&'_ OldFrameData> for FrameData {
 impl From<&'_ NewFrameData> for FrameData {
     fn from(data: &NewFrameData) -> Self {
         FrameData {
+            ty: FrameType::FrameData,
             code_rva: data.code_rva(),
             code_size: data.code_size(),
             prolog_size: data.prolog_size(),
@@ -358,7 +353,7 @@ impl From<&'_ NewFrameData> for FrameData {
             has_cpp_eh: data.has_eh(),
             is_function_start: data.is_function_start(),
             uses_base_pointer: false,
-            info: FrameInfo::Program(data.frame_func()),
+            program: Some(data.frame_func()),
         }
     }
 }
@@ -557,6 +552,11 @@ impl<'s> FrameTable<'s> {
             old_index,
             new_index,
         }
+    }
+
+    /// Indicates whether any frame data is available.
+    pub fn is_empty(&self) -> bool {
+        self.new_frames().is_empty() && self.old_frames().is_empty()
     }
 
     fn old_frames(&self) -> &[OldFrameData] {

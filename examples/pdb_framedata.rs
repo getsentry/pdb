@@ -15,17 +15,19 @@ fn dump_framedata(filename: &str) -> pdb::Result<()> {
     let string_table = pdb.string_table()?;
     println!("Frame data:");
 
-    println!(
-        "Address    Blk Size   Locals   Params   StackMax Prolog    SavedRegs   SEH C++EH Start BP"
-    );
-    println!("           Program/Type");
+    println!("Address    Blk Size   Locals   Params   StkMax   Prolog SavedReg SEH C++EH Start  BP  Type   Program");
     println!();
 
     let frame_table = pdb.frame_table()?;
     let mut frames = frame_table.iter();
     while let Some(data) = frames.next()? {
+        let program_string = match data.program {
+            Some(prog_ref) => prog_ref.to_string_lossy(&string_table)?,
+            None => Default::default(),
+        };
+
         println!(
-            "{} {:8x} {:8x} {:8x} {:8x} {:8x} {:8x}        {}   {}      {}     {}",
+            "{} {:8x} {:8x} {:8x} {:8x} {:8x} {:8x}   {}     {}     {}   {} {:5}   {}",
             data.code_rva,
             data.code_size,
             data.locals_size,
@@ -37,15 +39,9 @@ fn dump_framedata(filename: &str) -> pdb::Result<()> {
             if data.has_cpp_eh { 'Y' } else { 'N' },
             if data.is_function_start { 'Y' } else { 'N' },
             if data.uses_base_pointer { 'Y' } else { 'N' },
+            data.ty.to_string(),
+            program_string,
         );
-
-        match data.info {
-            pdb::FrameInfo::Program(prog_ref) => {
-                let program_string = prog_ref.to_string_lossy(&string_table)?;
-                println!("           {}", program_string);
-            }
-            pdb::FrameInfo::Type(ty) => println!("          {}", ty),
-        }
     }
 
     Ok(())
