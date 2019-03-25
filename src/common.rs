@@ -39,6 +39,9 @@ pub enum Error {
     /// A stream requested by name was not found.
     StreamNameNotFound,
 
+    /// Invalid length of a stream.
+    InvalidStreamLength(&'static str),
+
     /// An IO error occurred while reading from the data source.
     IoError(io::Error),
 
@@ -105,6 +108,7 @@ impl std::error::Error for Error {
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
             Error::StreamNameNotFound => "The requested stream is not stored in this file",
+            Error::InvalidStreamLength(_) => "Stream has an invalid length",
             Error::IoError(ref e) => e.description(),
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
@@ -149,6 +153,11 @@ impl fmt::Display for Error {
             Error::StreamNotFound(s) => {
                 write!(f, "The requested stream ({}) is not stored in this file", s)
             }
+            Error::InvalidStreamLength(s) => write!(
+                f,
+                "{} stream has a length that is not a multiple of its records",
+                s
+            ),
             Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
             Error::UnimplementedFeature(feature) => {
                 write!(f, "Unimplemented PDB feature: {}", feature)

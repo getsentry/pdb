@@ -102,9 +102,7 @@ pub(crate) struct OMAPTable<'s> {
 impl<'s> OMAPTable<'s> {
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         if stream.as_slice().len() % 8 != 0 {
-            Err(Error::UnimplementedFeature(
-                "OMAP tables must be a multiple of the record size",
-            ))
+            Err(Error::InvalidStreamLength("OMAP"))
         } else {
             Ok(OMAPTable { stream })
         }

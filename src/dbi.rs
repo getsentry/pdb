@@ -552,10 +552,8 @@ impl DBIExtraStreams {
     pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         // short reads are okay, as are long reads -- this struct is actually an array
         // what's _not_ okay are
-        if buf.len() % 2 == 1 {
-            return Err(Error::UnimplementedFeature(
-                "DbgDataHdr should always be an even number of bytes",
-            ));
+        if buf.len() % 2 != 0 {
+            return Err(Error::InvalidStreamLength("DbgDataHdr"));
         }
 
         fn next_index(buf: &mut ParseBuffer<'_>) -> Result<StreamIndex> {
