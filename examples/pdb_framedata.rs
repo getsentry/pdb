@@ -13,8 +13,8 @@ fn dump_framedata(filename: &str) -> pdb::Result<()> {
     let mut pdb = pdb::PDB::open(file)?;
 
     let string_table = pdb.string_table()?;
-    println!("Frame data:");
 
+    println!("Frame data:");
     println!("Address    Blk Size   Locals   Params   StkMax   Prolog SavedReg SEH C++EH Start  BP  Type   Program");
     println!();
 
