@@ -28,7 +28,7 @@ fn dump_framedata(filename: &str) -> pdb::Result<()> {
 
         println!(
             "{} {:8x} {:8x} {:8x} {:8x} {:8x} {:8x}   {}     {}     {}   {} {:5}   {}",
-            data.code_rva,
+            data.code_start,
             data.code_size,
             data.locals_size,
             data.params_size,

@@ -266,11 +266,12 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// # let source = std::fs::File::open("fixtures/self/foo.pdb")?;
     /// let mut pdb = PDB::open(source)?;
     ///
-    /// // Read the frame table once and reuse it
+    /// // Read the tables once and reuse them
+    /// let address_map = pdb.address_map()?;
     /// let frame_table = pdb.frame_table()?;
     /// let mut frames = frame_table.iter();
     ///
-    /// // Iterate frame data in RVA order
+    /// // Iterate frame data in internal RVA order
     /// while let Some(frame) = frames.next()? {
     ///     println!("{:#?}", frame);
     /// }

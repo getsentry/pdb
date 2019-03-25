@@ -86,7 +86,7 @@ impl fmt::Display for FrameType {
 /// [`struct tagFRAMEDATA`]: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4635
 #[repr(C, packed)]
 struct NewFrameData {
-    code_rva: u32,
+    code_start: u32,
     code_size: u32,
     locals_size: u32,
     params_size: u32,
@@ -98,8 +98,8 @@ struct NewFrameData {
 }
 
 impl NewFrameData {
-    pub fn code_rva(&self) -> Rva {
-        Rva(u32::from_le(self.code_rva))
+    pub fn code_start(&self) -> PdbInternalRva {
+        PdbInternalRva(u32::from_le(self.code_start))
     }
 
     pub fn code_size(&self) -> u32 {
@@ -150,7 +150,7 @@ impl NewFrameData {
 impl fmt::Debug for NewFrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("NewFrameData")
-            .field("code_rva", &self.code_rva())
+            .field("code_start", &self.code_start())
             .field("code_size", &self.code_size())
             .field("locals_size", &self.locals_size())
             .field("params_size", &self.params_size())
@@ -195,7 +195,7 @@ impl fmt::Debug for NewFrameData {
 /// ```
 #[repr(C, packed)]
 struct OldFrameData {
-    code_rva: u32,
+    code_start: u32,
     code_size: u32,
     locals_size: u32,
     params_size: u16,
@@ -203,8 +203,8 @@ struct OldFrameData {
 }
 
 impl OldFrameData {
-    pub fn code_rva(&self) -> Rva {
-        Rva(u32::from_le(self.code_rva))
+    pub fn code_start(&self) -> PdbInternalRva {
+        PdbInternalRva(u32::from_le(self.code_start))
     }
 
     pub fn code_size(&self) -> u32 {
@@ -254,7 +254,7 @@ impl OldFrameData {
 impl fmt::Debug for OldFrameData {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("OldFrameData")
-            .field("code_rva", &self.code_rva())
+            .field("code_start", &self.code_start())
             .field("code_size", &self.code_size())
             .field("locals_size", &self.locals_size())
             .field("params_size", &self.params_size())
@@ -274,7 +274,13 @@ pub struct FrameData {
     pub ty: FrameType,
 
     /// Relative virtual address of the start of the code block.
-    pub code_rva: Rva,
+    ///
+    /// Note that this address is internal to the PDB. To convert this to an actual [`Rva`], use
+    /// [`to_rva`].
+    ///
+    /// [`Rva`]: struct.Rva.html
+    /// [`to_rva`]: struct.PdbInternalRva.html#method.to_rva
+    pub code_start: PdbInternalRva,
 
     /// Size of the code block covered by this frame data in bytes.
     pub code_size: u32,
@@ -322,7 +328,7 @@ impl From<&'_ OldFrameData> for FrameData {
     fn from(data: &OldFrameData) -> Self {
         FrameData {
             ty: data.frame_type(),
-            code_rva: data.code_rva(),
+            code_start: data.code_start(),
             code_size: data.code_size(),
             prolog_size: data.prolog_size(),
             locals_size: data.locals_size(),
@@ -342,7 +348,7 @@ impl From<&'_ NewFrameData> for FrameData {
     fn from(data: &NewFrameData) -> Self {
         FrameData {
             ty: FrameType::FrameData,
-            code_rva: data.code_rva(),
+            code_start: data.code_start(),
             code_size: data.code_size(),
             prolog_size: data.prolog_size(),
             locals_size: data.locals_size(),
@@ -376,7 +382,7 @@ impl FallibleIterator for FrameDataIter<'_> {
 
         Ok(Some(match (old_opt, new_opt) {
             (Some(old_frame), Some(new_frame)) => {
-                match new_frame.code_rva().cmp(&old_frame.code_rva()) {
+                match new_frame.code_start().cmp(&old_frame.code_start()) {
                     Ordering::Less => {
                         self.new_index += 1;
                         new_frame.into()
@@ -406,29 +412,29 @@ impl FallibleIterator for FrameDataIter<'_> {
 }
 
 /// An object that spans a code range.
-trait RvaRange {
-    /// The start Rva of the block.
-    fn start(&self) -> Rva;
+trait AddrRange {
+    /// The start RVA of the block.
+    fn start(&self) -> PdbInternalRva;
 
     /// The size of the block in bytes.
     fn size(&self) -> u32;
 
     /// The non-inclusive end of the block.
     #[inline]
-    fn end(&self) -> Rva {
+    fn end(&self) -> PdbInternalRva {
         self.start() + self.size()
     }
 
     /// Returns whether this item includes the given Rva.
     #[inline]
-    fn contains(&self, rva: Rva) -> bool {
+    fn contains(&self, rva: PdbInternalRva) -> bool {
         rva >= self.start() && rva < self.end()
     }
 }
 
-impl RvaRange for OldFrameData {
-    fn start(&self) -> Rva {
-        self.code_rva()
+impl AddrRange for OldFrameData {
+    fn start(&self) -> PdbInternalRva {
+        self.code_start()
     }
 
     fn size(&self) -> u32 {
@@ -436,9 +442,9 @@ impl RvaRange for OldFrameData {
     }
 }
 
-impl RvaRange for NewFrameData {
-    fn start(&self) -> Rva {
-        self.code_rva()
+impl AddrRange for NewFrameData {
+    fn start(&self) -> PdbInternalRva {
+        self.code_start()
     }
 
     fn size(&self) -> u32 {
@@ -446,8 +452,8 @@ impl RvaRange for NewFrameData {
     }
 }
 
-/// Searches for a frame data entry covering the given Rva.
-fn binary_search_by_rva<F: RvaRange>(frames: &[F], rva: Rva) -> usize {
+/// Searches for a frame data entry covering the given `PdbInternalRva`.
+fn binary_search_by_rva<R: AddrRange>(frames: &[R], rva: PdbInternalRva) -> usize {
     match frames.binary_search_by_key(&rva, |f| f.start()) {
         Ok(index) => index,
         Err(index) => {
@@ -462,8 +468,8 @@ fn binary_search_by_rva<F: RvaRange>(frames: &[F], rva: Rva) -> usize {
 
 /// Describes stack frame layout of functions.
 ///
-/// The table contains [`FrameData`] entries ordered by [`Rva`]. Each entry describes a range of
-/// instructions starting at `code_rva` for `code_size` bytes.
+/// The table contains [`FrameData`] entries ordered by [`PdbInternalRva`]. Each entry describes a
+/// range of instructions starting at `code_rva` for `code_size` bytes.
 ///
 /// A procedure/function might be described by multiple entries, with the first one declaring
 /// `is_function_start`. To retrieve frame information for a specific function, use
@@ -532,14 +538,19 @@ impl<'s> FrameTable<'s> {
         }
     }
 
-    /// Returns an iterator over frame data starting at the given `Rva`.
+    /// Returns an iterator over frame data starting at the given `PdbInternalRva`.
     ///
     /// The first item returned by this iterator covers the given RVA. If the address is not a
-    /// direct start of a function or block, this is the closest element preceding the block.
+    /// direct start of a function or block, this is the closest element preceding the block. If no
+    /// frame data covers the given RVA, the iterator starts at the first item **after** the RVA.
+    /// Therefore, check for the desired RVA range when iterating frame data.
     ///
-    /// If no frame data covers the given `Rva`, the iterator starts at the first item **after** the
-    /// given Rva. Therefore, check for the desired RVA range when iterating frame data.
-    pub fn iter_at_rva(&self, rva: Rva) -> FrameDataIter<'_> {
+    /// To obtain a `PdbInternalRva`, use the `to_internal_rva` methods on
+    /// [`PdbInternalSectionOffset`] or [`Rva`].
+    ///
+    /// [`PdbInternalSectionOffset`]: struct.PdbInternalSectionOffset.html
+    /// [`Rva`]: struct.Rva.html
+    pub fn iter_at_rva(&self, rva: PdbInternalRva) -> FrameDataIter<'_> {
         let old_frames = self.old_frames();
         let old_index = binary_search_by_rva(old_frames, rva);
 

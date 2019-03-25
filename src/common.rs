@@ -310,15 +310,6 @@ impl fmt::Debug for Rva {
     }
 }
 
-impl<'a> TryFromCtx<'a, Endian> for Rva {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (Rva(i), s))
-    }
-}
-
 /// An offset relative to a PE section.
 ///
 /// This offset can be converted to an `Rva` to receive the address relative to the entire image.
@@ -424,6 +415,15 @@ impl fmt::Display for PdbInternalRva {
 impl fmt::Debug for PdbInternalRva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "PdbInternalRva({})", self)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for PdbInternalRva {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(i, s)| (PdbInternalRva(i), s))
     }
 }
 
