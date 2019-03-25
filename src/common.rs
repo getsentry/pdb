@@ -288,6 +288,16 @@ impl From<Rva> for u32 {
     }
 }
 
+impl Add<u32> for Rva {
+    type Output = Self;
+
+    /// Adds the given offset to this `Rva`.
+    fn add(mut self, offset: u32) -> Self {
+        self.0 += offset;
+        self
+    }
+}
+
 impl fmt::Display for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         HexFmt(self.0).fmt(f)
@@ -297,6 +307,15 @@ impl fmt::Display for Rva {
 impl fmt::Debug for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Rva({})", self)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for Rva {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(i, s)| (Rva(i), s))
     }
 }
 
@@ -383,6 +402,16 @@ impl From<u32> for PdbInternalRva {
 impl From<PdbInternalRva> for u32 {
     fn from(addr: PdbInternalRva) -> Self {
         addr.0
+    }
+}
+
+impl Add<u32> for PdbInternalRva {
+    type Output = Self;
+
+    /// Adds the given offset to this `PdbInternalRva`.
+    fn add(mut self, offset: u32) -> Self {
+        self.0 += offset;
+        self
     }
 }
 
@@ -567,6 +596,15 @@ impl fmt::Display for StringRef {
 impl fmt::Debug for StringRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "StringRef({})", self)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for StringRef {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(i, s)| (StringRef(i), s))
     }
 }
 
