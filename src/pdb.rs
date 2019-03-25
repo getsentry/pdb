@@ -7,6 +7,7 @@
 
 use crate::common::*;
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
+use crate::framedata::FrameTable;
 use crate::modi::ModuleInfo;
 use crate::msf::{self, Stream, MSF};
 use crate::omap::{AddressMap, OMAPTable};
@@ -240,6 +241,26 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         }
 
         Ok(Some(headers))
+    }
+
+    /// Retrieve the global frame data table.
+    ///
+    /// This table describes the stack frame layout for functions from all modules in the PDB. Not
+    /// every function in the image file must have FPO information defined for it. Those functions
+    /// that do not have FPO information are assumed to have normal stack frames.
+    ///
+    /// If this PDB does not contain frame data, the returned table is empty.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain the referenced streams
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    pub fn frame_table(&mut self) -> Result<FrameTable<'s>> {
+        let extra = self.extra_streams()?;
+        let old_stream = self.raw_stream(extra.fpo)?;
+        let new_stream = self.raw_stream(extra.framedata)?;
+        FrameTable::parse(old_stream, new_stream)
     }
 
     pub(crate) fn original_sections(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {

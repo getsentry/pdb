@@ -520,7 +520,7 @@ pub(crate) struct DBIExtraStreams {
     pub token_rid_map: StreamIndex,
     pub xdata: StreamIndex,
     pub pdata: StreamIndex,
-    pub new_fpo: StreamIndex,
+    pub framedata: StreamIndex,
     pub original_section_headers: StreamIndex,
 }
 
@@ -574,7 +574,7 @@ impl DBIExtraStreams {
             token_rid_map: next_index(buf)?,
             xdata: next_index(buf)?,
             pdata: next_index(buf)?,
-            new_fpo: next_index(buf)?,
+            framedata: next_index(buf)?,
             original_section_headers: next_index(buf)?,
         })
     }
