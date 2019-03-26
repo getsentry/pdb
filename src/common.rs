@@ -8,7 +8,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
-use std::ops::Add;
+use std::ops::{Add, Sub};
 use std::result;
 
 use scroll::ctx::TryFromCtx;
@@ -298,6 +298,14 @@ impl Add<u32> for Rva {
     }
 }
 
+impl Sub for Rva {
+    type Output = u32;
+
+    fn sub(self, other: Self) -> Self::Output {
+        self.0 - other.0
+    }
+}
+
 impl fmt::Display for Rva {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         HexFmt(self.0).fmt(f)
@@ -403,6 +411,14 @@ impl Add<u32> for PdbInternalRva {
     fn add(mut self, offset: u32) -> Self {
         self.0 += offset;
         self
+    }
+}
+
+impl Sub for PdbInternalRva {
+    type Output = u32;
+
+    fn sub(self, other: Self) -> Self::Output {
+        self.0 - other.0
     }
 }
 
