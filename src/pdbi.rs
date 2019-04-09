@@ -129,7 +129,7 @@ impl<'s> PDBInformation<'s> {
             let names_buf = names_reader.take(self.names_size)?;
             for _ in 0..count {
                 let name_offset = buf.parse_u32()? as usize;
-                let stream_id = buf.parse_u32()?;
+                let stream_id = StreamIndex(buf.parse_u32()? as u16);
                 let name = ParseBuffer::from(&names_buf[name_offset..]).parse_cstring()?;
                 names.push(StreamName { name, stream_id });
             }
@@ -145,7 +145,7 @@ pub struct StreamName<'n> {
     /// The stream's name.
     pub name: RawString<'n>,
     /// The index of this stream.
-    pub stream_id: u32,
+    pub stream_id: StreamIndex,
 }
 
 /// A list of named streams contained within the PDB file.

@@ -48,6 +48,9 @@ pub enum Error {
     /// This data might be understandable, but the code needed to understand it hasn't been written.
     UnimplementedFeature(&'static str),
 
+    /// The global shared symbol table is missing.
+    GlobalSymbolsNotFound,
+
     /// A symbol record's length value was impossibly small.
     SymbolTooShort,
 
@@ -105,6 +108,7 @@ impl std::error::Error for Error {
             Error::IoError(ref e) => e.description(),
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
+            Error::GlobalSymbolsNotFound => "The global symbol stream is missing",
             Error::SymbolTooShort => "A symbol record's length value was impossibly small",
             Error::UnimplementedSymbolKind(_) => {
                 "Support for symbols of this kind is not implemented"
@@ -172,10 +176,6 @@ impl fmt::Display for Error {
                 f,
                 "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}",
                 prefix
-            ),
-            Error::AddressMapNotFound => write!(
-                f,
-                "Required mapping for virtual addresses (OMAP) was not found"
             ),
             Error::UnimplementedDebugSubsection(kind) => write!(
                 f,
@@ -456,6 +456,73 @@ impl fmt::Debug for PdbInternalSectionOffset {
             .field("section", &HexFmt(self.section))
             .field("offset", &FixedHexFmt(self.offset))
             .finish()
+    }
+}
+
+/// Index of a PDB stream.
+///
+/// This index can either refer to a stream, or indicate the absence of a stream. Check [`is_none`]
+/// to see whether a stream should exist.
+///
+/// Use [`StreamIndex::get`] to load data for this stream.
+///
+/// [`is_none`]: struct.StreamIndex.html#method.is_none
+/// [`StreamIndex::get`]: struct.StreamIndex.html#method.get
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct StreamIndex(pub u16);
+
+impl StreamIndex {
+    /// Creates a stream index that points to no stream.
+    pub fn none() -> Self {
+        StreamIndex(0xffff)
+    }
+
+    /// Determines whether this index indicates the absence of a stream.
+    ///
+    /// Loading a missing stream from the PDB will result in `None`. Otherwise, the stream is
+    /// expected to be present in the MSF and will result in an error if loading.
+    #[inline]
+    pub fn is_none(self) -> bool {
+        self.msf_number().is_none()
+    }
+
+    /// Returns the MSF stream number, if this stream is not a NULL stream.
+    #[inline]
+    pub(crate) fn msf_number(self) -> Option<u32> {
+        match self.0 {
+            0xffff => None,
+            index => Some(u32::from(index)),
+        }
+    }
+}
+
+impl Default for StreamIndex {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+
+impl fmt::Display for StreamIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.msf_number() {
+            Some(number) => write!(f, "{}", number),
+            None => write!(f, "None"),
+        }
+    }
+}
+
+impl fmt::Debug for StreamIndex {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "StreamIndex({})", self)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for StreamIndex {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u16::try_from_ctx(this, le).map(|(i, s)| (StreamIndex(i), s))
     }
 }
 
