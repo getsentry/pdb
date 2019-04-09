@@ -268,6 +268,86 @@ where
     }
 }
 
+/// Implements common functionality for virtual addresses.
+macro_rules! impl_va {
+    ($type:ty) => {
+        impl $type {
+            /// Checked addition of an offset. Returns `None` if overflow occurred.
+            pub fn checked_add(self, offset: u32) -> Option<Self> {
+                Some(Self(self.0.checked_add(offset)?))
+            }
+
+            /// Checked computation of an offset between two addresses. Returns `None` if `other` is
+            /// larger.
+            pub fn checked_sub(self, other: Self) -> Option<u32> {
+                self.0.checked_sub(other.0)
+            }
+
+            /// Saturating addition of an offset, clipped at the numeric bounds.
+            pub fn saturating_add(self, offset: u32) -> Self {
+                Self(self.0.saturating_add(offset))
+            }
+
+            /// Saturating computation of an offset between two addresses, clipped at zero.
+            pub fn saturating_sub(self, other: Self) -> u32 {
+                self.0.saturating_sub(other.0)
+            }
+
+            /// Wrapping (modular) addition of an offset.
+            pub fn wrapping_add(self, offset: u32) -> Self {
+                Self(self.0.wrapping_add(offset))
+            }
+
+            /// Wrapping (modular) computation of an offset between two addresses.
+            pub fn wrapping_sub(self, other: Self) -> u32 {
+                self.0.wrapping_sub(other.0)
+            }
+        }
+
+        impl From<u32> for $type {
+            fn from(addr: u32) -> Self {
+                Self(addr)
+            }
+        }
+
+        impl From<$type> for u32 {
+            fn from(addr: $type) -> Self {
+                addr.0
+            }
+        }
+
+        impl Add<u32> for $type {
+            type Output = Self;
+
+            /// Adds the given offset to this address.
+            fn add(mut self, offset: u32) -> Self {
+                self.0 += offset;
+                self
+            }
+        }
+
+        impl Sub for $type {
+            type Output = u32;
+
+            fn sub(self, other: Self) -> Self::Output {
+                self.0 - other.0
+            }
+        }
+
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                HexFmt(self.0).fmt(f)
+            }
+        }
+
+        impl fmt::Debug for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, concat!(stringify!($type, "({})")), self)
+            }
+        }
+    };
+}
+
 /// A Relative Virtual Address as it appears in a PE file.
 ///
 /// RVAs are always relative to the image base address, as it is loaded into process memory. This
@@ -276,46 +356,106 @@ where
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Rva(pub u32);
 
-impl From<u32> for Rva {
-    fn from(addr: u32) -> Self {
-        Rva(addr)
+impl_va!(Rva);
+
+/// A Relative Virtual Address in an unoptimized PE file.
+///
+/// An internal RVA points into the PDB internal address space and may not correspond to RVAs of the
+/// executable. It can be converted into an actual [`Rva`] suitable for debugging purposes using
+/// [`rva`].
+///
+/// [`Rva`]: struct.Rva.html
+/// [`rva`]: struct.PdbInternalRva.html#method.rva
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PdbInternalRva(pub u32);
+
+impl_va!(PdbInternalRva);
+
+impl<'a> TryFromCtx<'a, Endian> for PdbInternalRva {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(i, s)| (PdbInternalRva(i), s))
     }
 }
 
-impl From<Rva> for u32 {
-    fn from(addr: Rva) -> Self {
-        addr.0
-    }
-}
+/// Implements common functionality for section offsets.
+macro_rules! impl_section_offset {
+    ($type:ty) => {
+        impl $type {
+            /// Creates a new section offset.
+            pub fn new(section: u16, offset: u32) -> Self {
+                Self { offset, section }
+            }
 
-impl Add<u32> for Rva {
-    type Output = Self;
+            /// Returns whether this section offset points to a valid section or into the void.
+            pub fn is_valid(self) -> bool {
+                self.section != 0
+            }
 
-    /// Adds the given offset to this `Rva`.
-    fn add(mut self, offset: u32) -> Self {
-        self.0 += offset;
-        self
-    }
-}
+            /// Checked addition of an offset. Returns `None` if overflow occurred.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            pub fn checked_add(mut self, offset: u32) -> Option<Self> {
+                self.offset = self.offset.checked_add(offset)?;
+                Some(self)
+            }
 
-impl Sub for Rva {
-    type Output = u32;
+            /// Saturating addition of an offset, clipped at the numeric bounds.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            pub fn saturating_add(mut self, offset: u32) -> Self {
+                self.offset = self.offset.saturating_add(offset);
+                self
+            }
 
-    fn sub(self, other: Self) -> Self::Output {
-        self.0 - other.0
-    }
-}
+            /// Wrapping (modular) addition of an offset.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            pub fn wrapping_add(mut self, offset: u32) -> Self {
+                self.offset = self.offset.wrapping_add(offset);
+                self
+            }
+        }
 
-impl fmt::Display for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        HexFmt(self.0).fmt(f)
-    }
-}
+        impl Add<u32> for $type {
+            type Output = Self;
 
-impl fmt::Debug for Rva {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Rva({})", self)
-    }
+            /// Adds the given offset to this section offset.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            fn add(mut self, offset: u32) -> Self {
+                self.offset += offset;
+                self
+            }
+        }
+
+        impl PartialOrd for $type {
+            /// Compares offsets if they reside in the same section.
+            #[inline]
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                if self.section == other.section {
+                    Some(self.offset.cmp(&other.offset))
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl fmt::Debug for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct(stringify!($type))
+                    .field("section", &HexFmt(self.section))
+                    .field("offset", &FixedHexFmt(self.offset))
+                    .finish()
+            }
+        }
+    };
 }
 
 /// An offset relative to a PE section.
@@ -335,113 +475,7 @@ pub struct SectionOffset {
     pub section: u16,
 }
 
-impl SectionOffset {
-    /// Creates a new PE section offset.
-    pub fn new(section: u16, offset: u32) -> Self {
-        SectionOffset { offset, section }
-    }
-
-    /// Returns whether this section offset points to a valid section or into the void.
-    pub fn is_valid(self) -> bool {
-        self.section != 0
-    }
-}
-
-impl Add<u32> for SectionOffset {
-    type Output = Self;
-
-    /// Adds the given offset to this section offset.
-    ///
-    /// This does not check whether the offset is still valid within the given section. If the
-    /// offset is out of bounds, the conversion to `Rva` will return `None`.
-    fn add(mut self, offset: u32) -> Self {
-        self.offset += offset;
-        self
-    }
-}
-
-impl PartialOrd for SectionOffset {
-    /// Compares offsets if they reside in the same section.
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.section == other.section {
-            Some(self.offset.cmp(&other.offset))
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Debug for SectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SectionOffset")
-            .field("section", &HexFmt(self.section))
-            .field("offset", &FixedHexFmt(self.offset))
-            .finish()
-    }
-}
-
-/// A Relative Virtual Address in an unoptimized PE file.
-///
-/// An internal RVA points into the PDB internal address space and may not correspond to RVAs of the
-/// executable. It can be converted into an actual [`Rva`] suitable for debugging purposes using
-/// [`rva`].
-///
-/// [`Rva`]: struct.Rva.html
-/// [`rva`]: struct.PdbInternalRva.html#method.rva
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct PdbInternalRva(pub u32);
-
-impl From<u32> for PdbInternalRva {
-    fn from(addr: u32) -> Self {
-        PdbInternalRva(addr)
-    }
-}
-
-impl From<PdbInternalRva> for u32 {
-    fn from(addr: PdbInternalRva) -> Self {
-        addr.0
-    }
-}
-
-impl Add<u32> for PdbInternalRva {
-    type Output = Self;
-
-    /// Adds the given offset to this `PdbInternalRva`.
-    fn add(mut self, offset: u32) -> Self {
-        self.0 += offset;
-        self
-    }
-}
-
-impl Sub for PdbInternalRva {
-    type Output = u32;
-
-    fn sub(self, other: Self) -> Self::Output {
-        self.0 - other.0
-    }
-}
-
-impl fmt::Display for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        HexFmt(self.0).fmt(f)
-    }
-}
-
-impl fmt::Debug for PdbInternalRva {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "PdbInternalRva({})", self)
-    }
-}
-
-impl<'a> TryFromCtx<'a, Endian> for PdbInternalRva {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (PdbInternalRva(i), s))
-    }
-}
+impl_section_offset!(SectionOffset);
 
 /// An offset relative to a PE section in the original unoptimized binary.
 ///
@@ -466,52 +500,7 @@ pub struct PdbInternalSectionOffset {
     pub section: u16,
 }
 
-impl PdbInternalSectionOffset {
-    /// Creates a new PDB internal section offset.
-    pub fn new(section: u16, offset: u32) -> Self {
-        PdbInternalSectionOffset { offset, section }
-    }
-
-    /// Returns whether this section offset points to a valid section or into the void.
-    pub fn is_valid(self) -> bool {
-        self.section != 0
-    }
-}
-
-impl Add<u32> for PdbInternalSectionOffset {
-    type Output = Self;
-
-    /// Adds the given offset to this section offset.
-    ///
-    /// This does not check whether the offset is still valid within the given section. If the
-    /// offset is out of bounds, the conversion to `Rva` will return `None`.
-    #[inline]
-    fn add(mut self, offset: u32) -> Self {
-        self.offset += offset;
-        self
-    }
-}
-
-impl PartialOrd for PdbInternalSectionOffset {
-    /// Compares offsets if they reside in the same section.
-    #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        if self.section == other.section {
-            Some(self.offset.cmp(&other.offset))
-        } else {
-            None
-        }
-    }
-}
-
-impl fmt::Debug for PdbInternalSectionOffset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("PdbInternalSectionOffset")
-            .field("section", &HexFmt(self.section))
-            .field("offset", &FixedHexFmt(self.offset))
-            .finish()
-    }
-}
+impl_section_offset!(PdbInternalSectionOffset);
 
 /// Index of a PDB stream.
 ///
