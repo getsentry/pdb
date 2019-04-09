@@ -53,6 +53,8 @@ impl OMAPRecord {
     /// Translate the given address into the target address space.
     #[inline]
     fn translate(self, address: u32) -> u32 {
+        // This method is only to be used internally by the OMAP iterator and lookups. The caller
+        // must verify that the record is valid to translate an address.
         debug_assert!(self.source_address() <= address);
         (address - self.source_address()) + self.target_address()
     }
