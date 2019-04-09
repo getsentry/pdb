@@ -520,7 +520,7 @@ pub(crate) struct DBIExtraStreams {
     pub token_rid_map: StreamIndex,
     pub xdata: StreamIndex,
     pub pdata: StreamIndex,
-    pub new_fpo: StreamIndex,
+    pub framedata: StreamIndex,
     pub original_section_headers: StreamIndex,
 }
 
@@ -552,10 +552,8 @@ impl DBIExtraStreams {
     pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         // short reads are okay, as are long reads -- this struct is actually an array
         // what's _not_ okay are
-        if buf.len() % 2 == 1 {
-            return Err(Error::UnimplementedFeature(
-                "DbgDataHdr should always be an even number of bytes",
-            ));
+        if buf.len() % 2 != 0 {
+            return Err(Error::InvalidStreamLength("DbgDataHdr"));
         }
 
         fn next_index(buf: &mut ParseBuffer<'_>) -> Result<StreamIndex> {
@@ -576,7 +574,7 @@ impl DBIExtraStreams {
             token_rid_map: next_index(buf)?,
             xdata: next_index(buf)?,
             pdata: next_index(buf)?,
-            new_fpo: next_index(buf)?,
+            framedata: next_index(buf)?,
             original_section_headers: next_index(buf)?,
         })
     }

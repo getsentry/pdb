@@ -7,9 +7,11 @@
 
 //! Utilities for translating addresses between PDB offsets and _Relative Virtual Addresses_ (RVAs).
 
-use std::cmp::Ordering;
+use std::cmp::{self, Ordering};
 use std::fmt;
+use std::iter::FusedIterator;
 use std::mem;
+use std::ops::Range;
 use std::slice;
 
 use crate::common::*;
@@ -28,6 +30,14 @@ pub(crate) struct OMAPRecord {
 }
 
 impl OMAPRecord {
+    /// Create a new OMAP record for the given mapping.
+    pub fn new(source_address: u32, target_address: u32) -> Self {
+        OMAPRecord {
+            source_address: source_address.to_le(),
+            target_address: target_address.to_le(),
+        }
+    }
+
     /// Returns the address in the source space.
     #[inline]
     pub fn source_address(self) -> u32 {
@@ -38,6 +48,15 @@ impl OMAPRecord {
     #[inline]
     pub fn target_address(self) -> u32 {
         u32::from_le(self.target_address)
+    }
+
+    /// Translate the given address into the target address space.
+    #[inline]
+    fn translate(self, address: u32) -> u32 {
+        // This method is only to be used internally by the OMAP iterator and lookups. The caller
+        // must verify that the record is valid to translate an address.
+        debug_assert!(self.source_address() <= address);
+        (address - self.source_address()) + self.target_address()
     }
 }
 
@@ -102,9 +121,7 @@ pub(crate) struct OMAPTable<'s> {
 impl<'s> OMAPTable<'s> {
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         if stream.as_slice().len() % 8 != 0 {
-            Err(Error::UnimplementedFeature(
-                "OMAP tables must be a multiple of the record size",
-            ))
+            Err(Error::InvalidStreamLength("OMAP"))
         } else {
             Ok(OMAPTable { stream })
         }
@@ -123,11 +140,6 @@ impl<'s> OMAPTable<'s> {
     }
 
     /// Look up `source_address` to yield a target address.
-    ///
-    /// Note that `lookup()` can return zero, which (probably) means that `source_address` does not
-    /// exist in the target address space. This is not a lookup failure per sé, so it's not a
-    /// `Result::Error`, and zero _is_ a valid address, so it's not an `Option::None`. It's just
-    /// zero.
     pub fn lookup(&self, source_address: u32) -> Option<u32> {
         let records = self.records();
 
@@ -139,14 +151,38 @@ impl<'s> OMAPTable<'s> {
 
         let record = records[index];
 
-        // As a special case, `target_address` can be zero, which seems to indicate that the
+        // As a special case, `target_address` can be zero, which indicates that the
         // `source_address` does not exist in the target address space.
         if record.target_address() == 0 {
             return None;
         }
 
-        debug_assert!(record.source_address() <= source_address);
-        Some((source_address - record.source_address()) + record.target_address())
+        Some(record.translate(source_address))
+    }
+
+    /// Look up a the range `start..end` and iterate all mapped sub-ranges.
+    pub fn lookup_range(&self, range: Range<u32>) -> RangeIter<'_> {
+        let Range { start, end } = range;
+        if end <= start {
+            return RangeIter::empty();
+        }
+
+        let records = self.records();
+        let (record, next) = match records.binary_search_by_key(&start, |r| r.source_address()) {
+            Ok(i) => (records[i], &records[i + 1..]),
+            // Insert a dummy record no indicate that the range before the first record is invalid.
+            // The range might still overlap with the first record however, so attempt regular
+            // iteration.
+            Err(0) => (OMAPRecord::new(0, 0), records),
+            Err(i) => (records[i - 1], &records[i..]),
+        };
+
+        RangeIter {
+            records: next.iter(),
+            record,
+            addr: start,
+            end,
+        }
     }
 }
 
@@ -155,6 +191,121 @@ impl fmt::Debug for OMAPTable<'_> {
         f.debug_tuple("OMAPTable").field(&self.records()).finish()
     }
 }
+
+/// An iterator over mapped target ranges in an OMAP.
+pub(crate) struct RangeIter<'t> {
+    /// Iterator over subsequent OMAP records.
+    records: std::slice::Iter<'t, OMAPRecord>,
+    /// The record that spans the current start address.
+    record: OMAPRecord,
+    /// The start address of the current subrange.
+    addr: u32,
+    /// The final end address of the (last sub-)range.
+    end: u32,
+}
+
+impl<'t> RangeIter<'t> {
+    /// Creates a `RangeIter` that does not yield any ranges.
+    pub fn empty() -> Self {
+        RangeIter {
+            records: [].iter(),
+            record: OMAPRecord::new(0, 0),
+            addr: 0,
+            end: 0,
+        }
+    }
+
+    /// Creates a `RangeIter` that only yields the specified range.
+    pub fn identity(range: Range<u32>) -> Self {
+        // Declare the range `start..` as valid with an identity mapping. We cannot use `0..` here
+        // since the target must be a non-zero value to be recognized as valid mapping. Since there
+        // are no further records, a single subrange `start..end` will be considered.
+        RangeIter {
+            records: [].iter(),
+            record: OMAPRecord::new(range.start, range.start),
+            addr: range.start,
+            end: range.end,
+        }
+    }
+}
+
+impl Default for RangeIter<'_> {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl Iterator for RangeIter<'_> {
+    type Item = Range<u32>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.addr < self.end {
+            // Pull the next record from the list. Since the current record is only valid up to the
+            // next one, this will determine the end of the current sub slice. If there are no more
+            // records, create an unmapped dummy record starting at the end of the source range.
+            let next_record = match self.records.next() {
+                Some(record) => *record,
+                None => OMAPRecord::new(self.end, 0),
+            };
+
+            // Calculate the bounds of the current subrange and write it back for the next
+            // iteration. Likewise, remember the next record as address translation base.
+            let subrange_end = cmp::min(next_record.source_address(), self.end);
+            let subrange_start = mem::replace(&mut self.addr, subrange_end);
+            let last_record = mem::replace(&mut self.record, next_record);
+
+            // Check for the validity of this sub-range or skip it silently:
+            //  2. The sub range covered by the last OMAP record might be empty. This can be an
+            //     artifact of a dummy record used when creating a new iterator.
+            //  3. A `target_address` of zero indicates an unmapped address range.
+            if subrange_start >= subrange_end || last_record.target_address() == 0 {
+                continue;
+            }
+
+            let translated_start = last_record.translate(subrange_start);
+            let translated_end = last_record.translate(subrange_end);
+            return Some(translated_start..translated_end);
+        }
+
+        None
+    }
+}
+
+impl FusedIterator for RangeIter<'_> {}
+
+/// Iterator over [`Rva`] ranges returned by [`rva_ranges`].
+///
+/// [`Rva`]: struct.Rva.html
+/// [`rva_ranges`]: struct.AddressMap.html#method.rva_ranges
+pub struct RvaRangeIter<'t>(RangeIter<'t>);
+
+impl Iterator for RvaRangeIter<'_> {
+    type Item = Range<Rva>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|range| Rva(range.start)..Rva(range.end))
+    }
+}
+
+impl FusedIterator for RvaRangeIter<'_> {}
+
+/// Iterator over [`InternalPdbRva`] ranges returned by [`internal_rva_ranges`].
+///
+/// [`InternalPdbRva`]: struct.InternalPdbRva.html
+/// [`internal_rva_ranges`]: struct.AddressMap.html#method.internal_rva_ranges
+pub struct PdbInternalRvaRangeIter<'t>(RangeIter<'t>);
+
+impl Iterator for PdbInternalRvaRangeIter<'_> {
+    type Item = Range<PdbInternalRva>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            .map(|range| PdbInternalRva(range.start)..PdbInternalRva(range.end))
+    }
+}
+
+impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 
 /// A mapping between addresses and offsets used in the PDB and PE file.
 ///
@@ -196,8 +347,8 @@ impl fmt::Debug for OMAPTable<'_> {
 ///
 ///  - [`Rva`]: A _Relative Virtual Address_ in the actual binary. This address directly corresponds
 ///    to instruction pointers seen in stack traces and symbol addresses reported by debuggers.
-///  - [`PdbInternalRva`]: An RVA as it would have appeared before the optimization. This value does
-///    not have any practical use, as it never occurs in the PDB or the actual binary.
+///  - [`PdbInternalRva`]: An RVA as it would have appeared before the optimization. These RVAs are
+///    used in some places and can be converted to an `Rva` in the actual address space.
 ///  - [`SectionOffset`]: An offset into a section of the actual binary. A `section` member of _n_
 ///    refers to section _n - 1_, which makes a section number of _0_ a null pointer.
 ///  - [`PdbInternalSectionOffset`]: An offset into a section of the original binary. These offsets
@@ -254,6 +405,34 @@ pub struct AddressMap<'s> {
     pub(crate) transformed_sections: Option<Vec<ImageSectionHeader>>,
     pub(crate) transformed_to_original: Option<OMAPTable<'s>>,
     pub(crate) original_to_transformed: Option<OMAPTable<'s>>,
+}
+
+impl<'s> AddressMap<'s> {
+    /// Resolves actual ranges in the executable's address space.
+    ///
+    /// The given internal address range might be split up into multiple ranges in the executable.
+    /// This iterator traverses all mapped ranges in the order of the PDB-internal mapping. All
+    /// empty or eliminated ranges are skipped. Thus, the iterator might be empty even for non-empty
+    /// ranges.
+    pub fn rva_ranges(&self, range: Range<PdbInternalRva>) -> RvaRangeIter<'_> {
+        RvaRangeIter(match self.original_to_transformed {
+            Some(ref omap) => omap.lookup_range(range.start.0..range.end.0),
+            None => RangeIter::identity(range.start.0..range.end.0),
+        })
+    }
+
+    /// Resolves actual ranges in the executable's address space.
+    ///
+    /// The given address range might correspond to multiple ranges in the PDB-internal address
+    /// space. This iterator traverses all mapped ranges in the order of the actual RVA mapping.
+    /// This iterator might be empty even for non-empty ranges if no corresponding original range
+    /// can be found.
+    pub fn internal_rva_ranges(&self, range: Range<Rva>) -> PdbInternalRvaRangeIter<'_> {
+        PdbInternalRvaRangeIter(match self.transformed_to_original {
+            Some(ref omap) => omap.lookup_range(range.start.0..range.end.0),
+            None => RangeIter::identity(range.start.0..range.end.0),
+        })
+    }
 }
 
 fn get_section_offset(sections: &[ImageSectionHeader], address: u32) -> Option<(u16, u32)> {
