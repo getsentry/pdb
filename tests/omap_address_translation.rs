@@ -89,11 +89,11 @@ fn test_omap_range() {
     let end = PdbInternalRva(0x10c6);
 
     assert_eq!(
-        address_map.rva_ranges(start, end).collect::<Vec<_>>(),
+        address_map.rva_ranges(start..end).collect::<Vec<_>>(),
         vec![
-            (Rva(0x15dec), Rva(0x15df9)), // 0x10aa - 0x10bd
+            Rva(0x15dec)..Rva(0x15df9), // 0x10aa - 0x10bd
             // 0x10bd - 0x10c4 omitted due to missing target address
-            (Rva(0x2da00), Rva(0x2da02)), // 0x10c4 - 0x10c6
+            Rva(0x2da00)..Rva(0x2da02), // 0x10c4 - 0x10c6
         ],
     );
 
@@ -111,8 +111,8 @@ fn test_omap_range() {
     let start = PdbInternalRva(0x0);
     let end = PdbInternalRva(0x1010);
     assert_eq!(
-        address_map.rva_ranges(start, end).collect::<Vec<_>>(),
-        vec![(Rva(0x15d44), Rva(0x15d4c))],
+        address_map.rva_ranges(start..end).collect::<Vec<_>>(),
+        vec![Rva(0x15d44)..Rva(0x15d4c)],
     );
 
     // Range ending outside OMAPs
@@ -133,15 +133,15 @@ fn test_omap_range() {
     let start = PdbInternalRva(0x5e_4fe0);
     let end = PdbInternalRva(0x5e_8000);
     assert_eq!(
-        address_map.rva_ranges(start, end).collect::<Vec<_>>(),
-        vec![(Rva(0x005e_5fe0), Rva(0x5e_6000))],
+        address_map.rva_ranges(start..end).collect::<Vec<_>>(),
+        vec![Rva(0x005e_5fe0)..Rva(0x5e_6000)],
     );
 
     // Range fully before OMAPs
     let start = PdbInternalRva(0x0);
     let end = PdbInternalRva(0x100);
     assert_eq!(
-        address_map.rva_ranges(start, end).collect::<Vec<_>>(),
+        address_map.rva_ranges(start..end).collect::<Vec<_>>(),
         vec![],
     );
 
@@ -149,7 +149,7 @@ fn test_omap_range() {
     let start = PdbInternalRva(0x005e_8000);
     let end = PdbInternalRva(0x005e_9000);
     assert_eq!(
-        address_map.rva_ranges(start, end).collect::<Vec<_>>(),
+        address_map.rva_ranges(start..end).collect::<Vec<_>>(),
         vec![], // last record targets 0, thus the range is omitted
     );
 }

@@ -11,6 +11,7 @@ use std::cmp::{self, Ordering};
 use std::fmt;
 use std::iter::FusedIterator;
 use std::mem;
+use std::ops::Range;
 use std::slice;
 
 use crate::common::*;
@@ -158,7 +159,8 @@ impl<'s> OMAPTable<'s> {
     }
 
     /// Look up a the range `start..end` and iterate all mapped sub-ranges.
-    pub fn lookup_range(&self, start: u32, end: u32) -> RangeIter<'_> {
+    pub fn lookup_range(&self, range: Range<u32>) -> RangeIter<'_> {
+        let Range { start, end } = range;
         if end <= start {
             return RangeIter::empty();
         }
@@ -212,15 +214,15 @@ impl<'t> RangeIter<'t> {
     }
 
     /// Creates a `RangeIter` that only yields the specified range.
-    pub fn identity(start: u32, end: u32) -> Self {
+    pub fn identity(range: Range<u32>) -> Self {
         // Declare the range `start..` as valid with an identity mapping. We cannot use `0..` here
         // since the target must be a non-zero value to be recognized as valid mapping. Since there
         // are no further records, a single subrange `start..end` will be considered.
         RangeIter {
             records: [].iter(),
-            record: OMAPRecord::new(start, start),
-            addr: start,
-            end,
+            record: OMAPRecord::new(range.start, range.start),
+            addr: range.start,
+            end: range.end,
         }
     }
 }
@@ -232,7 +234,7 @@ impl Default for RangeIter<'_> {
 }
 
 impl Iterator for RangeIter<'_> {
-    type Item = (u32, u32);
+    type Item = Range<u32>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while self.addr < self.end {
@@ -258,10 +260,9 @@ impl Iterator for RangeIter<'_> {
                 continue;
             }
 
-            return Some((
-                last_record.translate(subrange_start),
-                last_record.translate(subrange_end),
-            ));
+            let translated_start = last_record.translate(subrange_start);
+            let translated_end = last_record.translate(subrange_end);
+            return Some(translated_start..translated_end);
         }
 
         None
@@ -277,10 +278,10 @@ impl FusedIterator for RangeIter<'_> {}
 pub struct RvaRangeIter<'t>(RangeIter<'t>);
 
 impl Iterator for RvaRangeIter<'_> {
-    type Item = (Rva, Rva);
+    type Item = Range<Rva>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.0.next().map(|(from, to)| (Rva(from), Rva(to)))
+        self.0.next().map(|range| Rva(range.start)..Rva(range.end))
     }
 }
 
@@ -293,12 +294,12 @@ impl FusedIterator for RvaRangeIter<'_> {}
 pub struct PdbInternalRvaRangeIter<'t>(RangeIter<'t>);
 
 impl Iterator for PdbInternalRvaRangeIter<'_> {
-    type Item = (PdbInternalRva, PdbInternalRva);
+    type Item = Range<PdbInternalRva>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0
             .next()
-            .map(|(from, to)| (PdbInternalRva(from), PdbInternalRva(to)))
+            .map(|range| PdbInternalRva(range.start)..PdbInternalRva(range.end))
     }
 }
 
@@ -411,10 +412,10 @@ impl<'s> AddressMap<'s> {
     /// This iterator traverses all mapped ranges in the order of the PDB-internal mapping. All
     /// empty or eliminated ranges are skipped. Thus, the iterator might be empty even for non-empty
     /// ranges.
-    pub fn rva_ranges(&self, start: PdbInternalRva, end: PdbInternalRva) -> RvaRangeIter<'_> {
+    pub fn rva_ranges(&self, range: Range<PdbInternalRva>) -> RvaRangeIter<'_> {
         RvaRangeIter(match self.original_to_transformed {
-            Some(ref omap) => omap.lookup_range(start.0, end.0),
-            None => RangeIter::identity(start.0, end.0),
+            Some(ref omap) => omap.lookup_range(range.start.0..range.end.0),
+            None => RangeIter::identity(range.start.0..range.end.0),
         })
     }
 
@@ -424,10 +425,10 @@ impl<'s> AddressMap<'s> {
     /// space. This iterator traverses all mapped ranges in the order of the actual RVA mapping.
     /// This iterator might be empty even for non-empty ranges if no corresponding original range
     /// can be found.
-    pub fn internal_rva_ranges(&self, start: Rva, end: Rva) -> PdbInternalRvaRangeIter<'_> {
+    pub fn internal_rva_ranges(&self, range: Range<Rva>) -> PdbInternalRvaRangeIter<'_> {
         PdbInternalRvaRangeIter(match self.transformed_to_original {
-            Some(ref omap) => omap.lookup_range(start.0, end.0),
-            None => RangeIter::identity(start.0, end.0),
+            Some(ref omap) => omap.lookup_range(range.start.0..range.end.0),
+            None => RangeIter::identity(range.start.0..range.end.0),
         })
     }
 }
