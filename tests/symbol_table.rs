@@ -116,8 +116,7 @@ fn find_symbols() {
                     println!("found {} => {:?}", String::from_utf8_lossy(key), data);
                 }
                 None => {
-                    println!("couldn't find {}", String::from_utf8_lossy(key));
-                    assert!(false);
+                    panic!("couldn't find {}", String::from_utf8_lossy(key));
                 }
             }
         }
