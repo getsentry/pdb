@@ -27,6 +27,15 @@ pub struct PDBInformation<'s> {
     /// A 32-bit timestamp.
     pub signature: u32,
     /// The number of times this PDB file has been written.
+    ///
+    /// This number is bumped by the linker and other tools every time the PDB is modified. It does
+    /// not necessarily correspond to the age declared in the image. Consider using
+    /// [`DebugInformation::age`] for a better match.
+    ///
+    /// This PDB matches an image, if the `guid` values match and the PDB age is equal or higher
+    /// than the image's age.
+    ///
+    /// [`DebugInformation::age`]: struct.DebugInformation.html#method.age
     pub age: u32,
     /// A `Uuid` generated when this PDB file was created that should uniquely identify it.
     pub guid: Uuid,

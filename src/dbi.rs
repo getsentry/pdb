@@ -71,6 +71,23 @@ impl<'s> DebugInformation<'s> {
         Ok(self.header.machine_type.into())
     }
 
+    /// Returns this PDB's original `age`.
+    ///
+    /// This number is written by the linker and should be equal to the image's `age` value.
+    /// In contrast, [`PDBInformation::age`] may be bumped by other tools and should be greater or
+    /// equal to the image's `age` value.
+    ///
+    /// Old PDB files may not specify an age, in which case only [`PDBInformation::age`] should be
+    /// checked for matching the image.
+    ///
+    /// [`PDBInformation::age`]: struct.PDBInformation.html#structfield.age
+    pub fn age(&self) -> Option<u32> {
+        match self.header.age {
+            0 => None,
+            age => Some(age),
+        }
+    }
+
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter<'_>> {
         let mut buf = self.stream.parse_buffer();
