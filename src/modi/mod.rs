@@ -161,7 +161,7 @@ impl<'a> LineProgram<'a> {
     /// Note that line records are not guaranteed to be ordered by source code offset. If a
     /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
     /// sorted manually.
-    pub fn lines(&self) -> LineIterator {
+    pub fn lines(&self) -> LineIterator<'a> {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines()),
@@ -170,7 +170,7 @@ impl<'a> LineProgram<'a> {
     }
 
     /// Returns an iterator over all file records of this module.
-    pub fn files(&self) -> FileIterator {
+    pub fn files(&self) -> FileIterator<'a> {
         match self.inner {
             LineProgramInner::C13(ref inner) => FileIterator {
                 inner: FileIteratorInner::C13(inner.files()),
