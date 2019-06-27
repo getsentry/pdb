@@ -169,6 +169,15 @@ impl<'a> LineProgram<'a> {
         }
     }
 
+    /// Returns an iterator over all file records of this module.
+    pub fn files(&self) -> FileIterator {
+        match self.inner {
+            LineProgramInner::C13(ref inner) => FileIterator {
+                inner: FileIteratorInner::C13(inner.files()),
+            },
+        }
+    }
+
     /// Returns an iterator over line records for the given section offset.
     ///
     /// This does not work with any arbitrary section offset. The iterator only returns lines if the
@@ -210,6 +219,26 @@ impl<'a> FallibleIterator for LineIterator<'a> {
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inner {
             LineIteratorInner::C13(ref mut inner) => inner.next(),
+        }
+    }
+}
+
+enum FileIteratorInner<'a> {
+    C13(c13::C13FileIterator<'a>),
+}
+
+/// An iterator over file records in a module.
+pub struct FileIterator<'a> {
+    inner: FileIteratorInner<'a>,
+}
+
+impl<'a> FallibleIterator for FileIterator<'a> {
+    type Item = FileInfo<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.inner {
+            FileIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
 }
