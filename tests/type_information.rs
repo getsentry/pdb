@@ -99,8 +99,7 @@ fn find_classes() {
                             }
                         }
                         Ok(value) => {
-                            println!("expected a field list, got {:?}", value);
-                            assert!(false);
+                            panic!("expected a field list, got {:?}", value);
                         }
                         Err(e) => {
                             println!("field parse error: {}", e);
@@ -122,8 +121,7 @@ fn find_classes() {
                             }
                         }
                         Ok(value) => {
-                            println!("expected a field list, got {:?}", value);
-                            assert!(false);
+                            panic!("expected a field list, got {:?}", value);
                         }
                         Err(e) => {
                             println!("field parse error: {}", e);
@@ -208,7 +206,7 @@ fn type_length_histogram() {
             println!("{}\t{}", len, count);
         }
 
-        assert!(false);
+        panic!();
     })
 }
 */

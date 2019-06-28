@@ -742,8 +742,11 @@ impl<'b> ParseBuffer<'b> {
             constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
             constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
             _ => {
-                debug_assert!(false);
-                Err(Error::UnexpectedNumericPrefix(leaf))
+                if cfg!(debug_assertions) {
+                    unreachable!();
+                } else {
+                    Err(Error::UnexpectedNumericPrefix(leaf))
+                }
             }
         }
     }
@@ -768,14 +771,20 @@ impl<'b> ParseBuffer<'b> {
                     constants::LF_ULONG => 2 + 4,
                     constants::LF_UQUADWORD => 2 + 8,
                     _ => {
-                        debug_assert!(false);
-                        2
+                        if cfg!(debug_assertions) {
+                            unreachable!();
+                        } else {
+                            2
+                        }
                     }
                 }
             }
             Err(_) => {
-                debug_assert!(false);
-                2
+                if cfg!(debug_assertions) {
+                    unreachable!();
+                } else {
+                    2
+                }
             }
         }
     }

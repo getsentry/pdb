@@ -420,8 +420,11 @@ fn parse_unsigned<'t>(buf: &mut ParseBuffer<'t>) -> Result<u64> {
         LF_ULONG => Ok(u64::from(buf.parse_u32()?)),
         LF_UQUADWORD => Ok(buf.parse_u64()?),
         _ => {
-            debug_assert!(false);
-            Err(Error::UnexpectedNumericPrefix(leaf))
+            if cfg!(debug_assertions) {
+                unreachable!();
+            } else {
+                Err(Error::UnexpectedNumericPrefix(leaf))
+            }
         }
     }
 }
