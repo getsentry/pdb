@@ -161,10 +161,19 @@ impl<'a> LineProgram<'a> {
     /// Note that line records are not guaranteed to be ordered by source code offset. If a
     /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
     /// sorted manually.
-    pub fn lines(&self) -> LineIterator {
+    pub fn lines(&self) -> LineIterator<'a> {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines()),
+            },
+        }
+    }
+
+    /// Returns an iterator over all file records of this module.
+    pub fn files(&self) -> FileIterator<'a> {
+        match self.inner {
+            LineProgramInner::C13(ref inner) => FileIterator {
+                inner: FileIteratorInner::C13(inner.files()),
             },
         }
     }
@@ -194,13 +203,23 @@ impl<'a> LineProgram<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 enum LineIteratorInner<'a> {
     C13(c13::C13LineIterator<'a>),
 }
 
 /// An iterator over line information records in a module.
+#[derive(Clone, Debug)]
 pub struct LineIterator<'a> {
     inner: LineIteratorInner<'a>,
+}
+
+impl Default for LineIterator<'_> {
+    fn default() -> Self {
+        LineIterator {
+            inner: LineIteratorInner::C13(Default::default()),
+        }
+    }
 }
 
 impl<'a> FallibleIterator for LineIterator<'a> {
@@ -210,6 +229,36 @@ impl<'a> FallibleIterator for LineIterator<'a> {
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inner {
             LineIteratorInner::C13(ref mut inner) => inner.next(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum FileIteratorInner<'a> {
+    C13(c13::C13FileIterator<'a>),
+}
+
+/// An iterator over file records in a module.
+#[derive(Clone, Debug)]
+pub struct FileIterator<'a> {
+    inner: FileIteratorInner<'a>,
+}
+
+impl Default for FileIterator<'_> {
+    fn default() -> Self {
+        FileIterator {
+            inner: FileIteratorInner::C13(Default::default()),
+        }
+    }
+}
+
+impl<'a> FallibleIterator for FileIterator<'a> {
+    type Item = FileInfo<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.inner {
+            FileIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
 }

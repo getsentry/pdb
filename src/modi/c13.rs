@@ -427,7 +427,7 @@ struct FileChecksumEntry<'a> {
     checksum: FileChecksum<'a>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 struct DebugFileChecksumsIterator<'a> {
     buf: ParseBuffer<'a>,
 }
@@ -551,6 +551,27 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct C13FileIterator<'a> {
+    checksums: DebugFileChecksumsIterator<'a>,
+}
+
+impl<'a> FallibleIterator for C13FileIterator<'a> {
+    type Item = FileInfo<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.checksums.next() {
+            Ok(Some(entry)) => Ok(Some(FileInfo {
+                name: entry.name,
+                checksum: entry.checksum,
+            })),
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}
+
 pub struct C13LineProgram<'a> {
     data: &'a [u8],
     file_checksums: DebugFileChecksumsSubsection<'a>,
@@ -599,6 +620,12 @@ impl<'a> C13LineProgram<'a> {
                 columns: DebugColumnsIterator::default(),
             },
             _ => Default::default(),
+        }
+    }
+
+    pub(crate) fn files(&self) -> C13FileIterator<'a> {
+        C13FileIterator {
+            checksums: self.file_checksums.entries().unwrap_or_default(),
         }
     }
 
