@@ -19,6 +19,9 @@ use crate::tpi::constants;
 /// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
 pub type TypeIndex = u32;
 
+/// `ItemId` refers to an item ID.
+pub type ItemId = u32;
+
 /// An error that occurred while reading or parsing the PDB.
 #[derive(Debug)]
 pub enum Error {

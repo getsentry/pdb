@@ -12,7 +12,10 @@ use crate::common::*;
 use crate::msf::*;
 use crate::FallibleIterator;
 
+mod binary_annotations;
 mod constants;
+
+pub use self::binary_annotations::*;
 use self::constants::*;
 
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
@@ -124,6 +127,8 @@ impl<'t> Symbol<'t> {
             S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
             | S_LPROC32_DPC | S_LPROC32_DPC_ID => 35,
 
+            S_INLINESITE => 12,
+
             S_OBJNAME | S_OBJNAME_ST => 4,
 
             S_COMPILE3 => 22,
@@ -159,6 +164,26 @@ impl<'t> Symbol<'t> {
         Ok(&self.0[2..(data_length + 2)])
     }
 
+    /// Returns additional data stored in the symbol.
+    pub fn extra_data(&self) -> Result<Option<&'t [u8]>> {
+        let data_length = self.data_length()?;
+        let buf = &self.0[2 + data_length..];
+
+        if self.raw_kind() == S_INLINESITE {
+            Ok(Some(buf))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Interprets the extra data as binary annotations and
+    /// returns an iterator over it.
+    pub fn iter_binary_annotations(&self) -> Result<BinaryAnnotationsIter<'t>> {
+        Ok(BinaryAnnotationsIter::new(
+            self.extra_data()?.unwrap_or(&[][..]),
+        ))
+    }
+
     /// Returns the name of the symbol. Note that the underlying buffer is owned by the
     /// `SymbolTable`.
     pub fn name(&self) -> Result<RawString<'t>> {
@@ -167,6 +192,12 @@ impl<'t> Symbol<'t> {
 
         // figure out where the name is
         let mut buf = ParseBuffer::from(&self.0[2 + data_length..]);
+
+        // some things do not have a real name but store something else
+        // there instead.
+        if self.raw_kind() == S_INLINESITE {
+            return Ok(RawString::from(""));
+        }
 
         // names come in two varieties:
         if self.raw_kind() < S_ST_MAX {
@@ -307,6 +338,12 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             flags: ProcedureFlags::new(buf.parse_u8()?),
         })),
 
+        S_INLINESITE => Ok(SymbolData::InlineSite(InlineSite {
+            parent: buf.parse_u32()?,
+            end: buf.parse_u32()?,
+            inlinee: buf.parse_u32()?,
+        })),
+
         S_OBJNAME | S_OBJNAME_ST => Ok(SymbolData::ObjName(ObjNameSymbol {
             signature: buf.parse_u32()?,
         })),
@@ -384,6 +421,9 @@ pub enum SymbolData {
     // S_LPROC32_DPC (0x1155) |
     // S_LPROC32_DPC_ID (0x1156)
     Procedure(ProcedureSymbol),
+
+    // S_INLINESITE (0x114d)
+    InlineSite(InlineSite),
 
     // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
     ObjName(ObjNameSymbol),
@@ -523,6 +563,15 @@ pub struct ProcedureSymbol {
     pub type_index: TypeIndex,
     pub offset: PdbInternalSectionOffset,
     pub flags: ProcedureFlags,
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_INLINESITE`.
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct InlineSite {
+    pub parent: u32,
+    pub end: u32,
+    pub inlinee: ItemId,
 }
 
 /// The information parsed from a symbol record with kind
