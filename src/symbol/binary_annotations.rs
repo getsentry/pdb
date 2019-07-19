@@ -35,7 +35,7 @@ impl<'t> BinaryAnnotationsIter<'t> {
         if (b1 & 0xe0) == 0xc0 {
             return Ok(((b1 & 0x1f) << 24) | (b2 << 16) | (b3 << 8) | b4);
         }
-        Err(Error::SymbolTooShort)
+        Err(Error::UnexpectedEof)
     }
 }
 
