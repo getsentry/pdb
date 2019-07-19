@@ -128,6 +128,7 @@ impl<'t> Symbol<'t> {
             | S_LPROC32_DPC | S_LPROC32_DPC_ID => 35,
 
             S_INLINESITE => 12,
+            S_INLINESITE2 => 16,
 
             S_OBJNAME | S_OBJNAME_ST => 4,
 
@@ -169,10 +170,9 @@ impl<'t> Symbol<'t> {
         let data_length = self.data_length()?;
         let buf = &self.0[2 + data_length..];
 
-        if self.raw_kind() == S_INLINESITE {
-            Ok(Some(buf))
-        } else {
-            Ok(None)
+        match self.raw_kind() {
+            S_INLINESITE | S_INLINESITE2 => Ok(Some(buf)),
+            _ => Ok(None),
         }
     }
 
@@ -195,19 +195,18 @@ impl<'t> Symbol<'t> {
 
         // some things do not have a real name but store something else
         // there instead.
-        if self.raw_kind() == S_INLINESITE {
-            return Ok(RawString::from(""));
-        }
-
-        // names come in two varieties:
-        if self.raw_kind() < S_ST_MAX {
-            // Pascal-style name
-            let name = buf.parse_u8_pascal_string()?;
-            Ok(name)
-        } else {
-            // NUL-terminated name
-            let name = buf.parse_cstring()?;
-            Ok(name)
+        match self.raw_kind() {
+            S_INLINESITE | S_INLINESITE2 => Ok(RawString::from("")),
+            kind if kind < S_ST_MAX => {
+                // Pascal-style name
+                let name = buf.parse_u8_pascal_string()?;
+                Ok(name)
+            }
+            _ => {
+                // NUL-terminated name
+                let name = buf.parse_cstring()?;
+                Ok(name)
+            }
         }
     }
 }
@@ -338,10 +337,15 @@ fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
             flags: ProcedureFlags::new(buf.parse_u8()?),
         })),
 
-        S_INLINESITE => Ok(SymbolData::InlineSite(InlineSite {
+        S_INLINESITE | S_INLINESITE2 => Ok(SymbolData::InlineSite(InlineSite {
             parent: buf.parse_u32()?,
             end: buf.parse_u32()?,
             inlinee: buf.parse_u32()?,
+            invocations: if kind == S_INLINESITE2 {
+                Some(buf.parse_u32()?)
+            } else {
+                None
+            },
         })),
 
         S_OBJNAME | S_OBJNAME_ST => Ok(SymbolData::ObjName(ObjNameSymbol {
@@ -566,12 +570,13 @@ pub struct ProcedureSymbol {
 }
 
 /// The information parsed from a symbol record with kind
-/// `S_INLINESITE`.
+/// `S_INLINESITE` or `S_INLINESITE2`.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct InlineSite {
     pub parent: u32,
     pub end: u32,
     pub inlinee: ItemId,
+    pub invocations: Option<u32>,
 }
 
 /// The information parsed from a symbol record with kind
