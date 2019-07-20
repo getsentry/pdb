@@ -112,6 +112,63 @@ impl DebugLinesHeader {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Pread)]
+struct DebugInlineesHeader {
+    /// The signature of the inlinees
+    signature: u32,
+}
+
+#[derive(Clone, Copy, Debug, Default, Pread)]
+pub struct InlineeSourceLine {
+    pub inlinee: ItemId,
+    pub file_id: u32,
+    pub source_line_num: u32,
+}
+
+#[derive(Debug, Clone)]
+struct DebugInlineesSubsection<'a> {
+    header: DebugInlineesHeader,
+    data: &'a [u8],
+}
+
+impl<'a> DebugInlineesSubsection<'a> {
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        let mut buf = ParseBuffer::from(data);
+        let header = buf.parse()?;
+        let data = &data[buf.pos()..];
+        Ok(DebugInlineesSubsection { header, data })
+    }
+
+    fn lines(&self) -> DebugInlineesSourceLineIterator<'a> {
+        DebugInlineesSourceLineIterator {
+            header: self.header,
+            buf: ParseBuffer::from(self.data),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct DebugInlineesSourceLineIterator<'a> {
+    header: DebugInlineesHeader,
+    buf: ParseBuffer<'a>,
+}
+
+impl<'a> FallibleIterator for DebugInlineesSourceLineIterator<'a> {
+    type Item = InlineeSourceLine;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.header.signature != constants::CV_INLINEE_SOURCE_LINE_SIGNATURE {
+            return Ok(None);
+        }
+        if self.buf.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(self.buf.parse()?))
+        }
+    }
+}
+
 struct DebugLinesSubsection<'a> {
     header: DebugLinesHeader,
     data: &'a [u8],
@@ -552,6 +609,36 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct C13InlineeLineIterator<'a> {
+    /// iterator over the inline source lines
+    lines: DebugInlineesSourceLineIterator<'a>,
+    /// Iterator over all subsections in the current module.
+    sections: DebugSubsectionIterator<'a>,
+}
+
+impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
+    type Item = InlineeSourceLine;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        loop {
+            if let Some(line) = self.lines.next()? {
+                return Ok(Some(line));
+            }
+            if let Some(section) = self.sections.next()? {
+                if section.kind == DebugSubsectionKind::InlineeLines {
+                    let inlinees_section = DebugInlineesSubsection::parse(section.data)?;
+                    self.lines = inlinees_section.lines();
+                }
+                continue;
+            } else {
+                return Ok(None);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct C13FileIterator<'a> {
     checksums: DebugFileChecksumsIterator<'a>,
 }
@@ -626,6 +713,13 @@ impl<'a> C13LineProgram<'a> {
     pub(crate) fn files(&self) -> C13FileIterator<'a> {
         C13FileIterator {
             checksums: self.file_checksums.entries().unwrap_or_default(),
+        }
+    }
+
+    pub(crate) fn inlinee_lines(&self) -> C13InlineeLineIterator<'a> {
+        C13InlineeLineIterator {
+            sections: DebugSubsectionIterator::new(self.data),
+            lines: Default::default(),
         }
     }
 

@@ -9,6 +9,8 @@ use crate::FallibleIterator;
 mod c13;
 mod constants;
 
+pub use crate::modi::c13::InlineeSourceLine;
+
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
     C11(usize),
@@ -169,6 +171,15 @@ impl<'a> LineProgram<'a> {
         }
     }
 
+    /// Returns an iterator over all inlinees of this module.
+    pub fn inlinee_lines(&self) -> InlineeLineIterator<'a> {
+        match self.inner {
+            LineProgramInner::C13(ref inner) => InlineeLineIterator {
+                inner: InlineeLineIteratorInner::C13(inner.inlinee_lines()),
+            },
+        }
+    }
+
     /// Returns an iterator over all file records of this module.
     pub fn files(&self) -> FileIterator<'a> {
         match self.inner {
@@ -229,6 +240,36 @@ impl<'a> FallibleIterator for LineIterator<'a> {
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inner {
             LineIteratorInner::C13(ref mut inner) => inner.next(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+enum InlineeLineIteratorInner<'a> {
+    C13(c13::C13InlineeLineIterator<'a>),
+}
+
+/// An iterator over line information records in a module.
+#[derive(Clone, Debug)]
+pub struct InlineeLineIterator<'a> {
+    inner: InlineeLineIteratorInner<'a>,
+}
+
+impl Default for InlineeLineIterator<'_> {
+    fn default() -> Self {
+        InlineeLineIterator {
+            inner: InlineeLineIteratorInner::C13(Default::default()),
+        }
+    }
+}
+
+impl<'a> FallibleIterator for InlineeLineIterator<'a> {
+    type Item = InlineeSourceLine;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.inner {
+            InlineeLineIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
 }

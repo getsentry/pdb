@@ -12,3 +12,8 @@ pub const CV_SIGNATURE_C13: u32 = 4;
 pub const DEBUG_S_IGNORE: u32 = 0x8000_0000;
 /// Flag indicating that column information is present.
 pub const CV_LINES_HAVE_COLUMNS: u16 = 0x1;
+
+/// Flag indicating the default format of `DEBUG_S_INLINEELINEINFO`
+pub const CV_INLINEE_SOURCE_LINE_SIGNATURE: u32 = 0x0;
+/// Flag indicating the extended format of `DEBUG_S_INLINEELINEINFO`
+pub const CV_INLINEE_SOURCE_LINE_SIGNATURE_EX: u32 = 0x1;
