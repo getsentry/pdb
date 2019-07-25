@@ -662,7 +662,7 @@ impl<'b> ParseBuffer<'b> {
     pub fn align(&mut self, alignment: usize) -> Result<()> {
         let diff = self.1 % alignment;
         if diff > 0 {
-            if self.len() < diff {
+            if self.len() < (alignment - diff) {
                 return Err(Error::UnexpectedEof);
             }
             self.1 += alignment - diff;
