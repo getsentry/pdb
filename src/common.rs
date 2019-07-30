@@ -1112,25 +1112,25 @@ mod tests {
 
         #[test]
         fn test_parse_buffer_align() {
-            let mut buf = ParseBuffer::from("1234".as_bytes());
+            let mut buf = ParseBuffer::from(&b"1234"[..]);
             buf.take(1).unwrap();
             assert!(buf.align(4).is_ok());
             assert_eq!(buf.pos(), 4);
             assert_eq!(buf.len(), 0);
 
-            let mut buf = ParseBuffer::from("1234".as_bytes());
+            let mut buf = ParseBuffer::from(&b"1234"[..]);
             buf.take(3).unwrap();
             assert!(buf.align(4).is_ok());
             assert_eq!(buf.pos(), 4);
             assert_eq!(buf.len(), 0);
 
-            let mut buf = ParseBuffer::from("12345".as_bytes());
+            let mut buf = ParseBuffer::from(&b"12345"[..]);
             buf.take(3).unwrap();
             assert!(buf.align(4).is_ok());
             assert_eq!(buf.pos(), 4);
             assert_eq!(buf.len(), 1);
 
-            let mut buf = ParseBuffer::from("123".as_bytes());
+            let mut buf = ParseBuffer::from(&b"123"[..]);
             buf.take(3).unwrap();
             assert!(buf.align(4).is_err());
         }
