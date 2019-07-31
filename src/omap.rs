@@ -374,7 +374,7 @@ impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 ///
 /// # let symbol_table = pdb.global_symbols()?;
 /// # let symbol = symbol_table.iter().next()?.unwrap();
-/// # match symbol.parse() { Ok(pdb::SymbolData::PublicSymbol(pubsym)) => {
+/// # match symbol.parse() { Ok(pdb::SymbolData::Public(pubsym)) => {
 /// // Obtain some section offset, eg from a symbol, and convert it
 /// match pubsym.offset.to_rva(&address_map) {
 ///     Some(rva) => {

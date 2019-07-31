@@ -99,6 +99,9 @@ pub enum Error {
 
     /// The lines table is missing.
     LinesNotFound,
+
+    /// A binary annotation was compressed incorrectly.
+    InvalidCompressedAnnotation,
 }
 
 impl std::error::Error for Error {
@@ -138,6 +141,7 @@ impl std::error::Error for Error {
             Error::UnimplementedFileChecksumKind(_) => "Unknown source file checksum kind",
             Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
             Error::LinesNotFound => "Line information not found for a module",
+            Error::InvalidCompressedAnnotation => "Invalid compressed annoation",
         }
     }
 }
@@ -625,6 +629,7 @@ macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
         $(#[doc(hidden)]
           #[inline]
+          #[allow(unused)]
           pub fn $n(&mut self) -> Result<$t> {
               Ok(self.parse()?)
           })*
@@ -676,9 +681,22 @@ impl<'b> ParseBuffer<'b> {
     /// Parse an object that implements `Pread`.
     pub fn parse<T>(&mut self) -> Result<T>
     where
-        T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
+        T: TryFromCtx<'b, Endian, [u8], Size = usize>,
+        T::Error: From<scroll::Error>,
+        Error: From<T::Error>,
     {
         Ok(self.0.gread_with(&mut self.1, LE)?)
+    }
+
+    /// Parse an object that implements `Pread` with the given context.
+    pub fn parse_with<T, C>(&mut self, ctx: C) -> Result<T>
+    where
+        T: TryFromCtx<'b, C, [u8], Size = usize>,
+        T::Error: From<scroll::Error>,
+        Error: From<T::Error>,
+        C: Copy,
+    {
+        Ok(self.0.gread_with(&mut self.1, ctx)?)
     }
 
     def_parse!(
@@ -728,69 +746,6 @@ impl<'b> ParseBuffer<'b> {
             Err(Error::UnexpectedEof)
         }
     }
-
-    pub fn parse_variant(&mut self) -> Result<Variant> {
-        let leaf = self.parse_u16()?;
-        if leaf < constants::LF_NUMERIC {
-            // the u16 directly encodes a value
-            return Ok(Variant::U16(leaf));
-        }
-
-        match leaf {
-            constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
-            constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
-            constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
-            constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
-            constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
-            constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
-            constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
-            _ => {
-                if cfg!(debug_assertions) {
-                    unreachable!();
-                } else {
-                    Err(Error::UnexpectedNumericPrefix(leaf))
-                }
-            }
-        }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub(crate) fn get_variant_size(&mut self) -> usize {
-        let leaf = self.parse_u16();
-        match leaf {
-            Ok(leaf) => {
-                if leaf < constants::LF_NUMERIC {
-                    // the u16 directly encodes a value
-                    return 2;
-                }
-
-                match leaf {
-                    constants::LF_CHAR => 2 + 1,
-                    constants::LF_SHORT => 2 + 2,
-                    constants::LF_LONG => 2 + 4,
-                    constants::LF_QUADWORD => 2 + 8,
-                    constants::LF_USHORT => 2 + 2,
-                    constants::LF_ULONG => 2 + 4,
-                    constants::LF_UQUADWORD => 2 + 8,
-                    _ => {
-                        if cfg!(debug_assertions) {
-                            unreachable!();
-                        } else {
-                            2
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                if cfg!(debug_assertions) {
-                    unreachable!();
-                } else {
-                    2
-                }
-            }
-        }
-    }
 }
 
 impl Default for ParseBuffer<'_> {
@@ -828,8 +783,8 @@ pub enum Variant {
     I64(i64),
 }
 
-impl ::std::fmt::Display for Variant {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Variant::U8(value) => write!(f, "{}", value),
             Variant::U16(value) => write!(f, "{}", value),
@@ -843,10 +798,34 @@ impl ::std::fmt::Display for Variant {
     }
 }
 
+impl<'a> TryFromCtx<'a, Endian> for Variant {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> Result<(Self, Self::Size)> {
+        let mut offset = 0;
+
+        let variant = match this.gread_with(&mut offset, le)? {
+            value if value < constants::LF_NUMERIC => Variant::U16(value),
+            constants::LF_CHAR => Variant::U8(this.gread_with(&mut offset, le)?),
+            constants::LF_SHORT => Variant::I16(this.gread_with(&mut offset, le)?),
+            constants::LF_LONG => Variant::I32(this.gread_with(&mut offset, le)?),
+            constants::LF_QUADWORD => Variant::I64(this.gread_with(&mut offset, le)?),
+            constants::LF_USHORT => Variant::U16(this.gread_with(&mut offset, le)?),
+            constants::LF_ULONG => Variant::U32(this.gread_with(&mut offset, le)?),
+            constants::LF_UQUADWORD => Variant::U64(this.gread_with(&mut offset, le)?),
+            _ if cfg!(debug_assertions) => unreachable!(),
+            other => return Err(Error::UnexpectedNumericPrefix(other)),
+        };
+
+        Ok((variant, offset))
+    }
+}
+
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
 ///
 /// A `RawString` may not be valid UTF-8.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
 impl fmt::Debug for RawString<'_> {

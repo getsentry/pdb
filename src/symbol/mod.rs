@@ -8,15 +8,21 @@
 use std::fmt;
 use std::result;
 
+use scroll::{ctx::TryFromCtx, Endian, Pread, LE};
+
 use crate::common::*;
 use crate::msf::*;
 use crate::FallibleIterator;
 
-mod binary_annotations;
+mod annotations;
 mod constants;
 
-pub use self::binary_annotations::*;
 use self::constants::*;
+
+pub use self::annotations::*;
+
+/// The raw type discriminator for `Symbols`.
+pub type SymbolKind = u16;
 
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
@@ -40,10 +46,10 @@ use self::constants::*;
 /// let mut symbols = symbol_table.iter();
 /// while let Some(symbol) = symbols.next()? {
 ///     match symbol.parse() {
-///         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
+///         Ok(pdb::SymbolData::Public(data)) if data.function => {
 ///             // we found the location of a function!
 ///             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
-///             println!("{} is {}", rva, symbol.name()?);
+///             println!("{} is {}", rva, data.name);
 ///             # count += 1;
 ///         }
 ///         _ => {}
@@ -84,129 +90,41 @@ pub struct Symbol<'t>(&'t [u8]);
 impl<'t> Symbol<'t> {
     /// Returns the kind of symbol identified by this Symbol.
     #[inline]
-    pub fn raw_kind(&self) -> u16 {
+    pub fn raw_kind(&self) -> SymbolKind {
         debug_assert!(self.0.len() >= 2);
-
-        // assemble a little-endian u16
-        u16::from(self.0[0]) | (u16::from(self.0[1]) << 8)
+        self.0.pread_with(0, LE).unwrap_or_default()
     }
 
-    /// Returns the raw bytes of this symbol record, including the symbol type but not including
-    /// the preceding symbol length indicator.
+    /// Returns the raw bytes of this symbol record, including the symbol type and extra data, but
+    /// not including the preceding symbol length indicator.
+    #[inline]
     pub fn raw_bytes(&self) -> &'t [u8] {
         self.0
     }
 
-    /// Returns the size of the fixed-size fields for this kind of symbol. This permits other
-    /// accessors to extract the fields independent from the names.
-    fn data_length(&self) -> Result<usize> {
-        let kind = self.raw_kind();
-
-        let data_length = match kind {
-            S_PUB32 | S_PUB32_ST => 10,
-
-            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
-            | S_GMANDATA | S_GMANDATA_ST => 10,
-
-            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST | S_DATAREF | S_DATAREF_ST
-            | S_ANNOTATIONREF => 10,
-
-            S_CONSTANT | S_CONSTANT_ST => {
-                let mut constant_size = 4;
-
-                let mut buf = ParseBuffer::from(&self.0[2 + constant_size..]);
-                constant_size += buf.get_variant_size();
-
-                constant_size
-            }
-
-            S_UDT | S_UDT_ST => 4,
-
-            S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => 10,
-
-            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
-            | S_LPROC32_DPC | S_LPROC32_DPC_ID => 35,
-
-            S_INLINESITE => 12,
-            S_INLINESITE2 => 16,
-
-            S_OBJNAME | S_OBJNAME_ST => 4,
-
-            S_COMPILE3 => 22,
-
-            S_UNAMESPACE | S_UNAMESPACE_ST => 0,
-
-            S_LOCAL => 6,
-
-            S_EXPORT => 4,
-
-            _ => return Err(Error::UnimplementedSymbolKind(kind)),
-        };
-
-        if self.0.len() < data_length + 2 {
-            return Err(Error::SymbolTooShort);
-        }
-
-        Ok(data_length)
-    }
-
     /// Parse the symbol into the `SymbolData` it contains.
     #[inline]
-    pub fn parse(&self) -> Result<SymbolData> {
-        parse_symbol_data(self.raw_kind(), self.field_data()?)
+    pub fn parse(&self) -> Result<SymbolData<'t>> {
+        Ok(self.raw_bytes().pread_with(0, ())?)
     }
 
-    /// Returns a slice containing the field information describing this symbol but not including
-    /// its name.
-    fn field_data(&self) -> Result<&'t [u8]> {
-        let data_length = self.data_length()?;
-
-        // we've already checked the length
-        Ok(&self.0[2..(data_length + 2)])
-    }
-
-    /// Returns additional data stored in the symbol.
-    pub fn extra_data(&self) -> Result<Option<&'t [u8]>> {
-        let data_length = self.data_length()?;
-        let buf = &self.0[2 + data_length..];
-
+    /// Returns whether this symbol starts a scope.
+    ///
+    /// If `true`, this symbol has a `parent` and an `end` field, which contains the offset of the
+    /// corrsponding end symbol.
+    pub fn starts_scope(&self) -> bool {
         match self.raw_kind() {
-            S_INLINESITE | S_INLINESITE2 => Ok(Some(buf)),
-            _ => Ok(None),
+            S_GPROC32 | S_LPROC32 | S_LPROC32_ID | S_GPROC32_ID | S_BLOCK32 | S_SEPCODE
+            | S_THUNK32 | S_INLINESITE | S_INLINESITE2 => true,
+            _ => false,
         }
     }
 
-    /// Interprets the extra data as binary annotations and
-    /// returns an iterator over it.
-    pub fn iter_binary_annotations(&self) -> Result<BinaryAnnotationsIter<'t>> {
-        Ok(BinaryAnnotationsIter::new(
-            self.extra_data()?.unwrap_or(&[][..]),
-        ))
-    }
-
-    /// Returns the name of the symbol. Note that the underlying buffer is owned by the
-    /// `SymbolTable`.
-    pub fn name(&self) -> Result<RawString<'t>> {
-        // figure out how long the data is
-        let data_length = self.data_length()?;
-
-        // figure out where the name is
-        let mut buf = ParseBuffer::from(&self.0[2 + data_length..]);
-
-        // some things do not have a real name but store something else
-        // there instead.
+    /// Returns whether this symbol declares the end of a scope.
+    pub fn ends_scope(&self) -> bool {
         match self.raw_kind() {
-            S_INLINESITE | S_INLINESITE2 => Ok(RawString::from("")),
-            kind if kind < S_ST_MAX => {
-                // Pascal-style name
-                let name = buf.parse_u8_pascal_string()?;
-                Ok(name)
-            }
-            _ => {
-                // NUL-terminated name
-                let name = buf.parse_cstring()?;
-                Ok(name)
-            }
+            S_END | S_PROC_ID_END | S_INLINESITE_END => true,
+            _ => false,
         }
     }
 }
@@ -229,194 +147,70 @@ impl<'t> fmt::Debug for Symbol<'t> {
 // decoding reference:
 //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/cvdump/dumpsym7.cpp#L264
 
-// CV_PUBSYMFLAGS_e:
-const CVPSF_CODE: u32 = 0x1;
-const CVPSF_FUNCTION: u32 = 0x2;
-const CVPSF_MANAGED: u32 = 0x4;
-const CVPSF_MSIL: u32 = 0x8;
+fn parse_symbol_name<'t>(buf: &mut ParseBuffer<'t>, kind: SymbolKind) -> Result<RawString<'t>> {
+    if kind < S_ST_MAX {
+        // Pascal-style name
+        buf.parse_u8_pascal_string()
+    } else {
+        // NUL-terminated name
+        buf.parse_cstring()
+    }
+}
 
-fn parse_symbol_data(kind: u16, data: &[u8]) -> Result<SymbolData> {
-    let mut buf = ParseBuffer::from(data);
-
-    match kind {
-        S_PUB32 | S_PUB32_ST => {
-            let flags = buf.parse_u32()?;
-            Ok(SymbolData::PublicSymbol(PublicSymbol {
-                code: flags & CVPSF_CODE != 0,
-                function: flags & CVPSF_FUNCTION != 0,
-                managed: flags & CVPSF_MANAGED != 0,
-                msil: flags & CVPSF_MSIL != 0,
-                offset: PdbInternalSectionOffset {
-                    offset: buf.parse_u32()?,
-                    section: buf.parse_u16()?,
-                },
-            }))
-        }
-
-        S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
-        | S_GMANDATA | S_GMANDATA_ST => Ok(SymbolData::DataSymbol(DataSymbol {
-            global: match kind {
-                S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST => true,
-                _ => false,
-            },
-            managed: match kind {
-                S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST => true,
-                _ => false,
-            },
-            type_index: buf.parse_u32()?,
-            offset: PdbInternalSectionOffset {
-                offset: buf.parse_u32()?,
-                section: buf.parse_u16()?,
-            },
-        })),
-
-        S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
-            Ok(SymbolData::ProcedureReference(ProcedureReferenceSymbol {
-                global: match kind {
-                    S_PROCREF | S_PROCREF_ST => true,
-                    _ => false,
-                },
-                sum_name: buf.parse_u32()?,
-                symbol_index: buf.parse_u32()?,
-                module: buf.parse_u16()?,
-            }))
-        }
-
-        S_DATAREF | S_DATAREF_ST => Ok(SymbolData::DataReference(DataReferenceSymbol {
-            sum_name: buf.parse_u32()?,
-            symbol_index: buf.parse_u32()?,
-            module: buf.parse_u16()?,
-        })),
-
-        S_ANNOTATIONREF => Ok(SymbolData::AnnotationReference(AnnotationReferenceSymbol {
-            sum_name: buf.parse_u32()?,
-            symbol_index: buf.parse_u32()?,
-            module: buf.parse_u16()?,
-        })),
-
-        S_CONSTANT | S_CONSTANT_ST => Ok(SymbolData::Constant(ConstantSymbol {
-            type_index: buf.parse_u32()?,
-            value: buf.parse_variant()?,
-        })),
-
-        S_UDT | S_UDT_ST => Ok(SymbolData::UserDefinedType(UserDefinedTypeSymbol {
-            type_index: buf.parse_u32()?,
-        })),
-
-        S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
-            Ok(SymbolData::ThreadStorage(ThreadStorageSymbol {
-                global: match kind {
-                    S_GTHREAD32 | S_GTHREAD32_ST => true,
-                    _ => false,
-                },
-                type_index: buf.parse_u32()?,
-                offset: PdbInternalSectionOffset {
-                    offset: buf.parse_u32()?,
-                    section: buf.parse_u16()?,
-                },
-            }))
-        }
-
-        S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
-        | S_LPROC32_DPC | S_LPROC32_DPC_ID => Ok(SymbolData::Procedure(ProcedureSymbol {
-            global: match kind {
-                S_GPROC32 | S_GPROC32_ST | S_GPROC32_ID => true,
-                _ => false,
-            },
-            parent: buf.parse_u32()?,
-            end: buf.parse_u32()?,
-            next: buf.parse_u32()?,
-            len: buf.parse_u32()?,
-            dbg_start_offset: buf.parse_u32()?,
-            dbg_end_offset: buf.parse_u32()?,
-            type_index: buf.parse_u32()?,
-            offset: PdbInternalSectionOffset {
-                offset: buf.parse_u32()?,
-                section: buf.parse_u16()?,
-            },
-            flags: ProcedureFlags::new(buf.parse_u8()?),
-        })),
-
-        S_INLINESITE | S_INLINESITE2 => Ok(SymbolData::InlineSite(InlineSite {
-            parent: buf.parse_u32()?,
-            end: buf.parse_u32()?,
-            inlinee: buf.parse_u32()?,
-            invocations: if kind == S_INLINESITE2 {
-                Some(buf.parse_u32()?)
-            } else {
-                None
-            },
-        })),
-
-        S_OBJNAME | S_OBJNAME_ST => Ok(SymbolData::ObjName(ObjNameSymbol {
-            signature: buf.parse_u32()?,
-        })),
-
-        S_COMPILE3 => Ok(SymbolData::Compile3(Compile3Symbol {
-            language: buf.parse_u8()?.into(),
-            flags: [buf.parse_u8()?, buf.parse_u8()?, buf.parse_u8()?],
-            cpu_type: buf.parse_u16()?.into(),
-            frontend_version: [
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-            ],
-            backend_version: [
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-                buf.parse_u16()?,
-            ],
-        })),
-
-        S_UNAMESPACE | S_UNAMESPACE_ST => Ok(SymbolData::Namespace(NamespaceSymbol {})),
-
-        S_LOCAL => Ok(SymbolData::Local(LocalSymbol {
-            type_index: buf.parse_u32()?,
-            flags: LocalVariableFlags::new(buf.parse_u16()?),
-        })),
-
-        S_EXPORT => Ok(SymbolData::Export(ExportSymbol {
-            ordinal: buf.parse_u16()?,
-            flags: ExportSymbolFlags::new(buf.parse_u16()?),
-        })),
-
-        _ => Err(Error::UnimplementedSymbolKind(kind)),
+fn parse_optional_name<'t>(
+    buf: &mut ParseBuffer<'t>,
+    kind: SymbolKind,
+) -> Result<Option<RawString<'t>>> {
+    if kind < S_ST_MAX {
+        // ST variants do not specify a name
+        Ok(None)
+    } else {
+        // NUL-terminated name
+        buf.parse_cstring().map(Some)
     }
 }
 
 /// `SymbolData` contains the information parsed from a symbol record.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum SymbolData {
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SymbolData<'t> {
+    // S_END (0x0006)
+    ScopeEnd,
+
+    // S_REGISTER (0x1106) | S_REGISTER_ST (0x1001)
+    RegisterVariable(RegisterVariableSymbol<'t>),
+
+    // S_MANYREG (0x110a) | S_MANYREG_ST (0x1005)
+    // S_MANYREG2 (0x1117) | S_MANYREG2_ST (0x1014)
+    MultiRegisterVariable(MultiRegisterVariableSymbol<'t>),
+
     // S_PUB32 (0x110e) | S_PUB32_ST (0x1009)
-    PublicSymbol(PublicSymbol),
+    Public(PublicSymbol<'t>),
 
     //   S_LDATA32 (0x110c) | S_LDATA32_ST (0x1007)
     //   S_GDATA32 (0x110d) | S_GDATA32_ST (0x1008)
     //  S_LMANDATA (0x111c) | S_LMANDATA_ST (0x1020)
     //  S_GMANDATA (0x111d) | S_GMANDATA_ST (0x1021)
-    DataSymbol(DataSymbol),
+    Data(DataSymbol<'t>),
 
     //   S_PROCREF (0x1125) |  S_PROCREF_ST (0x0400)
     //  S_LPROCREF (0x1127) | S_LPROCREF_ST (0x0403)
-    ProcedureReference(ProcedureReferenceSymbol),
+    ProcedureReference(ProcedureReferenceSymbol<'t>),
 
     //   S_DATAREF (0x1126) |  S_DATAREF_ST (0x0401)
-    DataReference(DataReferenceSymbol),
+    DataReference(DataReferenceSymbol<'t>),
 
     // S_ANNOTATIONREF (0x1128)
-    AnnotationReference(AnnotationReferenceSymbol),
+    AnnotationReference(AnnotationReferenceSymbol<'t>),
 
     //  S_CONSTANT (0x1107) | S_CONSTANT_ST (0x1002)
-    Constant(ConstantSymbol),
+    Constant(ConstantSymbol<'t>),
 
     //       S_UDT (0x1108) | S_UDT_ST (0x1003)
-    UserDefinedType(UserDefinedTypeSymbol),
+    UserDefinedType(UserDefinedTypeSymbol<'t>),
 
     // S_LTHREAD32 (0x1112) | S_LTHREAD32_ST (0x100e)
     // S_GTHREAD32 (0x1113) | S_GTHREAD32_ST (0x100f)
-    ThreadStorage(ThreadStorageSymbol),
+    ThreadStorage(ThreadStorageSymbol<'t>),
 
     // S_LPROC32 (0x110f) | S_LPROC32_ST (0x100a)
     // S_GPROC32 (0x1110) | S_GPROC32_ST (0x100b)
@@ -424,94 +218,426 @@ pub enum SymbolData {
     // S_GPROC32_ID (0x1147) |
     // S_LPROC32_DPC (0x1155) |
     // S_LPROC32_DPC_ID (0x1156)
-    Procedure(ProcedureSymbol),
+    Procedure(ProcedureSymbol<'t>),
+
+    // S_PROC_ID_END (0x114f)
+    ProcedureEnd,
 
     // S_INLINESITE (0x114d)
-    InlineSite(InlineSite),
+    InlineSite(InlineSiteSymbol<'t>),
+
+    // S_INLINESITE_END (0x114e)
+    InlineSiteEnd,
 
     // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
-    ObjName(ObjNameSymbol),
+    ObjName(ObjNameSymbol<'t>),
 
-    // S_COMPILE3 (0x113c)
-    Compile3(Compile3Symbol),
+    // S_COMPILE2 (0x1116) | S_COMPILE2_ST (0x1013) | S_COMPILE3 (0x113c)
+    ExtendedCompileFlags(ExtendedCompileFlagsSymbol),
 
     // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
-    Namespace(NamespaceSymbol),
+    UsingNamespace(UsingNamespaceSymbol<'t>),
 
     // S_LOCAL (0x113e)
-    Local(LocalSymbol),
+    Local(LocalSymbol<'t>),
 
     // S_EXPORT (0x1138)
-    Export(ExportSymbol),
+    Export(ExportSymbol<'t>),
 }
 
+impl<'t> SymbolData<'t> {
+    /// Returns the name of this symbol if it has one.
+    pub fn name(&self) -> Option<RawString<'t>> {
+        match self {
+            SymbolData::ScopeEnd => None,
+            SymbolData::RegisterVariable(_) => None,
+            SymbolData::MultiRegisterVariable(_) => None,
+            SymbolData::Public(data) => Some(data.name),
+            SymbolData::Data(data) => Some(data.name),
+            SymbolData::ProcedureReference(data) => data.name,
+            SymbolData::DataReference(data) => data.name,
+            SymbolData::AnnotationReference(data) => Some(data.name),
+            SymbolData::Constant(data) => Some(data.name),
+            SymbolData::UserDefinedType(data) => Some(data.name),
+            SymbolData::ThreadStorage(data) => Some(data.name),
+            SymbolData::Procedure(data) => Some(data.name),
+            SymbolData::ProcedureEnd => None,
+            SymbolData::InlineSite(_) => None,
+            SymbolData::InlineSiteEnd => None,
+            SymbolData::ObjName(data) => Some(data.name),
+            SymbolData::ExtendedCompileFlags(_) => None,
+            SymbolData::UsingNamespace(data) => Some(data.name),
+            SymbolData::Local(data) => Some(data.name),
+            SymbolData::Export(data) => Some(data.name),
+        }
+    }
+}
+
+impl<'t> TryFromCtx<'t> for SymbolData<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], _ctx: ()) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+        let kind = buf.parse()?;
+
+        let symbol = match kind {
+            S_END => SymbolData::ScopeEnd,
+            S_REGISTER | S_REGISTER_ST => SymbolData::RegisterVariable(buf.parse_with(kind)?),
+            S_MANYREG | S_MANYREG_ST | S_MANYREG2 | S_MANYREG2_ST => {
+                SymbolData::MultiRegisterVariable(buf.parse_with(kind)?)
+            }
+            S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
+            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
+            | S_GMANDATA | S_GMANDATA_ST => SymbolData::Data(buf.parse_with(kind)?),
+            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
+                SymbolData::ProcedureReference(buf.parse_with(kind)?)
+            }
+            S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
+            S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
+            S_CONSTANT | S_CONSTANT_ST | S_MANCONSTANT => {
+                SymbolData::Constant(buf.parse_with(kind)?)
+            }
+            S_UDT | S_UDT_ST | S_COBOLUDT | S_COBOLUDT_ST => {
+                SymbolData::UserDefinedType(buf.parse_with(kind)?)
+            }
+            S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
+                SymbolData::ThreadStorage(buf.parse_with(kind)?)
+            }
+            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
+            | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
+            S_PROC_ID_END => SymbolData::ProcedureEnd,
+            S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
+            S_INLINESITE_END => SymbolData::InlineSiteEnd,
+            S_OBJNAME | S_OBJNAME_ST => SymbolData::ObjName(buf.parse_with(kind)?),
+            S_COMPILE2 | S_COMPILE2_ST | S_COMPILE3 => {
+                SymbolData::ExtendedCompileFlags(buf.parse_with(kind)?)
+            }
+            S_UNAMESPACE | S_UNAMESPACE_ST => SymbolData::UsingNamespace(buf.parse_with(kind)?),
+            S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
+            S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
+            other => return Err(Error::UnimplementedSymbolKind(other)),
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A register referred to by its number.
+pub type Register = u16;
+
+/// A Register variable.
+///
+/// `S_REGISTER`, or `S_REGISTER_ST`
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RegisterVariableSymbol<'t> {
+    pub type_index: TypeIndex,
+    pub register: Register,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for RegisterVariableSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = RegisterVariableSymbol {
+            type_index: buf.parse()?,
+            register: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A Register variable spanning multiple registers.
+///
+/// `S_MANYREG`, `S_MANYREG_ST`, `S_MANYREG2`, or `S_MANYREG2_ST`
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultiRegisterVariableSymbol<'t> {
+    pub type_index: TypeIndex,
+    /// Most significant register first.
+    pub registers: Vec<(Register, RawString<'t>)>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for MultiRegisterVariableSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let type_index = buf.parse()?;
+        let count = match kind {
+            S_MANYREG2 | S_MANYREG2_ST => buf.parse::<u16>()?,
+            _ => u16::from(buf.parse::<u8>()?),
+        };
+
+        let mut registers = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            registers.push((buf.parse()?, parse_symbol_name(&mut buf, kind)?));
+        }
+
+        let symbol = MultiRegisterVariableSymbol {
+            type_index,
+            registers,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+// CV_PUBSYMFLAGS_e
+const CVPSF_CODE: u32 = 0x1;
+const CVPSF_FUNCTION: u32 = 0x2;
+const CVPSF_MANAGED: u32 = 0x4;
+const CVPSF_MSIL: u32 = 0x8;
+
 /// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct PublicSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PublicSymbol<'t> {
     pub code: bool,
     pub function: bool,
     pub managed: bool,
     pub msil: bool,
     pub offset: PdbInternalSectionOffset,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for PublicSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let flags = buf.parse::<u32>()?;
+        let symbol = PublicSymbol {
+            code: flags & CVPSF_CODE != 0,
+            function: flags & CVPSF_FUNCTION != 0,
+            managed: flags & CVPSF_MANAGED != 0,
+            msil: flags & CVPSF_MSIL != 0,
+            offset: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_LDATA32`, `S_LDATA32_ST`, `S_GDATA32`, `S_GDATA32_ST`,
 /// `S_LMANDATA`, `S_LMANDATA_ST`, `S_GMANDATA`, or `S_GMANDATA_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct DataSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DataSymbol<'t> {
     pub global: bool,
     pub managed: bool,
     pub type_index: TypeIndex,
     pub offset: PdbInternalSectionOffset,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for DataSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let global = match kind {
+            S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST => true,
+            _ => false,
+        };
+        let managed = match kind {
+            S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST => true,
+            _ => false,
+        };
+
+        let symbol = DataSymbol {
+            global,
+            managed,
+            type_index: buf.parse()?,
+            offset: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_PROCREF`, `S_PROCREF_ST`, `S_LPROCREF`, or `S_LPROCREF_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ProcedureReferenceSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcedureReferenceSymbol<'t> {
     pub global: bool,
     pub sum_name: u32,
     pub symbol_index: u32,
     pub module: u16,
+    pub name: Option<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let global = match kind {
+            S_PROCREF | S_PROCREF_ST => true,
+            _ => false,
+        };
+
+        let symbol = ProcedureReferenceSymbol {
+            global,
+            sum_name: buf.parse()?,
+            symbol_index: buf.parse()?,
+            module: buf.parse()?,
+            name: parse_optional_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind `S_DATAREF` or `S_DATAREF_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct DataReferenceSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DataReferenceSymbol<'t> {
     pub sum_name: u32,
     pub symbol_index: u32,
     pub module: u16,
+    pub name: Option<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for DataReferenceSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = DataReferenceSymbol {
+            sum_name: buf.parse()?,
+            symbol_index: buf.parse()?,
+            module: buf.parse()?,
+            name: parse_optional_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind `S_ANNOTATIONREF`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct AnnotationReferenceSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AnnotationReferenceSymbol<'t> {
     pub sum_name: u32,
     pub symbol_index: u32,
     pub module: u16,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = AnnotationReferenceSymbol {
+            sum_name: buf.parse()?,
+            symbol_index: buf.parse()?,
+            module: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind `S_CONSTANT`, or `S_CONSTANT_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ConstantSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConstantSymbol<'t> {
+    pub managed: bool,
     pub type_index: TypeIndex,
     pub value: Variant,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ConstantSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ConstantSymbol {
+            managed: kind == S_MANCONSTANT,
+            type_index: buf.parse()?,
+            value: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind `S_UDT`, or `S_UDT_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct UserDefinedTypeSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UserDefinedTypeSymbol<'t> {
     pub type_index: TypeIndex,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for UserDefinedTypeSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = UserDefinedTypeSymbol {
+            type_index: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_LTHREAD32`, `S_LTHREAD32_ST`, `S_GTHREAD32`, or `S_GTHREAD32_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ThreadStorageSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ThreadStorageSymbol<'t> {
     pub global: bool,
     pub type_index: TypeIndex,
     pub offset: PdbInternalSectionOffset,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ThreadStorageSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let global = match kind {
+            S_GTHREAD32 | S_GTHREAD32_ST => true,
+            _ => false,
+        };
+
+        let symbol = ThreadStorageSymbol {
+            global,
+            type_index: buf.parse()?,
+            offset: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 // CV_PROCFLAGS:
@@ -525,7 +651,7 @@ const CV_PFLAG_NOINLINE: u8 = 0x40;
 const CV_PFLAG_OPTDBGINFO: u8 = 0x80;
 
 /// The information parsed from a CV_PROCFLAGS bit field
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureFlags {
     pub nofpo: bool,
     pub int: bool,
@@ -537,26 +663,33 @@ pub struct ProcedureFlags {
     pub optdbginfo: bool,
 }
 
-impl ProcedureFlags {
-    fn new(flags: u8) -> Self {
-        ProcedureFlags {
-            nofpo: flags & CV_PFLAG_NOFPO != 0,
-            int: flags & CV_PFLAG_INT != 0,
-            far: flags & CV_PFLAG_FAR != 0,
-            never: flags & CV_PFLAG_NEVER != 0,
-            notreached: flags & CV_PFLAG_NOTREACHED != 0,
-            cust_call: flags & CV_PFLAG_CUST_CALL != 0,
-            noinline: flags & CV_PFLAG_NOINLINE != 0,
-            optdbginfo: flags & CV_PFLAG_OPTDBGINFO != 0,
-        }
+impl<'t> TryFromCtx<'t, Endian> for ProcedureFlags {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let (value, size) = u8::try_from_ctx(this, le)?;
+
+        let flags = ProcedureFlags {
+            nofpo: value & CV_PFLAG_NOFPO != 0,
+            int: value & CV_PFLAG_INT != 0,
+            far: value & CV_PFLAG_FAR != 0,
+            never: value & CV_PFLAG_NEVER != 0,
+            notreached: value & CV_PFLAG_NOTREACHED != 0,
+            cust_call: value & CV_PFLAG_CUST_CALL != 0,
+            noinline: value & CV_PFLAG_NOINLINE != 0,
+            optdbginfo: value & CV_PFLAG_OPTDBGINFO != 0,
+        };
+
+        Ok((flags, size))
     }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_GPROC32`, `S_GPROC32_ST`, `S_LPROC32`, `S_LPROC32_ST`
 /// `S_GPROC32_ID`, `S_LPROC32_ID`, `S_LPROC32_DPC`, or `S_LPROC32_DPC_ID`
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ProcedureSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProcedureSymbol<'t> {
     pub global: bool,
     pub parent: u32,
     pub end: u32,
@@ -567,40 +700,233 @@ pub struct ProcedureSymbol {
     pub type_index: TypeIndex,
     pub offset: PdbInternalSectionOffset,
     pub flags: ProcedureFlags,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let global = match kind {
+            S_GPROC32 | S_GPROC32_ST | S_GPROC32_ID => true,
+            _ => false,
+        };
+
+        let symbol = ProcedureSymbol {
+            global,
+            parent: buf.parse()?,
+            end: buf.parse()?,
+            next: buf.parse()?,
+            len: buf.parse()?,
+            dbg_start_offset: buf.parse()?,
+            dbg_end_offset: buf.parse()?,
+            type_index: buf.parse()?,
+            offset: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_INLINESITE` or `S_INLINESITE2`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct InlineSite {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InlineSiteSymbol<'t> {
     pub parent: u32,
     pub end: u32,
     pub inlinee: ItemId,
     pub invocations: Option<u32>,
+    pub annotations: BinaryAnnotations<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = InlineSiteSymbol {
+            parent: buf.parse()?,
+            end: buf.parse()?,
+            inlinee: buf.parse()?,
+            invocations: match kind {
+                S_INLINESITE2 => Some(buf.parse()?),
+                _ => None,
+            },
+            annotations: BinaryAnnotations::new(buf.take(buf.len())?),
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_OBJNAME`, or `S_OBJNAME_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ObjNameSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ObjNameSymbol<'t> {
     pub signature: u32,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ObjNameSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ObjNameSymbol {
+            signature: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A version number refered to by `ExtendedCompileFlagsSymbol`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CompilerVersion {
+    pub major: u16,
+    pub minor: u16,
+    pub build: u16,
+    pub qfe: Option<u16>,
+}
+
+impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], has_qfe: bool) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let version = CompilerVersion {
+            major: buf.parse()?,
+            minor: buf.parse()?,
+            build: buf.parse()?,
+            qfe: if has_qfe { Some(buf.parse()?) } else { None },
+        };
+
+        Ok((version, buf.pos()))
+    }
+}
+
+/// Compile flags declared in `ExtendedCompileFlagsSymbol`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExtendedCompileFlags {
+    /// Compiled for E/C.
+    edit_and_continue: bool,
+    /// Compiled without debug information.
+    no_debug_info: bool,
+    /// Compiled with `/LTCG`.
+    link_time_codegen: bool,
+    /// Compiled with `-Bzalign`.
+    no_data_align: bool,
+    /// Managed code or data is present.
+    managed: bool,
+    /// Compiled with `/GS`.
+    security_checks: bool,
+    /// Compiled with `/hotpatch`.
+    hot_patch: bool,
+    /// Compiled with `CvtCIL`.
+    cvtcil: bool,
+    /// This is a MSIL .NET Module.
+    msil_module: bool,
+    /// Compiled with `/sdl`.
+    sdl: bool,
+    /// Compiled with `/ltcg:pgo` or `pgu`.
+    pgo: bool,
+    /// This is a .exp module.
+    exp_module: bool,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlags {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let is_compile3 = kind == S_COMPILE3;
+
+        let raw = this.pread_with::<u16>(0, LE)?;
+        this.pread::<u8>(2)?; // unused
+
+        let flags = ExtendedCompileFlags {
+            edit_and_continue: raw & 1 != 0,
+            no_debug_info: (raw >> 1) & 1 != 0,
+            link_time_codegen: (raw >> 2) & 1 != 0,
+            no_data_align: (raw >> 3) & 1 != 0,
+            managed: (raw >> 4) & 1 != 0,
+            security_checks: (raw >> 5) & 1 != 0,
+            hot_patch: (raw >> 6) & 1 != 0,
+            cvtcil: (raw >> 7) & 1 != 0,
+            msil_module: (raw >> 8) & 1 != 0,
+            sdl: (raw >> 9) & 1 != 0 && is_compile3,
+            pgo: (raw >> 10) & 1 != 0 && is_compile3,
+            exp_module: (raw >> 11) & 1 != 0 && is_compile3,
+        };
+
+        Ok((flags, 3))
+    }
 }
 
 /// The information parsed from a symbol record with kind
-/// `S_COMPILE3`
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Compile3Symbol {
+/// `S_COMPILE2`, `S_COMPILE2_ST`, or `S_COMPILE3`
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExtendedCompileFlagsSymbol {
     pub language: SourceLanguage,
-    pub flags: [u8; 3],
+    pub flags: ExtendedCompileFlags,
     pub cpu_type: CPUType,
-    pub frontend_version: [u16; 4],
-    pub backend_version: [u16; 4],
+    pub frontend_version: CompilerVersion,
+    pub backend_version: CompilerVersion,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let has_qfe = kind == S_COMPILE3;
+        let symbol = ExtendedCompileFlagsSymbol {
+            language: buf.parse()?,
+            flags: buf.parse_with(kind)?,
+            cpu_type: buf.parse()?,
+            frontend_version: buf.parse_with(has_qfe)?,
+            backend_version: buf.parse_with(has_qfe)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct NamespaceSymbol {}
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct UsingNamespaceSymbol<'t> {
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for UsingNamespaceSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = UsingNamespaceSymbol {
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
 
 // CV_LVARFLAGS:
 const CV_LVARFLAG_ISPARAM: u16 = 0x01;
@@ -615,7 +941,7 @@ const CV_LVARFLAG_ISENREG_GLOB: u16 = 0x100;
 const CV_LVARFLAG_ISENREG_STAT: u16 = 0x200;
 
 /// The information parsed from a CV_LVARFLAGS bit field
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalVariableFlags {
     pub isparam: bool,        // Variable is a parameter
     pub addrtaken: bool,      // Address is taken
@@ -629,33 +955,58 @@ pub struct LocalVariableFlags {
     pub isenreg_stat: bool, // Variable is an enregistered static
 }
 
-impl LocalVariableFlags {
-    fn new(flags: u16) -> Self {
-        LocalVariableFlags {
-            isparam: flags & CV_LVARFLAG_ISPARAM != 0,
-            addrtaken: flags & CV_LVARFLAG_ADDRTAKEN != 0,
-            compgenx: flags & CV_LVARFLAG_COMPGENX != 0,
-            isaggregate: flags & CV_LVARFLAG_ISAGGREGATE != 0,
-            isaliased: flags & CV_LVARFLAG_ISALIASED != 0,
-            isalias: flags & CV_LVARFLAG_ISALIAS != 0,
-            isretvalue: flags & CV_LVARFLAG_ISRETVALUE != 0,
-            isoptimizedout: flags & CV_LVARFLAG_ISOPTIMIZEDOUT != 0,
-            isenreg_glob: flags & CV_LVARFLAG_ISENREG_GLOB != 0,
-            isenreg_stat: flags & CV_LVARFLAG_ISENREG_STAT != 0,
-        }
+impl<'t> TryFromCtx<'t, Endian> for LocalVariableFlags {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let (value, size) = u16::try_from_ctx(this, le)?;
+
+        let flags = LocalVariableFlags {
+            isparam: value & CV_LVARFLAG_ISPARAM != 0,
+            addrtaken: value & CV_LVARFLAG_ADDRTAKEN != 0,
+            compgenx: value & CV_LVARFLAG_COMPGENX != 0,
+            isaggregate: value & CV_LVARFLAG_ISAGGREGATE != 0,
+            isaliased: value & CV_LVARFLAG_ISALIASED != 0,
+            isalias: value & CV_LVARFLAG_ISALIAS != 0,
+            isretvalue: value & CV_LVARFLAG_ISRETVALUE != 0,
+            isoptimizedout: value & CV_LVARFLAG_ISOPTIMIZEDOUT != 0,
+            isenreg_glob: value & CV_LVARFLAG_ISENREG_GLOB != 0,
+            isenreg_stat: value & CV_LVARFLAG_ISENREG_STAT != 0,
+        };
+
+        Ok((flags, size))
     }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_LOCAL`
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct LocalSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LocalSymbol<'t> {
     pub type_index: TypeIndex,
     pub flags: LocalVariableFlags,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = LocalSymbol {
+            type_index: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExportSymbolFlags {
     pub constant: bool,
     pub data: bool,
@@ -665,25 +1016,50 @@ pub struct ExportSymbolFlags {
     pub forwarder: bool,
 }
 
-impl ExportSymbolFlags {
-    fn new(flags: u16) -> Self {
-        ExportSymbolFlags {
-            constant: flags & 0x01 != 0,
-            data: flags & 0x02 != 0,
-            private: flags & 0x04 != 0,
-            no_name: flags & 0x08 != 0,
-            ordinal: flags & 0x10 != 0,
-            forwarder: flags & 0x20 != 0,
-        }
+impl<'t> TryFromCtx<'t, Endian> for ExportSymbolFlags {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let (value, size) = u16::try_from_ctx(this, le)?;
+
+        let flags = ExportSymbolFlags {
+            constant: value & 0x01 != 0,
+            data: value & 0x02 != 0,
+            private: value & 0x04 != 0,
+            no_name: value & 0x08 != 0,
+            ordinal: value & 0x10 != 0,
+            forwarder: value & 0x20 != 0,
+        };
+
+        Ok((flags, size))
     }
 }
 
 /// The information parsed from a symbol record with kind
 /// `S_EXPORT`
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct ExportSymbol {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExportSymbol<'t> {
     pub ordinal: u16,
     pub flags: ExportSymbolFlags,
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ExportSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ExportSymbol {
+            ordinal: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
 }
 
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
@@ -707,42 +1083,34 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
     type Error = Error;
 
     fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
-        // see if we're at EOF
-        if self.buf.is_empty() {
-            return Ok(None);
+        while !self.buf.is_empty() {
+            // read the length of the next symbol
+            let symbol_length = self.buf.parse::<u16>()? as usize;
+            if symbol_length < 2 {
+                // this can't be correct
+                return Err(Error::SymbolTooShort);
+            }
+
+            // grab the symbol itself
+            let data = self.buf.take(symbol_length)?;
+            let symbol = Symbol(data);
+
+            if symbol.raw_kind() == S_ALIGN {
+                // S_ALIGN is used for page alignment of symbols.
+                continue;
+            }
+
+            return Ok(Some(symbol));
         }
 
-        // read the length of the next symbol
-        let symbol_length = self.buf.parse_u16()? as usize;
-
-        // validate
-        if symbol_length < 2 {
-            // this can't be correct
-            return Err(Error::SymbolTooShort);
-        }
-
-        // grab the symbol itself
-        let symbol = self.buf.take(symbol_length)?;
-
-        // Done
-        Ok(Some(Symbol(symbol)))
+        Ok(None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     mod parsing {
-        use crate::common::*;
         use crate::symbol::*;
-
-        fn parse<'s>(buf: &'s [u8]) -> Result<(Symbol<'s>, SymbolData, String)> {
-            let symbol = Symbol(buf);
-
-            let data = symbol.parse()?;
-            let name = symbol.name()?.to_string().into_owned();
-
-            Ok((symbol, data, name))
-        }
 
         #[test]
         fn kind_110e() {
@@ -751,11 +1119,12 @@ mod tests {
                 116, 100, 105, 111, 95, 112, 114, 105, 110, 116, 102, 95, 111, 112, 116, 105, 111,
                 110, 115, 0, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x110e);
             assert_eq!(
-                data,
-                SymbolData::PublicSymbol(PublicSymbol {
+                symbol.parse().expect("parse"),
+                SymbolData::Public(PublicSymbol {
                     code: false,
                     function: true,
                     managed: false,
@@ -763,10 +1132,10 @@ mod tests {
                     offset: PdbInternalSectionOffset {
                         offset: 21952,
                         section: 1
-                    }
+                    },
+                    name: "__local_stdio_printf_options".into(),
                 })
             );
-            assert_eq!(name, "__local_stdio_printf_options");
         }
 
         #[test]
@@ -775,30 +1144,32 @@ mod tests {
                 37, 17, 0, 0, 0, 0, 108, 0, 0, 0, 1, 0, 66, 97, 122, 58, 58, 102, 95, 112, 117, 98,
                 108, 105, 99, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x1125);
             assert_eq!(
-                data,
+                symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
                     global: true,
                     sum_name: 0,
                     symbol_index: 108,
-                    module: 1
+                    module: 1,
+                    name: Some("Baz::f_public".into()),
                 })
             );
-            assert_eq!(name, "Baz::f_public");
         }
 
         #[test]
         fn kind_1108() {
             let buf = &[8, 17, 112, 6, 0, 0, 118, 97, 95, 108, 105, 115, 116, 0];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x1108);
             assert_eq!(
-                data,
-                SymbolData::UserDefinedType(UserDefinedTypeSymbol { type_index: 1648 })
+                symbol.parse().expect("parse"),
+                SymbolData::UserDefinedType(UserDefinedTypeSymbol {
+                    type_index: 1648,
+                    name: "va_list".into(),
+                })
             );
-            assert_eq!(name, "va_list");
         }
 
         #[test]
@@ -807,16 +1178,17 @@ mod tests {
                 7, 17, 201, 18, 0, 0, 1, 0, 95, 95, 73, 83, 65, 95, 65, 86, 65, 73, 76, 65, 66, 76,
                 69, 95, 83, 83, 69, 50, 0, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x1107);
             assert_eq!(
-                data,
+                symbol.parse().expect("parse"),
                 SymbolData::Constant(ConstantSymbol {
+                    managed: false,
                     type_index: 4809,
-                    value: Variant::U16(1)
+                    value: Variant::U16(1),
+                    name: "__ISA_AVAILABLE_SSE2".into(),
                 })
             );
-            assert_eq!(name, "__ISA_AVAILABLE_SSE2");
         }
 
         #[test]
@@ -825,21 +1197,21 @@ mod tests {
                 13, 17, 116, 0, 0, 0, 16, 0, 0, 0, 3, 0, 95, 95, 105, 115, 97, 95, 97, 118, 97,
                 105, 108, 97, 98, 108, 101, 0, 0, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x110d);
             assert_eq!(
-                data,
-                SymbolData::DataSymbol(DataSymbol {
+                symbol.parse().expect("parse"),
+                SymbolData::Data(DataSymbol {
                     global: true,
                     managed: false,
                     type_index: 116,
                     offset: PdbInternalSectionOffset {
                         offset: 16,
                         section: 3
-                    }
+                    },
+                    name: "__isa_available".into(),
                 })
             );
-            assert_eq!(name, "__isa_available");
         }
 
         #[test]
@@ -848,21 +1220,21 @@ mod tests {
                 12, 17, 32, 0, 0, 0, 240, 36, 1, 0, 2, 0, 36, 120, 100, 97, 116, 97, 115, 121, 109,
                 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x110c);
             assert_eq!(
-                data,
-                SymbolData::DataSymbol(DataSymbol {
+                symbol.parse().expect("parse"),
+                SymbolData::Data(DataSymbol {
                     global: false,
                     managed: false,
                     type_index: 32,
                     offset: PdbInternalSectionOffset {
                         offset: 74992,
                         section: 2
-                    }
+                    },
+                    name: "$xdatasym".into(),
                 })
             );
-            assert_eq!(name, "$xdatasym");
         }
 
         #[test]
@@ -871,18 +1243,18 @@ mod tests {
                 39, 17, 0, 0, 0, 0, 128, 4, 0, 0, 182, 0, 99, 97, 112, 116, 117, 114, 101, 95, 99,
                 117, 114, 114, 101, 110, 116, 95, 99, 111, 110, 116, 101, 120, 116, 0, 0, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x1127);
             assert_eq!(
-                data,
+                symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
                     global: false,
                     sum_name: 0,
                     symbol_index: 1152,
-                    module: 182
+                    module: 182,
+                    name: Some("capture_current_context".into()),
                 })
             );
-            assert_eq!(name, "capture_current_context");
         }
 
         #[test]
@@ -892,10 +1264,10 @@ mod tests {
                 16, 0, 0, 64, 85, 0, 0, 1, 0, 0, 66, 97, 122, 58, 58, 102, 95, 112, 114, 111, 116,
                 101, 99, 116, 101, 100, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x1110);
             assert_eq!(
-                data,
+                symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: true,
                     parent: 0,
@@ -918,10 +1290,10 @@ mod tests {
                         cust_call: false,
                         noinline: false,
                         optdbginfo: false
-                    }
+                    },
+                    name: "Baz::f_protected".into(),
                 })
             );
-            assert_eq!(name, "Baz::f_protected");
         }
 
         #[test]
@@ -931,10 +1303,10 @@ mod tests {
                 128, 16, 0, 0, 196, 87, 0, 0, 1, 0, 128, 95, 95, 115, 99, 114, 116, 95, 99, 111,
                 109, 109, 111, 110, 95, 109, 97, 105, 110, 0, 0, 0,
             ];
-            let (symbol, data, name) = parse(buf).expect("parse");
+            let symbol = Symbol(buf);
             assert_eq!(symbol.raw_kind(), 0x110f);
             assert_eq!(
-                data,
+                symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: false,
                     parent: 0,
@@ -957,10 +1329,10 @@ mod tests {
                         cust_call: false,
                         noinline: false,
                         optdbginfo: true
-                    }
+                    },
+                    name: "__scrt_common_main".into(),
                 })
             );
-            assert_eq!(name, "__scrt_common_main");
         }
     }
 }

@@ -51,7 +51,7 @@ impl<'t> TypeData<'t> {
             _ => return None,
         };
 
-        Some(name.clone())
+        Some(*name)
     }
 }
 
@@ -215,7 +215,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2683-L2688
         LF_ENUMERATE | LF_ENUMERATE_ST => Ok(TypeData::Enumerate(EnumerateType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            value: buf.parse_variant()?,
+            value: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 

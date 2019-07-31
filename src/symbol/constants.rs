@@ -13,6 +13,8 @@
 
 use std::fmt;
 
+use scroll::{ctx::TryFromCtx, Endian};
+
 pub const S_COMPILE: u16 = 0x0001; // Compile flags symbol
 pub const S_REGISTER_16t: u16 = 0x0002; // Register variable
 pub const S_CONSTANT_16t: u16 = 0x0003; // constant symbol
@@ -467,6 +469,15 @@ impl From<u16> for CPUType {
     }
 }
 
+impl<'a> TryFromCtx<'a, Endian> for CPUType {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u16::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
+    }
+}
+
 /// These values correspond to the CV_CFL_LANG enumeration, and are documented
 /// here: https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -545,59 +556,11 @@ impl From<u8> for SourceLanguage {
     }
 }
 
-/// These values correspond to the BinaryAnnotationOpcode enum from the
-/// cvinfo.h
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BinaryAnnotationOpcode {
-    /// link time pdb contains PADDINGs
-    Invalid = 0,
-    /// param : start offset
-    CodeOffset = 1,
-    /// param : nth separated code chunk (main code chunk == 0)
-    ChangeCodeOffsetBase = 2,
-    /// param : delta of offset
-    ChangeCodeOffset = 3,
-    /// param : length of code, default next start
-    ChangeCodeLength = 4,
-    /// param : fileId
-    ChangeFile = 5,
-    /// param : line offset (signed)
-    ChangeLineOffset = 6,
-    /// param : how many lines, default 1
-    ChangeLineEndDelta = 7,
-    /// param : either 1 (default, for statement)
-    ///         or 0 (for expression)
-    ChangeRangeKind = 8,
-    /// param : start column number, 0 means no column info
-    ChangeColumnStart = 9,
-    /// param : end column number delta (signed)
-    ChangeColumnEndDelta = 10,
-    /// param : ((sourceDelta << 4) | CodeDelta)
-    ChangeCodeOffsetAndLineOffset = 11,
-    /// param : codeLength, codeOffset
-    ChangeCodeLengthAndCodeOffset = 12,
-    /// param : end column number
-    ChangeColumnEnd = 13,
-}
+impl<'a> TryFromCtx<'a, Endian> for SourceLanguage {
+    type Error = scroll::Error;
+    type Size = usize;
 
-impl From<u32> for BinaryAnnotationOpcode {
-    fn from(value: u32) -> Self {
-        match value {
-            0 => BinaryAnnotationOpcode::Invalid,
-            1 => BinaryAnnotationOpcode::CodeOffset,
-            2 => BinaryAnnotationOpcode::ChangeCodeOffsetBase,
-            3 => BinaryAnnotationOpcode::ChangeCodeOffset,
-            4 => BinaryAnnotationOpcode::ChangeCodeLength,
-            5 => BinaryAnnotationOpcode::ChangeFile,
-            6 => BinaryAnnotationOpcode::ChangeLineOffset,
-            7 => BinaryAnnotationOpcode::ChangeLineEndDelta,
-            8 => BinaryAnnotationOpcode::ChangeRangeKind,
-            9 => BinaryAnnotationOpcode::ChangeColumnStart,
-            10 => BinaryAnnotationOpcode::ChangeColumnEndDelta,
-            11 => BinaryAnnotationOpcode::ChangeCodeOffsetAndLineOffset,
-            12 => BinaryAnnotationOpcode::ChangeCodeLengthAndCodeOffset,
-            13 => BinaryAnnotationOpcode::ChangeColumnEnd,
-            _ => BinaryAnnotationOpcode::Invalid,
-        }
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u8::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
     }
 }
