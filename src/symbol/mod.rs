@@ -285,6 +285,9 @@ pub enum SymbolData<'t> {
     // S_INLINESITE_END (0x114e)
     InlineSiteEnd,
 
+    // S_BUILDINFO (0x114c)
+    BuildInfo(BuildInfoSymbol),
+
     // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
     ObjName(ObjNameSymbol<'t>),
 
@@ -320,6 +323,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::ProcedureEnd => None,
             SymbolData::InlineSite(_) => None,
             SymbolData::InlineSiteEnd => None,
+            SymbolData::BuildInfo(_) => None,
             SymbolData::ObjName(data) => Some(data.name),
             SymbolData::ExtendedCompileFlags(_) => None,
             SymbolData::UsingNamespace(data) => Some(data.name),
@@ -365,6 +369,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_PROC_ID_END => SymbolData::ProcedureEnd,
             S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
+            S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
             S_OBJNAME | S_OBJNAME_ST => SymbolData::ObjName(buf.parse_with(kind)?),
             S_COMPILE2 | S_COMPILE2_ST | S_COMPILE3 => {
                 SymbolData::ExtendedCompileFlags(buf.parse_with(kind)?)
@@ -814,6 +819,26 @@ impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
             },
             annotations: BinaryAnnotations::new(buf.take(buf.len())?),
         };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// The information parsed from a symbol record with kind
+/// `S_BUILDINFO`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BuildInfoSymbol {
+    pub id: ItemId,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for BuildInfoSymbol {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = BuildInfoSymbol { id: buf.parse()? };
 
         Ok((symbol, buf.pos()))
     }
