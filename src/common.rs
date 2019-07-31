@@ -102,6 +102,9 @@ pub enum Error {
 
     /// A binary annotation was compressed incorrectly.
     InvalidCompressedAnnotation,
+
+    /// An unknown binary annotation was encountered.
+    UnknownBinaryAnnotation(u32),
 }
 
 impl std::error::Error for Error {
@@ -142,6 +145,7 @@ impl std::error::Error for Error {
             Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
             Error::LinesNotFound => "Line information not found for a module",
             Error::InvalidCompressedAnnotation => "Invalid compressed annoation",
+            Error::UnknownBinaryAnnotation(_) => "Unknown binary annotation",
         }
     }
 }
@@ -204,6 +208,7 @@ impl fmt::Display for Error {
             Error::InvalidFileChecksumOffset(offset) => {
                 write!(f, "Invalid source file checksum offset {:#x}", offset)
             }
+            Error::UnknownBinaryAnnotation(num) => write!(f, "Unknown binary annotation {}", num),
             _ => fmt::Debug::fmt(self, f),
         }
     }

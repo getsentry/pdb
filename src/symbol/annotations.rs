@@ -7,8 +7,11 @@ use crate::FallibleIterator;
 /// cvinfo.h
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BinaryAnnotationOpcode {
-    /// link time pdb contains PADDINGs
-    Invalid = 0,
+    /// link time pdb contains PADDINGs.
+    ///
+    /// These are represented with the 0 opcode which is in some PDB
+    /// implementation called "invalid".
+    Eof = 0,
     /// param : start offset
     CodeOffset = 1,
     /// param : nth separated code chunk (main code chunk == 0)
@@ -36,12 +39,14 @@ enum BinaryAnnotationOpcode {
     ChangeCodeLengthAndCodeOffset = 12,
     /// param : end column number
     ChangeColumnEnd = 13,
+    /// A non valid value
+    Invalid,
 }
 
 impl From<u32> for BinaryAnnotationOpcode {
     fn from(value: u32) -> Self {
         match value {
-            0 => BinaryAnnotationOpcode::Invalid,
+            0 => BinaryAnnotationOpcode::Eof,
             1 => BinaryAnnotationOpcode::CodeOffset,
             2 => BinaryAnnotationOpcode::ChangeCodeOffsetBase,
             3 => BinaryAnnotationOpcode::ChangeCodeOffset,
@@ -129,9 +134,10 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
             return Ok(None);
         }
 
-        let annotation = match BinaryAnnotationOpcode::from(self.uncompress_next()?) {
-            BinaryAnnotationOpcode::Invalid => {
-                // invalid opcodes mark the end of the stream.
+        let op = self.uncompress_next()?;
+        let annotation = match BinaryAnnotationOpcode::from(op) {
+            BinaryAnnotationOpcode::Eof => {
+                // This makes the end of the stream
                 self.buffer = ParseBuffer::default();
                 return Ok(None);
             }
@@ -180,6 +186,9 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
             }
             BinaryAnnotationOpcode::ChangeColumnEnd => {
                 BinaryAnnotation::ChangeColumnEnd(self.uncompress_next()?)
+            }
+            BinaryAnnotationOpcode::Invalid => {
+                return Err(Error::UnknownBinaryAnnotation(op));
             }
         };
 
