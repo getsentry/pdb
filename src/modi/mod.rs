@@ -1,9 +1,7 @@
-use std::mem;
-
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::SymbolIter;
+use crate::symbol::{SymbolIndex, SymbolIter};
 use crate::FallibleIterator;
 
 mod c13;
@@ -55,9 +53,16 @@ impl<'s> ModuleInfo<'s> {
     /// Get an iterator over the all symbols in this module.
     pub fn symbols(&self) -> Result<SymbolIter<'_>> {
         let mut buf = self.stream.parse_buffer();
+        buf.truncate(self.symbols_size)?;
         buf.parse_u32()?;
-        let symbols = buf.take(self.symbols_size - mem::size_of::<u32>())?;
-        Ok(SymbolIter::new(symbols.into()))
+        Ok(SymbolIter::new(buf))
+    }
+
+    /// Get an iterator over symbols starting at the given index.
+    pub fn symbols_at(&self, index: SymbolIndex) -> Result<SymbolIter<'_>> {
+        let mut iter = self.symbols()?;
+        iter.seek(index);
+        Ok(iter)
     }
 
     /// Returns a line program that gives access to file and line information in this module.

@@ -626,7 +626,6 @@ impl<'a> TryFromCtx<'a, Endian> for StringRef {
 }
 
 /// Provides little-endian access to a &[u8].
-#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
 
@@ -668,6 +667,23 @@ impl<'b> ParseBuffer<'b> {
     #[inline]
     pub fn pos(&self) -> usize {
         self.1
+    }
+
+    /// Seek to the given absolute position.
+    #[inline]
+    pub fn seek(&mut self, pos: usize) {
+        self.1 = std::cmp::min(pos, self.len());
+    }
+
+    /// Truncates the buffer at the given absolute position.
+    #[inline]
+    pub fn truncate(&mut self, len: usize) -> Result<()> {
+        if self.0.len() >= len {
+            self.0 = &self.0[..len];
+            Ok(())
+        } else {
+            Err(Error::UnexpectedEof)
+        }
     }
 
     /// Align the current position to the next multiple of `alignment` bytes.
@@ -717,7 +733,6 @@ impl<'b> ParseBuffer<'b> {
     def_peek!((peek_u8, u8), (peek_u16, u16),);
 
     /// Parse a NUL-terminated string from the input.
-    #[doc(hidden)]
     #[inline]
     pub fn parse_cstring(&mut self) -> Result<RawString<'b>> {
         let input = &self.0[self.1..];
@@ -732,7 +747,6 @@ impl<'b> ParseBuffer<'b> {
     }
 
     /// Parse a u8-length-prefixed string from the input.
-    #[doc(hidden)]
     #[inline]
     pub fn parse_u8_pascal_string(&mut self) -> Result<RawString<'b>> {
         let length = self.parse_u8()? as usize;
@@ -740,7 +754,6 @@ impl<'b> ParseBuffer<'b> {
     }
 
     /// Take n bytes from the input
-    #[doc(hidden)]
     #[inline]
     pub fn take(&mut self, n: usize) -> Result<&'b [u8]> {
         let input = &self.0[self.1..];

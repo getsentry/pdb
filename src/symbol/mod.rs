@@ -6,7 +6,6 @@
 // copied, modified, or distributed except according to those terms.
 
 use std::fmt;
-use std::result;
 
 use scroll::{ctx::TryFromCtx, Endian, Pread, LE};
 
@@ -23,6 +22,52 @@ pub use self::annotations::*;
 
 /// The raw type discriminator for `Symbols`.
 pub type SymbolKind = u16;
+
+/// A register referred to by its number.
+pub type Register = u16;
+
+/// A reference into the symbol table of a module.
+///
+/// To retrieve the symbol referenced by this index, use [`SymbolTable::iter_at`]. When iterating,
+/// use [`SymbolIter::seek`] to jump between symbols.
+///
+/// [`SymbolTable::iter_at`]: struct.SymbolTable.html#method.iter_at
+/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SymbolIndex(pub u32);
+
+impl From<u32> for SymbolIndex {
+    fn from(offset: u32) -> Self {
+        Self(offset)
+    }
+}
+
+impl From<SymbolIndex> for u32 {
+    fn from(string_ref: SymbolIndex) -> Self {
+        string_ref.0
+    }
+}
+
+impl fmt::Display for SymbolIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:#010x}", self.0)
+    }
+}
+
+impl fmt::Debug for SymbolIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "SymbolIndex({})", self)
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for SymbolIndex {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(i, s)| (Self(i), s))
+    }
+}
 
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
@@ -75,6 +120,13 @@ impl<'s> SymbolTable<'s> {
     pub fn iter(&self) -> SymbolIter<'_> {
         SymbolIter::new(self.stream.parse_buffer())
     }
+
+    /// Returns an iterator over symbols starting at the given index.
+    pub fn iter_at(&self, index: SymbolIndex) -> SymbolIter<'_> {
+        let mut iter = self.iter();
+        iter.seek(index);
+        iter
+    }
 }
 
 /// Represents a symbol from the symbol table.
@@ -114,8 +166,12 @@ impl<'t> Symbol<'t> {
     /// corrsponding end symbol.
     pub fn starts_scope(&self) -> bool {
         match self.raw_kind() {
-            S_GPROC32 | S_LPROC32 | S_LPROC32_ID | S_GPROC32_ID | S_BLOCK32 | S_SEPCODE
-            | S_THUNK32 | S_INLINESITE | S_INLINESITE2 => true,
+            S_GPROC16 | S_GPROCMIPS | S_GPROCMIPS_ST | S_GPROCIA64 | S_GPROCIA64_ST | S_LPROC16
+            | S_LPROC32_DPC | S_LPROCMIPS | S_LPROCMIPS_ST | S_LPROCIA64 | S_LPROCIA64_ST
+            | S_LPROC32_DPC_ID | S_GPROCMIPS_ID | S_GPROCIA64_ID | S_BLOCK16 | S_BLOCK32
+            | S_BLOCK32_ST | S_WITH16 | S_WITH32 | S_WITH32_ST | S_THUNK16 | S_THUNK32
+            | S_THUNK32_ST | S_SEPCODE | S_GMANPROC | S_GMANPROC_ST | S_LMANPROC
+            | S_LMANPROC_ST | S_INLINESITE | S_INLINESITE2 => true,
             _ => false,
         }
     }
@@ -233,7 +289,7 @@ pub enum SymbolData<'t> {
     ObjName(ObjNameSymbol<'t>),
 
     // S_COMPILE2 (0x1116) | S_COMPILE2_ST (0x1013) | S_COMPILE3 (0x113c)
-    ExtendedCompileFlags(ExtendedCompileFlagsSymbol),
+    ExtendedCompileFlags(ExtendedCompileFlagsSymbol<'t>),
 
     // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
     UsingNamespace(UsingNamespaceSymbol<'t>),
@@ -322,9 +378,6 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
         Ok((symbol, buf.pos()))
     }
 }
-
-/// A register referred to by its number.
-pub type Register = u16;
 
 /// A Register variable.
 ///
@@ -474,7 +527,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataSymbol<'t> {
 pub struct ProcedureReferenceSymbol<'t> {
     pub global: bool,
     pub sum_name: u32,
-    pub symbol_index: u32,
+    pub symbol_index: SymbolIndex,
     pub module: u16,
     pub name: Option<RawString<'t>>,
 }
@@ -507,7 +560,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DataReferenceSymbol<'t> {
     pub sum_name: u32,
-    pub symbol_index: u32,
+    pub symbol_index: SymbolIndex,
     pub module: u16,
     pub name: Option<RawString<'t>>,
 }
@@ -534,7 +587,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataReferenceSymbol<'t> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AnnotationReferenceSymbol<'t> {
     pub sum_name: u32,
-    pub symbol_index: u32,
+    pub symbol_index: SymbolIndex,
     pub module: u16,
     pub name: RawString<'t>,
 }
@@ -691,9 +744,9 @@ impl<'t> TryFromCtx<'t, Endian> for ProcedureFlags {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureSymbol<'t> {
     pub global: bool,
-    pub parent: u32,
-    pub end: u32,
-    pub next: u32,
+    pub parent: SymbolIndex,
+    pub end: SymbolIndex,
+    pub next: SymbolIndex,
     pub len: u32,
     pub dbg_start_offset: u32,
     pub dbg_end_offset: u32,
@@ -737,8 +790,8 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
 /// `S_INLINESITE` or `S_INLINESITE2`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InlineSiteSymbol<'t> {
-    pub parent: u32,
-    pub end: u32,
+    pub parent: SymbolIndex,
+    pub end: SymbolIndex,
     pub inlinee: ItemId,
     pub invocations: Option<u32>,
     pub annotations: BinaryAnnotations<'t>,
@@ -820,13 +873,13 @@ impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
 /// Compile flags declared in `ExtendedCompileFlagsSymbol`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExtendedCompileFlags {
-    /// Compiled for E/C.
+    /// Compiled for edit and continue.
     edit_and_continue: bool,
-    /// Compiled without debug information.
+    /// Compiled without debugging info.
     no_debug_info: bool,
-    /// Compiled with `/LTCG`.
+    /// Compiled with `LTCG`.
     link_time_codegen: bool,
-    /// Compiled with `-Bzalign`.
+    /// Compiled with `/bzalign`.
     no_data_align: bool,
     /// Managed code or data is present.
     managed: bool,
@@ -840,7 +893,7 @@ pub struct ExtendedCompileFlags {
     msil_module: bool,
     /// Compiled with `/sdl`.
     sdl: bool,
-    /// Compiled with `/ltcg:pgo` or `pgu`.
+    /// Compiled with `/ltcg:pgo` or `pgo:`.
     pgo: bool,
     /// This is a .exp module.
     exp_module: bool,
@@ -878,15 +931,16 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlags {
 /// The information parsed from a symbol record with kind
 /// `S_COMPILE2`, `S_COMPILE2_ST`, or `S_COMPILE3`
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ExtendedCompileFlagsSymbol {
+pub struct ExtendedCompileFlagsSymbol<'t> {
     pub language: SourceLanguage,
     pub flags: ExtendedCompileFlags,
     pub cpu_type: CPUType,
     pub frontend_version: CompilerVersion,
     pub backend_version: CompilerVersion,
+    pub version_string: RawString<'t>,
 }
 
-impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol {
+impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol<'t> {
     type Error = Error;
     type Size = usize;
 
@@ -900,6 +954,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol {
             cpu_type: buf.parse()?,
             frontend_version: buf.parse_with(has_qfe)?,
             backend_version: buf.parse_with(has_qfe)?,
+            version_string: parse_symbol_name(&mut buf, kind)?,
         };
 
         Ok((symbol, buf.pos()))
@@ -1076,13 +1131,38 @@ impl<'t> SymbolIter<'t> {
     pub(crate) fn new(buf: ParseBuffer<'t>) -> SymbolIter<'t> {
         SymbolIter { buf }
     }
+
+    /// Move the iterator to the symbol referred to by `index`.
+    ///
+    /// This can be used to jump to the sibiling or parent of a symbol record.
+    pub fn seek(&mut self, index: SymbolIndex) {
+        // A symbol index of 0 referes to no symbol. Seek to the end of the iterator.
+        let pos = match index.0 {
+            0 => self.buf.pos() + self.buf.len(),
+            pos => pos as usize,
+        };
+
+        self.buf.seek(pos);
+    }
+
+    /// Skip to the symbol referred to by `index`, returning the symbol.
+    ///
+    /// This can be used to jump to the sibiling or parent of a symbol record. Iteration continues
+    /// after that symbol.
+    ///
+    /// Note that the symbol may be located **before** the originating symbol, for instance when
+    /// jumping to the parent symbol. Take care not to enter an endless loop in this case.
+    pub fn skip_to(&mut self, index: SymbolIndex) -> Result<Option<Symbol<'t>>> {
+        self.seek(index);
+        self.next()
+    }
 }
 
 impl<'t> FallibleIterator for SymbolIter<'t> {
     type Item = Symbol<'t>;
     type Error = Error;
 
-    fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
+    fn next(&mut self) -> Result<Option<Self::Item>> {
         while !self.buf.is_empty() {
             // read the length of the next symbol
             let symbol_length = self.buf.parse::<u16>()? as usize;
@@ -1095,12 +1175,11 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
             let data = self.buf.take(symbol_length)?;
             let symbol = Symbol(data);
 
-            if symbol.raw_kind() == S_ALIGN {
-                // S_ALIGN is used for page alignment of symbols.
-                continue;
+            // skip over padding in the symbol table
+            match symbol.raw_kind() {
+                S_ALIGN | S_SKIP => continue,
+                _ => return Ok(Some(symbol)),
             }
-
-            return Ok(Some(symbol));
         }
 
         Ok(None)
@@ -1114,13 +1193,13 @@ mod tests {
 
         #[test]
         fn kind_110e() {
-            let buf = &[
+            let data = &[
                 14, 17, 2, 0, 0, 0, 192, 85, 0, 0, 1, 0, 95, 95, 108, 111, 99, 97, 108, 95, 115,
                 116, 100, 105, 111, 95, 112, 114, 105, 110, 116, 102, 95, 111, 112, 116, 105, 111,
                 110, 115, 0, 0,
             ];
 
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x110e);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1140,18 +1219,18 @@ mod tests {
 
         #[test]
         fn kind_1125() {
-            let buf = &[
+            let data = &[
                 37, 17, 0, 0, 0, 0, 108, 0, 0, 0, 1, 0, 66, 97, 122, 58, 58, 102, 95, 112, 117, 98,
                 108, 105, 99, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x1125);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
                     global: true,
                     sum_name: 0,
-                    symbol_index: 108,
+                    symbol_index: SymbolIndex(108),
                     module: 1,
                     name: Some("Baz::f_public".into()),
                 })
@@ -1160,8 +1239,8 @@ mod tests {
 
         #[test]
         fn kind_1108() {
-            let buf = &[8, 17, 112, 6, 0, 0, 118, 97, 95, 108, 105, 115, 116, 0];
-            let symbol = Symbol(buf);
+            let data = &[8, 17, 112, 6, 0, 0, 118, 97, 95, 108, 105, 115, 116, 0];
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x1108);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1174,11 +1253,11 @@ mod tests {
 
         #[test]
         fn kind_1107() {
-            let buf = &[
+            let data = &[
                 7, 17, 201, 18, 0, 0, 1, 0, 95, 95, 73, 83, 65, 95, 65, 86, 65, 73, 76, 65, 66, 76,
                 69, 95, 83, 83, 69, 50, 0, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x1107);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1193,11 +1272,11 @@ mod tests {
 
         #[test]
         fn kind_110d() {
-            let buf = &[
+            let data = &[
                 13, 17, 116, 0, 0, 0, 16, 0, 0, 0, 3, 0, 95, 95, 105, 115, 97, 95, 97, 118, 97,
                 105, 108, 97, 98, 108, 101, 0, 0, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x110d);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1216,11 +1295,11 @@ mod tests {
 
         #[test]
         fn kind_110c() {
-            let buf = &[
+            let data = &[
                 12, 17, 32, 0, 0, 0, 240, 36, 1, 0, 2, 0, 36, 120, 100, 97, 116, 97, 115, 121, 109,
                 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x110c);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1239,18 +1318,18 @@ mod tests {
 
         #[test]
         fn kind_1127() {
-            let buf = &[
+            let data = &[
                 39, 17, 0, 0, 0, 0, 128, 4, 0, 0, 182, 0, 99, 97, 112, 116, 117, 114, 101, 95, 99,
                 117, 114, 114, 101, 110, 116, 95, 99, 111, 110, 116, 101, 120, 116, 0, 0, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x1127);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
                     global: false,
                     sum_name: 0,
-                    symbol_index: 1152,
+                    symbol_index: SymbolIndex(1152),
                     module: 182,
                     name: Some("capture_current_context".into()),
                 })
@@ -1259,20 +1338,20 @@ mod tests {
 
         #[test]
         fn kind_1110() {
-            let buf = &[
+            let data = &[
                 16, 17, 0, 0, 0, 0, 48, 2, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 5, 0, 0, 0, 7,
                 16, 0, 0, 64, 85, 0, 0, 1, 0, 0, 66, 97, 122, 58, 58, 102, 95, 112, 114, 111, 116,
                 101, 99, 116, 101, 100, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x1110);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: true,
-                    parent: 0,
-                    end: 560,
-                    next: 0,
+                    parent: SymbolIndex(0),
+                    end: SymbolIndex(560),
+                    next: SymbolIndex(0),
                     len: 6,
                     dbg_start_offset: 5,
                     dbg_end_offset: 5,
@@ -1298,20 +1377,20 @@ mod tests {
 
         #[test]
         fn kind_110f() {
-            let buf = &[
+            let data = &[
                 15, 17, 0, 0, 0, 0, 156, 1, 0, 0, 0, 0, 0, 0, 18, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0,
                 128, 16, 0, 0, 196, 87, 0, 0, 1, 0, 128, 95, 95, 115, 99, 114, 116, 95, 99, 111,
                 109, 109, 111, 110, 95, 109, 97, 105, 110, 0, 0, 0,
             ];
-            let symbol = Symbol(buf);
+            let symbol = Symbol(data);
             assert_eq!(symbol.raw_kind(), 0x110f);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: false,
-                    parent: 0,
-                    end: 412,
-                    next: 0,
+                    parent: SymbolIndex(0),
+                    end: SymbolIndex(412),
+                    next: SymbolIndex(0),
                     len: 18,
                     dbg_start_offset: 4,
                     dbg_end_offset: 9,
