@@ -9,7 +9,7 @@ use crate::FallibleIterator;
 /// cvinfo.h
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BinaryAnnotationOpcode {
-    /// link time pdb contains PADDINGs.
+    /// Link time pdb contains PADDINGs.
     ///
     /// These are represented with the 0 opcode which is in some PDB
     /// implementation called "invalid".
@@ -232,6 +232,11 @@ pub struct Inlinee {
 }
 
 /// Binary annotations of a symbol.
+///
+/// The binary annotation mechanism supports recording a list of annotations in an instruction
+/// stream. The X64 unwind code and the DWARF standard have a similar design.
+///
+/// Binary annotations are primarily used as line programs for inline function calls.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct BinaryAnnotations<'t> {
     data: &'t [u8],

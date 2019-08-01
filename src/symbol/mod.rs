@@ -31,10 +31,31 @@ pub type Register = u16;
 /// To retrieve the symbol referenced by this index, use [`SymbolTable::iter_at`]. When iterating,
 /// use [`SymbolIter::seek`] to jump between symbols.
 ///
-/// [`SymbolTable::iter_at`]: struct.SymbolTable.html#method.iter_at
-/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
-#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+/// The index might also indicate the absence of a symbol (numeric value `0`). This is indicated by
+/// `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
+///
+/// [`SymbolTable::iter_at`]: struct.SymbolTable.html#method.iter_at [`SymbolIter::seek`]:
+/// struct.SymbolIter.html#method.seek
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SymbolIndex(pub u32);
+
+impl SymbolIndex {
+    /// Returns `true` if the symbol index points to a symbol.
+    #[inline]
+    #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn is_some(&self) -> bool {
+        self.0 != 0
+    }
+
+    /// Returns `true` if the symbol index indicates the absence of a symbol.
+    #[inline]
+    #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    pub fn is_none(&self) -> bool {
+        self.0 == 0
+    }
+}
 
 impl From<u32> for SymbolIndex {
     fn from(offset: u32) -> Self {
@@ -196,13 +217,6 @@ impl<'t> fmt::Debug for Symbol<'t> {
     }
 }
 
-// data types are defined at:
-//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L3038
-// constants defined at:
-//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2735
-// decoding reference:
-//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/cvdump/dumpsym7.cpp#L264
-
 fn parse_symbol_name<'t>(buf: &mut ParseBuffer<'t>, kind: SymbolKind) -> Result<RawString<'t>> {
     if kind < S_ST_MAX {
         // Pascal-style name
@@ -226,82 +240,60 @@ fn parse_optional_name<'t>(
     }
 }
 
-/// `SymbolData` contains the information parsed from a symbol record.
+// data types are defined at:
+//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L3038
+// constants defined at:
+//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2735
+// decoding reference:
+//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/cvdump/dumpsym7.cpp#L264
+
+/// Information parsed from a [`Symbol`] record.
+///
+/// [`Symbol`]: struct.Symbol.html
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SymbolData<'t> {
-    // S_END (0x0006)
+    /// End of a scope, such as a procedure.
     ScopeEnd,
-
-    // S_REGISTER (0x1106) | S_REGISTER_ST (0x1001)
-    RegisterVariable(RegisterVariableSymbol<'t>),
-
-    // S_MANYREG (0x110a) | S_MANYREG_ST (0x1005)
-    // S_MANYREG2 (0x1117) | S_MANYREG2_ST (0x1014)
-    MultiRegisterVariable(MultiRegisterVariableSymbol<'t>),
-
-    // S_PUB32 (0x110e) | S_PUB32_ST (0x1009)
-    Public(PublicSymbol<'t>),
-
-    //   S_LDATA32 (0x110c) | S_LDATA32_ST (0x1007)
-    //   S_GDATA32 (0x110d) | S_GDATA32_ST (0x1008)
-    //  S_LMANDATA (0x111c) | S_LMANDATA_ST (0x1020)
-    //  S_GMANDATA (0x111d) | S_GMANDATA_ST (0x1021)
-    Data(DataSymbol<'t>),
-
-    //   S_PROCREF (0x1125) |  S_PROCREF_ST (0x0400)
-    //  S_LPROCREF (0x1127) | S_LPROCREF_ST (0x0403)
-    ProcedureReference(ProcedureReferenceSymbol<'t>),
-
-    //   S_DATAREF (0x1126) |  S_DATAREF_ST (0x0401)
-    DataReference(DataReferenceSymbol<'t>),
-
-    // S_ANNOTATIONREF (0x1128)
-    AnnotationReference(AnnotationReferenceSymbol<'t>),
-
-    //  S_CONSTANT (0x1107) | S_CONSTANT_ST (0x1002)
-    Constant(ConstantSymbol<'t>),
-
-    //       S_UDT (0x1108) | S_UDT_ST (0x1003)
-    UserDefinedType(UserDefinedTypeSymbol<'t>),
-
-    // S_LTHREAD32 (0x1112) | S_LTHREAD32_ST (0x100e)
-    // S_GTHREAD32 (0x1113) | S_GTHREAD32_ST (0x100f)
-    ThreadStorage(ThreadStorageSymbol<'t>),
-
-    // S_LPROC32 (0x110f) | S_LPROC32_ST (0x100a)
-    // S_GPROC32 (0x1110) | S_GPROC32_ST (0x100b)
-    // S_LPROC32_ID (0x1146) |
-    // S_GPROC32_ID (0x1147) |
-    // S_LPROC32_DPC (0x1155) |
-    // S_LPROC32_DPC_ID (0x1156)
-    Procedure(ProcedureSymbol<'t>),
-
-    // S_PROC_ID_END (0x114f)
-    ProcedureEnd,
-
-    // S_INLINESITE (0x114d)
-    InlineSite(InlineSiteSymbol<'t>),
-
-    // S_INLINESITE_END (0x114e)
-    InlineSiteEnd,
-
-    // S_BUILDINFO (0x114c)
-    BuildInfo(BuildInfoSymbol),
-
-    // S_OBJNAME (0x1101) | S_OBJNAME_ST (0x0009)
+    /// Name of the object file of this module.
     ObjName(ObjNameSymbol<'t>),
-
-    // S_COMPILE2 (0x1116) | S_COMPILE2_ST (0x1013) | S_COMPILE3 (0x113c)
-    ExtendedCompileFlags(ExtendedCompileFlagsSymbol<'t>),
-
-    // S_UNAMESPACE (0x1124) | S_UNAMESPACE_ST (0x1029)
+    /// A Register variable.
+    RegisterVariable(RegisterVariableSymbol<'t>),
+    /// A constant value.
+    Constant(ConstantSymbol<'t>),
+    /// A user defined type.
+    UserDefinedType(UserDefinedTypeSymbol<'t>),
+    /// A Register variable spanning multiple registers.
+    MultiRegisterVariable(MultiRegisterVariableSymbol<'t>),
+    /// Static data, such as a global variable.
+    Data(DataSymbol<'t>),
+    /// A public symbol with a mangled name.
+    Public(PublicSymbol<'t>),
+    /// A procedure, such as a function or method.
+    Procedure(ProcedureSymbol<'t>),
+    /// A thread local variable.
+    ThreadStorage(ThreadStorageSymbol<'t>),
+    /// Flags used to compile a module.
+    CompileFlags(CompileFlagsSymbol<'t>),
+    /// A using namespace directive.
     UsingNamespace(UsingNamespaceSymbol<'t>),
-
-    // S_LOCAL (0x113e)
-    Local(LocalSymbol<'t>),
-
-    // S_EXPORT (0x1138)
+    /// Reference to a [`ProcedureSymbol`](struct.ProcedureSymbol.html).
+    ProcedureReference(ProcedureReferenceSymbol<'t>),
+    /// Reference to an imported variable.
+    DataReference(DataReferenceSymbol<'t>),
+    /// Reference to an annotation.
+    AnnotationReference(AnnotationReferenceSymbol<'t>),
+    /// An exported symbol.
     Export(ExportSymbol<'t>),
+    /// A local symbol in optimized code.
+    Local(LocalSymbol<'t>),
+    /// Reference to build information.
+    BuildInfo(BuildInfoSymbol),
+    /// The callsite of an inlined function.
+    InlineSite(InlineSiteSymbol<'t>),
+    /// End of an inline callsite.
+    InlineSiteEnd,
+    /// End of a procedure.
+    ProcedureEnd,
 }
 
 impl<'t> SymbolData<'t> {
@@ -309,26 +301,26 @@ impl<'t> SymbolData<'t> {
     pub fn name(&self) -> Option<RawString<'t>> {
         match self {
             SymbolData::ScopeEnd => None,
+            SymbolData::ObjName(data) => Some(data.name),
             SymbolData::RegisterVariable(_) => None,
+            SymbolData::Constant(data) => Some(data.name),
+            SymbolData::UserDefinedType(data) => Some(data.name),
             SymbolData::MultiRegisterVariable(_) => None,
-            SymbolData::Public(data) => Some(data.name),
             SymbolData::Data(data) => Some(data.name),
+            SymbolData::Public(data) => Some(data.name),
+            SymbolData::Procedure(data) => Some(data.name),
+            SymbolData::ThreadStorage(data) => Some(data.name),
+            SymbolData::CompileFlags(_) => None,
+            SymbolData::UsingNamespace(data) => Some(data.name),
             SymbolData::ProcedureReference(data) => data.name,
             SymbolData::DataReference(data) => data.name,
             SymbolData::AnnotationReference(data) => Some(data.name),
-            SymbolData::Constant(data) => Some(data.name),
-            SymbolData::UserDefinedType(data) => Some(data.name),
-            SymbolData::ThreadStorage(data) => Some(data.name),
-            SymbolData::Procedure(data) => Some(data.name),
-            SymbolData::ProcedureEnd => None,
-            SymbolData::InlineSite(_) => None,
-            SymbolData::InlineSiteEnd => None,
-            SymbolData::BuildInfo(_) => None,
-            SymbolData::ObjName(data) => Some(data.name),
-            SymbolData::ExtendedCompileFlags(_) => None,
-            SymbolData::UsingNamespace(data) => Some(data.name),
-            SymbolData::Local(data) => Some(data.name),
             SymbolData::Export(data) => Some(data.name),
+            SymbolData::Local(data) => Some(data.name),
+            SymbolData::InlineSite(_) => None,
+            SymbolData::BuildInfo(_) => None,
+            SymbolData::InlineSiteEnd => None,
+            SymbolData::ProcedureEnd => None,
         }
     }
 }
@@ -343,40 +335,40 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
 
         let symbol = match kind {
             S_END => SymbolData::ScopeEnd,
+            S_OBJNAME | S_OBJNAME_ST => SymbolData::ObjName(buf.parse_with(kind)?),
             S_REGISTER | S_REGISTER_ST => SymbolData::RegisterVariable(buf.parse_with(kind)?),
-            S_MANYREG | S_MANYREG_ST | S_MANYREG2 | S_MANYREG2_ST => {
-                SymbolData::MultiRegisterVariable(buf.parse_with(kind)?)
-            }
-            S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
-            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
-            | S_GMANDATA | S_GMANDATA_ST => SymbolData::Data(buf.parse_with(kind)?),
-            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
-                SymbolData::ProcedureReference(buf.parse_with(kind)?)
-            }
-            S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
-            S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
             S_CONSTANT | S_CONSTANT_ST | S_MANCONSTANT => {
                 SymbolData::Constant(buf.parse_with(kind)?)
             }
             S_UDT | S_UDT_ST | S_COBOLUDT | S_COBOLUDT_ST => {
                 SymbolData::UserDefinedType(buf.parse_with(kind)?)
             }
+            S_MANYREG | S_MANYREG_ST | S_MANYREG2 | S_MANYREG2_ST => {
+                SymbolData::MultiRegisterVariable(buf.parse_with(kind)?)
+            }
+            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
+            | S_GMANDATA | S_GMANDATA_ST => SymbolData::Data(buf.parse_with(kind)?),
+            S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
+            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
+            | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
             S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
                 SymbolData::ThreadStorage(buf.parse_with(kind)?)
             }
-            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
-            | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
-            S_PROC_ID_END => SymbolData::ProcedureEnd,
-            S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
-            S_INLINESITE_END => SymbolData::InlineSiteEnd,
-            S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
-            S_OBJNAME | S_OBJNAME_ST => SymbolData::ObjName(buf.parse_with(kind)?),
             S_COMPILE2 | S_COMPILE2_ST | S_COMPILE3 => {
-                SymbolData::ExtendedCompileFlags(buf.parse_with(kind)?)
+                SymbolData::CompileFlags(buf.parse_with(kind)?)
             }
             S_UNAMESPACE | S_UNAMESPACE_ST => SymbolData::UsingNamespace(buf.parse_with(kind)?),
-            S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
+            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
+                SymbolData::ProcedureReference(buf.parse_with(kind)?)
+            }
+            S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
+            S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
             S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
+            S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
+            S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
+            S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
+            S_INLINESITE_END => SymbolData::InlineSiteEnd,
+            S_PROC_ID_END => SymbolData::ProcedureEnd,
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -386,11 +378,14 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
 
 /// A Register variable.
 ///
-/// `S_REGISTER`, or `S_REGISTER_ST`
+/// Symbol kind `S_REGISTER`, or `S_REGISTER_ST`
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RegisterVariableSymbol<'t> {
+    /// Identifier of the variable type.
     pub type_index: TypeIndex,
+    /// The register this variable is stored in.
     pub register: Register,
+    /// Name of the variable.
     pub name: RawString<'t>,
 }
 
@@ -413,9 +408,10 @@ impl<'t> TryFromCtx<'t, SymbolKind> for RegisterVariableSymbol<'t> {
 
 /// A Register variable spanning multiple registers.
 ///
-/// `S_MANYREG`, `S_MANYREG_ST`, `S_MANYREG2`, or `S_MANYREG2_ST`
+/// Symbol kind `S_MANYREG`, `S_MANYREG_ST`, `S_MANYREG2`, or `S_MANYREG2_ST`.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MultiRegisterVariableSymbol<'t> {
+    /// Identifier of the variable type.
     pub type_index: TypeIndex,
     /// Most significant register first.
     pub registers: Vec<(Register, RawString<'t>)>,
@@ -454,14 +450,22 @@ const CVPSF_FUNCTION: u32 = 0x2;
 const CVPSF_MANAGED: u32 = 0x4;
 const CVPSF_MSIL: u32 = 0x8;
 
-/// The information parsed from a symbol record with kind `S_PUB32` or `S_PUB32_ST`.
+/// A public symbol with a mangled name.
+///
+/// Symbol kind `S_PUB32`, or `S_PUB32_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PublicSymbol<'t> {
+    /// The public symbol refers to executable code.
     pub code: bool,
+    /// The public symbol is a function.
     pub function: bool,
+    /// The symbol is in managed code (native or IL).
     pub managed: bool,
+    /// The symbol is managed IL code.
     pub msil: bool,
+    /// Start offset of the symbol.
     pub offset: PdbInternalSectionOffset,
+    /// Mangled name of the symbol.
     pub name: RawString<'t>,
 }
 
@@ -486,15 +490,24 @@ impl<'t> TryFromCtx<'t, SymbolKind> for PublicSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_LDATA32`, `S_LDATA32_ST`, `S_GDATA32`, `S_GDATA32_ST`,
-/// `S_LMANDATA`, `S_LMANDATA_ST`, `S_GMANDATA`, or `S_GMANDATA_ST`.
+/// Static data, such as a global variable.
+///
+/// Symbol kinds:
+///  - `S_LDATA32` and `S_LDATA32_ST` for local unmanaged data
+///  - `S_GDATA32` and `S_GDATA32_ST` for global unmanaged data
+///  - `S_LMANDATA32` and `S_LMANDATA32_ST` for local managed data
+///  - `S_GMANDATA32` and `S_GMANDATA32_ST` for global managed data
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DataSymbol<'t> {
+    /// Whether this data is global or local.
     pub global: bool,
+    /// Whether this data is managed or unmanaged.
     pub managed: bool,
+    /// Type identifier of the type of data.
     pub type_index: TypeIndex,
+    /// Code offset of the start of the data region.
     pub offset: PdbInternalSectionOffset,
+    /// Name of the data variable.
     pub name: RawString<'t>,
 }
 
@@ -526,14 +539,22 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_PROCREF`, `S_PROCREF_ST`, `S_LPROCREF`, or `S_LPROCREF_ST`.
+/// Reference to an imported procedure.
+///
+/// Symbol kind `S_PROCREF`, `S_PROCREF_ST`, `S_LPROCREF`, or `S_LPROCREF_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureReferenceSymbol<'t> {
+    /// Whether the referenced procedure is global or local.
     pub global: bool,
+    /// SUC of the name.
     pub sum_name: u32,
+    /// Symbol index of the referenced [`ProcedureSymbol`](struct.ProcedureSymbol.html).
+    ///
+    /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
+    /// Index of the module containing the actual symbol.
     pub module: u16,
+    /// Name of the procedure reference.
     pub name: Option<RawString<'t>>,
 }
 
@@ -561,12 +582,20 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind `S_DATAREF` or `S_DATAREF_ST`.
+/// Reference to an imported variable.
+///
+/// Symbol kind `S_DATAREF`, or `S_DATAREF_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DataReferenceSymbol<'t> {
+    /// SUC of the name.
     pub sum_name: u32,
+    /// Symbol index of the referenced [`DataSymbol`](struct.DataSymbol.html).
+    ///
+    /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
+    /// Index of the module containing the actual symbol.
     pub module: u16,
+    /// Name of the data reference.
     pub name: Option<RawString<'t>>,
 }
 
@@ -588,12 +617,20 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataReferenceSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind `S_ANNOTATIONREF`.
+/// Reference to an annotation.
+///
+/// Symbol kind `S_ANNOTATIONREF`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AnnotationReferenceSymbol<'t> {
+    /// SUC of the name.
     pub sum_name: u32,
+    /// Symbol index of the referenced symbol.
+    ///
+    /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
+    /// Index of the module containing the actual symbol.
     pub module: u16,
+    /// Name of the annotation reference.
     pub name: RawString<'t>,
 }
 
@@ -615,12 +652,18 @@ impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind `S_CONSTANT`, or `S_CONSTANT_ST`.
+/// A constant value.
+///
+/// Symbol kind `S_CONSTANT`, or `S_CONSTANT_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ConstantSymbol<'t> {
+    /// Whether this constant has metadata type information.
     pub managed: bool,
+    /// The type of this constant or metadata token.
     pub type_index: TypeIndex,
+    /// The value of this constant.
     pub value: Variant,
+    /// Name of the constant.
     pub name: RawString<'t>,
 }
 
@@ -642,10 +685,14 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ConstantSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind `S_UDT`, or `S_UDT_ST`.
+/// A user defined type.
+///
+/// Symbol kind `S_UDT`, or `S_UDT_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UserDefinedTypeSymbol<'t> {
+    /// Identifier of the type.
     pub type_index: TypeIndex,
+    /// Name of the type.
     pub name: RawString<'t>,
 }
 
@@ -665,13 +712,20 @@ impl<'t> TryFromCtx<'t, SymbolKind> for UserDefinedTypeSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_LTHREAD32`, `S_LTHREAD32_ST`, `S_GTHREAD32`, or `S_GTHREAD32_ST`.
+/// A thread local variable.
+///
+/// Symbol kinds:
+///  - `S_LTHREAD32`, `S_LTHREAD32_ST` for local thread storage.
+///  - `S_GTHREAD32`, or `S_GTHREAD32_ST` for global thread storage.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ThreadStorageSymbol<'t> {
+    /// Whether this is a global or local thread storage.
     pub global: bool,
+    /// Identifier of the stored type.
     pub type_index: TypeIndex,
+    /// Code offset of the thread local.
     pub offset: PdbInternalSectionOffset,
+    /// Name of the thread local.
     pub name: RawString<'t>,
 }
 
@@ -708,16 +762,24 @@ const CV_PFLAG_CUST_CALL: u8 = 0x20;
 const CV_PFLAG_NOINLINE: u8 = 0x40;
 const CV_PFLAG_OPTDBGINFO: u8 = 0x80;
 
-/// The information parsed from a CV_PROCFLAGS bit field
+/// Flags of a [`ProcedureSymbol`](struct.ProcedureSymbol).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureFlags {
+    /// Frame pointer is present (not omitted).
     pub nofpo: bool,
+    /// Interrupt return.
     pub int: bool,
+    /// Far return.
     pub far: bool,
+    /// Procedure does not return.
     pub never: bool,
+    /// Procedure is never called.
     pub notreached: bool,
+    /// Custom calling convention.
     pub cust_call: bool,
+    /// Marked as `noinline`.
     pub noinline: bool,
+    /// Debug information for optimized code is present.
     pub optdbginfo: bool,
 }
 
@@ -743,21 +805,42 @@ impl<'t> TryFromCtx<'t, Endian> for ProcedureFlags {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_GPROC32`, `S_GPROC32_ST`, `S_LPROC32`, `S_LPROC32_ST`
-/// `S_GPROC32_ID`, `S_LPROC32_ID`, `S_LPROC32_DPC`, or `S_LPROC32_DPC_ID`
+/// A procedure, such as a function or method.
+///
+/// Symbol kinds:
+///  - `S_GPROC32`, `S_GPROC32_ST` for global procedures
+///  - `S_LPROC32`, `S_LPROC32_ST` for local procedures
+///  - `S_LPROC32_DPC` for DPC procedures
+///  - `S_GPROC32_ID`, `S_LPROC32_ID`, `S_LPROC32_DPC_ID` for procedures referencing types from the
+///    ID stream rather than the Type stream.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureSymbol<'t> {
+    /// Whether this is a global or local procedure.
     pub global: bool,
+    /// Indicates Deferred Procedure Calls (DPC).
+    pub dpc: bool,
+    /// The parent scope that this procedure is nested in.
     pub parent: SymbolIndex,
+    /// The end symbol of this procedure.
     pub end: SymbolIndex,
+    /// The next procedure symbol.
     pub next: SymbolIndex,
+    /// The length of the code block covered by this procedure.
     pub len: u32,
+    /// Debug start.
     pub dbg_start_offset: u32,
+    /// Debug end.
     pub dbg_end_offset: u32,
+    /// Identifier of the procedure type.
+    ///
+    /// The type contains the complete signature, including parameters, modifiers and the return
+    /// type.
     pub type_index: TypeIndex,
+    /// Code offset of the start of this procedure.
     pub offset: PdbInternalSectionOffset,
+    /// Detailed flags of this procedure.
     pub flags: ProcedureFlags,
+    /// The full, demangled name of the procedure.
     pub name: RawString<'t>,
 }
 
@@ -773,8 +856,14 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
             _ => false,
         };
 
+        let dpc = match kind {
+            S_LPROC32_DPC | S_LPROC32_DPC_ID => true,
+            _ => false,
+        };
+
         let symbol = ProcedureSymbol {
             global,
+            dpc,
             parent: buf.parse()?,
             end: buf.parse()?,
             next: buf.parse()?,
@@ -791,14 +880,24 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_INLINESITE` or `S_INLINESITE2`.
+/// The callsite of an inlined function.
+///
+/// Symbol kind `S_INLINESITE`, or `S_INLINESITE2`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct InlineSiteSymbol<'t> {
+    /// Index of the parent function.
+    ///
+    /// This might either be a [`ProcedureSymbol`] or another `InlineSiteSymbol`.
+    ///
+    /// [`ProcedureSymbol`](struct.ProcedureSymbol.html)
     pub parent: SymbolIndex,
+    /// The end symbol of this callsite.
     pub end: SymbolIndex,
+    /// Identifier of the type describing the inline function.
     pub inlinee: ItemId,
+    /// The total number of invocations of the inline function.
     pub invocations: Option<u32>,
+    /// Binary annotations containing the line program of this call site.
     pub annotations: BinaryAnnotations<'t>,
 }
 
@@ -824,10 +923,12 @@ impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_BUILDINFO`.
+/// Reference to build information.
+///
+/// Symbol kind `S_BUILDINFO`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildInfoSymbol {
+    /// Identifier of the build information record.
     pub id: ItemId,
 }
 
@@ -844,11 +945,14 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BuildInfoSymbol {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_OBJNAME`, or `S_OBJNAME_ST`.
+/// Name of the object file of this module.
+///
+/// Symbol kind `S_OBJNAME`, or `S_OBJNAME_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ObjNameSymbol<'t> {
+    /// Signature.
     pub signature: u32,
+    /// Path to the object file.
     pub name: RawString<'t>,
 }
 
@@ -868,12 +972,16 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ObjNameSymbol<'t> {
     }
 }
 
-/// A version number refered to by `ExtendedCompileFlagsSymbol`.
+/// A version number refered to by `CompileFlagsSymbol`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CompilerVersion {
+    /// The major version number.
     pub major: u16,
+    /// The minor version number.
     pub minor: u16,
+    /// The build (patch) version number.
     pub build: u16,
+    /// The QFE (quick fix engineering) number.
     pub qfe: Option<u16>,
 }
 
@@ -895,9 +1003,9 @@ impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
     }
 }
 
-/// Compile flags declared in `ExtendedCompileFlagsSymbol`.
+/// Compile flags declared in `CompileFlagsSymbol`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ExtendedCompileFlags {
+pub struct CompileFlags {
     /// Compiled for edit and continue.
     edit_and_continue: bool,
     /// Compiled without debugging info.
@@ -924,7 +1032,7 @@ pub struct ExtendedCompileFlags {
     exp_module: bool,
 }
 
-impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlags {
+impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlags {
     type Error = Error;
     type Size = usize;
 
@@ -934,7 +1042,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlags {
         let raw = this.pread_with::<u16>(0, LE)?;
         this.pread::<u8>(2)?; // unused
 
-        let flags = ExtendedCompileFlags {
+        let flags = CompileFlags {
             edit_and_continue: raw & 1 != 0,
             no_debug_info: (raw >> 1) & 1 != 0,
             link_time_codegen: (raw >> 2) & 1 != 0,
@@ -953,19 +1061,27 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlags {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_COMPILE2`, `S_COMPILE2_ST`, or `S_COMPILE3`
+/// Flags used to compile a module.
+///
+/// Symbol kind `S_COMPILE2`, `S_COMPILE2_ST`, or `S_COMPILE3`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct ExtendedCompileFlagsSymbol<'t> {
+pub struct CompileFlagsSymbol<'t> {
+    /// The source code language.
     pub language: SourceLanguage,
-    pub flags: ExtendedCompileFlags,
+    /// Compiler flags.
+    pub flags: CompileFlags,
+    /// Machine type of the compilation target.
     pub cpu_type: CPUType,
+    /// Version of the compiler frontend.
     pub frontend_version: CompilerVersion,
+    /// Version of the compiler backend.
     pub backend_version: CompilerVersion,
+    /// Display name of the compiler.
     pub version_string: RawString<'t>,
+    // TODO: Command block for S_COMPILE2?
 }
 
-impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol<'t> {
+impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlagsSymbol<'t> {
     type Error = Error;
     type Size = usize;
 
@@ -973,7 +1089,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol<'t> {
         let mut buf = ParseBuffer::from(this);
 
         let has_qfe = kind == S_COMPILE3;
-        let symbol = ExtendedCompileFlagsSymbol {
+        let symbol = CompileFlagsSymbol {
             language: buf.parse()?,
             flags: buf.parse_with(kind)?,
             cpu_type: buf.parse()?,
@@ -986,10 +1102,12 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExtendedCompileFlagsSymbol<'t> {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
+/// A using namespace directive.
+///
+/// Symbol kind `S_UNAMESPACE`, or `S_UNAMESPACE_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct UsingNamespaceSymbol<'t> {
+    /// The name of the imported namespace.
     pub name: RawString<'t>,
 }
 
@@ -1020,19 +1138,30 @@ const CV_LVARFLAG_ISOPTIMIZEDOUT: u16 = 0x80;
 const CV_LVARFLAG_ISENREG_GLOB: u16 = 0x100;
 const CV_LVARFLAG_ISENREG_STAT: u16 = 0x200;
 
-/// The information parsed from a CV_LVARFLAGS bit field
+/// Flags for a [`LocalSymbol`](struct.LocalSymbol.html).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalVariableFlags {
-    pub isparam: bool,        // Variable is a parameter
-    pub addrtaken: bool,      // Address is taken
-    pub compgenx: bool,       // Variable is compiler generated
-    pub isaggregate: bool, // The symbol is splitted in temporaries, which are treated by compiler as independent entities
-    pub isaliased: bool,   // Variable has multiple simultaneous lifetimes
-    pub isalias: bool,     // Represents one of the multiple simultaneous lifetimes
-    pub isretvalue: bool,  // Represents a function return value
-    pub isoptimizedout: bool, // Variable has no lifetimes
-    pub isenreg_glob: bool, // Variable is an enregistered global
-    pub isenreg_stat: bool, // Variable is an enregistered static
+    /// Variable is a parameter.
+    pub isparam: bool,
+    /// Address is taken.
+    pub addrtaken: bool,
+    /// Variable is compiler generated.
+    pub compgenx: bool,
+    /// The symbol is splitted in temporaries, which are treated by compiler as independent
+    /// entities.
+    pub isaggregate: bool,
+    /// Variable has multiple simultaneous lifetimes.
+    pub isaliased: bool,
+    /// Represents one of the multiple simultaneous lifetimes.
+    pub isalias: bool,
+    /// Represents a function return value.
+    pub isretvalue: bool,
+    /// Variable has no lifetimes.
+    pub isoptimizedout: bool,
+    /// Variable is an enregistered global.
+    pub isenreg_glob: bool,
+    /// Variable is an enregistered static.
+    pub isenreg_stat: bool,
 }
 
 impl<'t> TryFromCtx<'t, Endian> for LocalVariableFlags {
@@ -1059,12 +1188,16 @@ impl<'t> TryFromCtx<'t, Endian> for LocalVariableFlags {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_LOCAL`
+/// A local symbol in optimized code.
+///
+/// Symbol kind `S_LOCAL`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalSymbol<'t> {
+    /// The type of the symbol.
     pub type_index: TypeIndex,
+    /// Flags for this symbol.
     pub flags: LocalVariableFlags,
+    /// Name of the symbol.
     pub name: RawString<'t>,
 }
 
@@ -1086,13 +1219,20 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
 }
 
 // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
+/// Flags of an [`ExportSymbol`](struct.ExportSymbol.html).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExportSymbolFlags {
+    /// An exported constant.
     pub constant: bool,
+    /// Exported data (e.g. a static variable).
     pub data: bool,
+    /// A private symbol.
     pub private: bool,
+    /// A symbol with no name.
     pub no_name: bool,
+    /// Ordinal was explicitly assigned.
     pub ordinal: bool,
+    /// This is a forwarder.
     pub forwarder: bool,
 }
 
@@ -1116,12 +1256,16 @@ impl<'t> TryFromCtx<'t, Endian> for ExportSymbolFlags {
     }
 }
 
-/// The information parsed from a symbol record with kind
-/// `S_EXPORT`
+/// An exported symbol.
+///
+/// Symbol kind `S_EXPORT`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExportSymbol<'t> {
+    /// Ordinal of the symbol.
     pub ordinal: u16,
+    /// Flags declaring the type of the exported symbol.
     pub flags: ExportSymbolFlags,
+    /// The name of the exported symbol.
     pub name: RawString<'t>,
 }
 
@@ -1217,6 +1361,46 @@ mod tests {
         use crate::symbol::*;
 
         #[test]
+        fn kind_0006() {
+            let data = &[6, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x0006);
+            assert_eq!(symbol.parse().expect("parse"), SymbolData::ScopeEnd);
+        }
+
+        #[test]
+        fn kind_1101() {
+            let data = &[1, 17, 0, 0, 0, 0, 42, 32, 67, 73, 76, 32, 42, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x1101);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::ObjName(ObjNameSymbol {
+                    signature: 0,
+                    name: "* CIL *".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_1106() {
+            let data = &[6, 17, 120, 34, 0, 0, 18, 0, 116, 104, 105, 115, 0, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x1106);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::RegisterVariable(RegisterVariableSymbol {
+                    type_index: 8824,
+                    register: 18,
+                    name: "this".into(),
+                })
+            );
+        }
+
+        #[test]
         fn kind_110e() {
             let data = &[
                 14, 17, 2, 0, 0, 0, 192, 85, 0, 0, 1, 0, 95, 95, 108, 111, 99, 97, 108, 95, 115,
@@ -1239,6 +1423,18 @@ mod tests {
                     },
                     name: "__local_stdio_printf_options".into(),
                 })
+            );
+        }
+
+        #[test]
+        fn kind_1124() {
+            let data = &[36, 17, 115, 116, 100, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x1124);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::UsingNamespace(UsingNamespaceSymbol { name: "std".into() })
             );
         }
 
@@ -1437,6 +1633,165 @@ mod tests {
                     name: "__scrt_common_main".into(),
                 })
             );
+        }
+
+        #[test]
+        fn kind_1116() {
+            let data = &[
+                22, 17, 7, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 14, 0, 10, 0, 115, 98, 77, 105, 99,
+                114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 76, 73, 78, 75, 0, 0, 0, 0,
+            ];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x1116);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::CompileFlags(CompileFlagsSymbol {
+                    language: SourceLanguage::Link,
+                    flags: CompileFlags {
+                        edit_and_continue: false,
+                        no_debug_info: false,
+                        link_time_codegen: false,
+                        no_data_align: false,
+                        managed: false,
+                        security_checks: false,
+                        hot_patch: false,
+                        cvtcil: false,
+                        msil_module: false,
+                        sdl: false,
+                        pgo: false,
+                        exp_module: false,
+                    },
+                    cpu_type: CPUType::Intel80386,
+                    frontend_version: CompilerVersion {
+                        major: 0,
+                        minor: 0,
+                        build: 0,
+                        qfe: None,
+                    },
+                    backend_version: CompilerVersion {
+                        major: 14,
+                        minor: 10,
+                        build: 25203,
+                        qfe: None,
+                    },
+                    version_string: "Microsoft (R) LINK".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_113c() {
+            let data = &[
+                60, 17, 1, 36, 2, 0, 7, 0, 19, 0, 13, 0, 6, 102, 0, 0, 19, 0, 13, 0, 6, 102, 0, 0,
+                77, 105, 99, 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 79, 112, 116, 105,
+                109, 105, 122, 105, 110, 103, 32, 67, 111, 109, 112, 105, 108, 101, 114, 0,
+            ];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x113c);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::CompileFlags(CompileFlagsSymbol {
+                    language: SourceLanguage::Cpp,
+                    flags: CompileFlags {
+                        edit_and_continue: false,
+                        no_debug_info: false,
+                        link_time_codegen: true,
+                        no_data_align: false,
+                        managed: false,
+                        security_checks: true,
+                        hot_patch: false,
+                        cvtcil: false,
+                        msil_module: false,
+                        sdl: true,
+                        pgo: false,
+                        exp_module: false,
+                    },
+                    cpu_type: CPUType::Pentium3,
+                    frontend_version: CompilerVersion {
+                        major: 19,
+                        minor: 13,
+                        build: 26118,
+                        qfe: Some(0),
+                    },
+                    backend_version: CompilerVersion {
+                        major: 19,
+                        minor: 13,
+                        build: 26118,
+                        qfe: Some(0),
+                    },
+                    version_string: "Microsoft (R) Optimizing Compiler".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_113e() {
+            let data = &[62, 17, 193, 19, 0, 0, 1, 0, 116, 104, 105, 115, 0, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x113e);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::Local(LocalSymbol {
+                    type_index: 5057,
+                    flags: LocalVariableFlags {
+                        isparam: true,
+                        addrtaken: false,
+                        compgenx: false,
+                        isaggregate: false,
+                        isaliased: false,
+                        isalias: false,
+                        isretvalue: false,
+                        isoptimizedout: false,
+                        isenreg_glob: false,
+                        isenreg_stat: false,
+                    },
+                    name: "this".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_114c() {
+            let data = &[76, 17, 95, 17, 0, 0];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x114c);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::BuildInfo(BuildInfoSymbol { id: 0x115F })
+            );
+        }
+
+        #[test]
+        fn kind_114d() {
+            let data = &[
+                77, 17, 144, 1, 0, 0, 208, 1, 0, 0, 121, 17, 0, 0, 12, 6, 3, 0,
+            ];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x114d);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::InlineSite(InlineSiteSymbol {
+                    parent: SymbolIndex(0x00000190),
+                    end: SymbolIndex(0x000001d0),
+                    inlinee: 4473,
+                    invocations: None,
+                    annotations: BinaryAnnotations::new(&[12, 6, 3, 0]),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_114e() {
+            let data = &[78, 17];
+
+            let symbol = Symbol(data);
+            assert_eq!(symbol.raw_kind(), 0x114e);
+            assert_eq!(symbol.parse().expect("parse"), SymbolData::InlineSiteEnd);
         }
     }
 }

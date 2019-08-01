@@ -364,6 +364,7 @@ impl From<&'_ NewFrameData> for FrameData {
     }
 }
 
+/// Iterator over entries in a [`FrameTable`](struct.FrameTable.html).
 #[derive(Debug, Default)]
 pub struct FrameDataIter<'t> {
     old_frames: &'t [OldFrameData],
