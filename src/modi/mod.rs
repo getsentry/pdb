@@ -133,6 +133,8 @@ pub enum LineInfoKind {
 pub struct LineInfo {
     /// Source code offset.
     pub offset: PdbInternalSectionOffset,
+    /// The optional length of the code.
+    pub length: Option<u32>,
     /// Index of the source file in this module.
     pub file_index: FileIndex,
     /// Line number of the start of the covered range.

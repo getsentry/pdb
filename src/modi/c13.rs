@@ -121,6 +121,7 @@ struct DebugInlineesHeader {
 #[derive(Clone, Copy, Debug, Default, Pread)]
 pub struct InlineeSourceLine {
     pub inlinee: ItemId,
+    // This should be FileIndex
     pub file_id: u32,
     pub source_line_num: u32,
 }
@@ -580,6 +581,7 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 
                 return Ok(Some(LineInfo {
                     offset: section_header.offset + line_entry.offset,
+                    length: None,
                     file_index: FileIndex(block_header.file_index),
                     line_start: line_entry.start_line,
                     line_end: line_entry.end_line,

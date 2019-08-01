@@ -1,6 +1,8 @@
 use std::result;
 
 use crate::common::*;
+use crate::modi::{FileIndex, InlineeSourceLine, LineInfo, LineInfoKind};
+use crate::symbol::SymbolIndex;
 use crate::FallibleIterator;
 
 /// These values correspond to the BinaryAnnotationOpcode enum from the
@@ -84,6 +86,18 @@ pub enum BinaryAnnotation {
     ChangeCodeOffsetAndLineOffset(i32, i32),
     ChangeCodeLengthAndCodeOffset(u32, u32),
     ChangeColumnEnd(u32),
+}
+
+impl BinaryAnnotation {
+    /// Does this annotation emit a line info?
+    pub fn emits_line_info(self) -> bool {
+        match self {
+            BinaryAnnotation::ChangeCodeOffset(..) => true,
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(..) => true,
+            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(..) => true,
+            _ => false,
+        }
+    }
 }
 
 /// An iterator over binary annotations used by `S_INLINESITE`.
@@ -196,6 +210,27 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub struct InstructionLocation {
+    pub range_kind: LineInfoKind,
+    pub offset_start: u32,
+    pub offset_end: u32,
+    pub line_start: u32,
+    pub line_end: u32,
+    pub col_start: u32,
+    pub col_end: u32,
+}
+
+#[derive(Clone, Debug)]
+pub struct Inlinee {
+    pub id: ItemId,
+    pub ptr: SymbolIndex,
+    pub parent: SymbolIndex,
+    pub file_offset: FileIndex,
+    pub base_line_num: u32,
+    pub locations: Vec<InstructionLocation>,
+}
+
 /// Binary annotations of a symbol.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct BinaryAnnotations<'t> {
@@ -206,6 +241,114 @@ impl<'t> BinaryAnnotations<'t> {
     /// Creates a new instance of binary annotations.
     pub(crate) fn new(data: &'t [u8]) -> Self {
         BinaryAnnotations { data }
+    }
+
+    /// Evalutes the annotations into line infos.
+    ///
+    /// `start_offset` is the address of the function that is the base for this
+    /// inline site.  The `source_line` is the base of where the source
+    /// information is evaluated from.
+    pub fn evaluate(
+        &self,
+        start_offset: PdbInternalSectionOffset,
+        source_line: &InlineeSourceLine,
+    ) -> Result<Vec<LineInfo>> {
+        let mut iter = self.iter();
+        let mut rv: Vec<LineInfo> = vec![];
+
+        let mut file_index = FileIndex(source_line.file_id);
+        let mut code_offset_base = 0;
+        let mut code_offset = start_offset;
+        let mut code_length = 0;
+        let mut current_line = source_line.source_line_num;
+        let mut current_line_length = 1;
+        let mut current_col_start = 1;
+        let mut current_col_end = 100_000;
+        let mut range_kind = LineInfoKind::Expression;
+
+        while let Some(op) = iter.next()? {
+            match op {
+                BinaryAnnotation::CodeOffset(new_val) => {
+                    code_offset.offset = new_val;
+                }
+                BinaryAnnotation::ChangeCodeOffsetBase(new_val) => {
+                    code_offset_base = new_val;
+                }
+                BinaryAnnotation::ChangeCodeOffset(delta) => {
+                    code_offset = code_offset.wrapping_add(delta);
+                }
+                BinaryAnnotation::ChangeCodeLength(val) => {
+                    if let Some(last_loc) = rv.last_mut() {
+                        if last_loc.length.is_none() && last_loc.kind == range_kind {
+                            last_loc.length = Some(val);
+                        }
+                    }
+                    code_offset = code_offset.wrapping_add(val);
+                }
+                BinaryAnnotation::ChangeFile(new_val) => {
+                    file_index = FileIndex(new_val);
+                }
+                BinaryAnnotation::ChangeLineOffset(delta) => {
+                    current_line = (i64::from(current_line) + i64::from(delta)) as u32;
+                }
+                BinaryAnnotation::ChangeLineEndDelta(new_val) => {
+                    current_line_length = new_val;
+                }
+                BinaryAnnotation::ChangeRangeKind(kind) => {
+                    range_kind = match kind {
+                        0 => LineInfoKind::Expression,
+                        1 => LineInfoKind::Statement,
+                        _ => range_kind,
+                    };
+                }
+                BinaryAnnotation::ChangeColumnStart(new_val) => {
+                    current_col_start = new_val;
+                }
+                BinaryAnnotation::ChangeColumnEndDelta(delta) => {
+                    current_col_end = (i64::from(current_col_end) + i64::from(delta)) as u32;
+                }
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
+                    code_offset = PdbInternalSectionOffset {
+                        section: code_offset.section,
+                        offset: (i64::from(code_offset.offset) + i64::from(code_delta)) as u32,
+                    };
+                    current_line = (i64::from(current_line) + i64::from(line_delta)) as u32;
+                }
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(new_code_length, code_delta) => {
+                    code_length = new_code_length;
+                    code_offset = PdbInternalSectionOffset {
+                        section: code_offset.section,
+                        offset: (i64::from(code_offset.offset) + i64::from(code_delta)) as u32,
+                    };
+                }
+                BinaryAnnotation::ChangeColumnEnd(new_val) => {
+                    current_col_end = new_val;
+                }
+            }
+
+            if op.emits_line_info() {
+                if let Some(last_loc) = rv.last_mut() {
+                    if last_loc.length.is_none() && last_loc.kind == range_kind {
+                        last_loc.length = Some(code_offset.offset - code_offset_base);
+                    }
+                }
+
+                rv.push(LineInfo {
+                    kind: range_kind,
+                    file_index,
+                    offset: code_offset + code_offset_base,
+                    length: Some(code_length),
+                    line_start: current_line,
+                    line_end: current_line + current_line_length,
+                    column_start: Some(current_col_start as u16),
+                    column_end: Some(current_col_end as u16),
+                });
+
+                code_length = 0;
+            }
+        }
+
+        Ok(rv)
     }
 
     /// Iterates through binary annotations.
