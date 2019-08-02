@@ -28,14 +28,14 @@ pub type Register = u16;
 
 /// A reference into the symbol table of a module.
 ///
-/// To retrieve the symbol referenced by this index, use [`SymbolTable::iter_at`]. When iterating,
+/// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
 /// use [`SymbolIter::seek`] to jump between symbols.
 ///
 /// The index might also indicate the absence of a symbol (numeric value `0`). This is indicated by
 /// `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
 ///
-/// [`SymbolTable::iter_at`]: struct.SymbolTable.html#method.iter_at [`SymbolIter::seek`]:
-/// struct.SymbolIter.html#method.seek
+/// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
+/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SymbolIndex(pub u32);
 
