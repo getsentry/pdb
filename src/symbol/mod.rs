@@ -31,8 +31,9 @@ pub type Register = u16;
 /// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
 /// use [`SymbolIter::seek`] to jump between symbols.
 ///
-/// The index might also indicate the absence of a symbol (numeric value `0`). This is indicated by
-/// `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
+/// The numeric value of this index corresponds to the binary offset of the symbol in its symbol
+/// stream. The index might also indicate the absence of a symbol (numeric value `0`). This is
+/// indicated by `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
 ///
 /// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
 /// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
@@ -90,66 +91,6 @@ impl<'a> TryFromCtx<'a, Endian> for SymbolIndex {
     }
 }
 
-/// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
-/// constants, data types, and more.
-///
-/// The `SymbolTable` holds a `SourceView` referencing the symbol table inside the PDB file. All the
-/// data structures returned by a `SymbolTable` refer to that buffer.
-///
-/// # Example
-///
-/// ```
-/// # use pdb::FallibleIterator;
-/// #
-/// # fn test() -> pdb::Result<usize> {
-/// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
-/// let mut pdb = pdb::PDB::open(file)?;
-///
-/// let symbol_table = pdb.global_symbols()?;
-/// let address_map = pdb.address_map()?;
-///
-/// # let mut count: usize = 0;
-/// let mut symbols = symbol_table.iter();
-/// while let Some(symbol) = symbols.next()? {
-///     match symbol.parse() {
-///         Ok(pdb::SymbolData::Public(data)) if data.function => {
-///             // we found the location of a function!
-///             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
-///             println!("{} is {}", rva, data.name);
-///             # count += 1;
-///         }
-///         _ => {}
-///     }
-/// }
-///
-/// # Ok(count)
-/// # }
-/// # assert!(test().expect("test") > 2000);
-/// ```
-#[derive(Debug)]
-pub struct SymbolTable<'s> {
-    stream: Stream<'s>,
-}
-
-impl<'s> SymbolTable<'s> {
-    /// Parses a symbol table from raw stream data.
-    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
-        Ok(SymbolTable { stream })
-    }
-
-    /// Returns an iterator that can traverse the symbol table in sequential order.
-    pub fn iter(&self) -> SymbolIter<'_> {
-        SymbolIter::new(self.stream.parse_buffer())
-    }
-
-    /// Returns an iterator over symbols starting at the given index.
-    pub fn iter_at(&self, index: SymbolIndex) -> SymbolIter<'_> {
-        let mut iter = self.iter();
-        iter.seek(index);
-        iter
-    }
-}
-
 /// Represents a symbol from the symbol table.
 ///
 /// A `Symbol` is represented internally as a `&[u8]`, and in general the bytes inside are not
@@ -158,21 +99,30 @@ impl<'s> SymbolTable<'s> {
 /// To avoid copying, `Symbol`s exist as references to data owned by the parent `SymbolTable`.
 /// Therefore, a `Symbol` may not outlive its parent `SymbolTable`.
 #[derive(Copy, Clone, PartialEq)]
-pub struct Symbol<'t>(&'t [u8]);
+pub struct Symbol<'t> {
+    index: SymbolIndex,
+    data: &'t [u8],
+}
 
 impl<'t> Symbol<'t> {
+    /// The index of this symbol in the containing symbol stream.
+    #[inline]
+    pub fn index(&self) -> SymbolIndex {
+        self.index
+    }
+
     /// Returns the kind of symbol identified by this Symbol.
     #[inline]
     pub fn raw_kind(&self) -> SymbolKind {
-        debug_assert!(self.0.len() >= 2);
-        self.0.pread_with(0, LE).unwrap_or_default()
+        debug_assert!(self.data.len() >= 2);
+        self.data.pread_with(0, LE).unwrap_or_default()
     }
 
     /// Returns the raw bytes of this symbol record, including the symbol type and extra data, but
     /// not including the preceding symbol length indicator.
     #[inline]
     pub fn raw_bytes(&self) -> &'t [u8] {
-        self.0
+        self.data
     }
 
     /// Parse the symbol into the `SymbolData` it contains.
@@ -212,7 +162,7 @@ impl<'t> fmt::Debug for Symbol<'t> {
             f,
             "Symbol{{ kind: 0x{:4x} [{} bytes] }}",
             self.raw_kind(),
-            self.0.len()
+            self.data.len()
         )
     }
 }
@@ -1286,6 +1236,66 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExportSymbol<'t> {
     }
 }
 
+/// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
+/// constants, data types, and more.
+///
+/// The `SymbolTable` holds a `SourceView` referencing the symbol table inside the PDB file. All the
+/// data structures returned by a `SymbolTable` refer to that buffer.
+///
+/// # Example
+///
+/// ```
+/// # use pdb::FallibleIterator;
+/// #
+/// # fn test() -> pdb::Result<usize> {
+/// let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+/// let mut pdb = pdb::PDB::open(file)?;
+///
+/// let symbol_table = pdb.global_symbols()?;
+/// let address_map = pdb.address_map()?;
+///
+/// # let mut count: usize = 0;
+/// let mut symbols = symbol_table.iter();
+/// while let Some(symbol) = symbols.next()? {
+///     match symbol.parse() {
+///         Ok(pdb::SymbolData::Public(data)) if data.function => {
+///             // we found the location of a function!
+///             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
+///             println!("{} is {}", rva, data.name);
+///             # count += 1;
+///         }
+///         _ => {}
+///     }
+/// }
+///
+/// # Ok(count)
+/// # }
+/// # assert!(test().expect("test") > 2000);
+/// ```
+#[derive(Debug)]
+pub struct SymbolTable<'s> {
+    stream: Stream<'s>,
+}
+
+impl<'s> SymbolTable<'s> {
+    /// Parses a symbol table from raw stream data.
+    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
+        Ok(SymbolTable { stream })
+    }
+
+    /// Returns an iterator that can traverse the symbol table in sequential order.
+    pub fn iter(&self) -> SymbolIter<'_> {
+        SymbolIter::new(self.stream.parse_buffer())
+    }
+
+    /// Returns an iterator over symbols starting at the given index.
+    pub fn iter_at(&self, index: SymbolIndex) -> SymbolIter<'_> {
+        let mut iter = self.iter();
+        iter.seek(index);
+        iter
+    }
+}
+
 /// A `SymbolIter` iterates over a `SymbolTable`, producing `Symbol`s.
 ///
 /// Symbol tables are represented internally as a series of records, each of which have a length, a
@@ -1333,6 +1343,8 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
         while !self.buf.is_empty() {
+            let index = SymbolIndex(self.buf.pos() as u32);
+
             // read the length of the next symbol
             let symbol_length = self.buf.parse::<u16>()? as usize;
             if symbol_length < 2 {
@@ -1342,7 +1354,7 @@ impl<'t> FallibleIterator for SymbolIter<'t> {
 
             // grab the symbol itself
             let data = self.buf.take(symbol_length)?;
-            let symbol = Symbol(data);
+            let symbol = Symbol { index, data };
 
             // skip over padding in the symbol table
             match symbol.raw_kind() {
@@ -1364,7 +1376,10 @@ mod tests {
         fn kind_0006() {
             let data = &[6, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x0006);
             assert_eq!(symbol.parse().expect("parse"), SymbolData::ScopeEnd);
         }
@@ -1373,7 +1388,10 @@ mod tests {
         fn kind_1101() {
             let data = &[1, 17, 0, 0, 0, 0, 42, 32, 67, 73, 76, 32, 42, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1101);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1388,7 +1406,10 @@ mod tests {
         fn kind_1106() {
             let data = &[6, 17, 120, 34, 0, 0, 18, 0, 116, 104, 105, 115, 0, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1106);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1408,7 +1429,10 @@ mod tests {
                 110, 115, 0, 0,
             ];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x110e);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1430,7 +1454,10 @@ mod tests {
         fn kind_1124() {
             let data = &[36, 17, 115, 116, 100, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1124);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1444,7 +1471,10 @@ mod tests {
                 37, 17, 0, 0, 0, 0, 108, 0, 0, 0, 1, 0, 66, 97, 122, 58, 58, 102, 95, 112, 117, 98,
                 108, 105, 99, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1125);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1461,7 +1491,10 @@ mod tests {
         #[test]
         fn kind_1108() {
             let data = &[8, 17, 112, 6, 0, 0, 118, 97, 95, 108, 105, 115, 116, 0];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1108);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1478,7 +1511,10 @@ mod tests {
                 7, 17, 201, 18, 0, 0, 1, 0, 95, 95, 73, 83, 65, 95, 65, 86, 65, 73, 76, 65, 66, 76,
                 69, 95, 83, 83, 69, 50, 0, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1107);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1497,7 +1533,10 @@ mod tests {
                 13, 17, 116, 0, 0, 0, 16, 0, 0, 0, 3, 0, 95, 95, 105, 115, 97, 95, 97, 118, 97,
                 105, 108, 97, 98, 108, 101, 0, 0, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x110d);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1520,7 +1559,10 @@ mod tests {
                 12, 17, 32, 0, 0, 0, 240, 36, 1, 0, 2, 0, 36, 120, 100, 97, 116, 97, 115, 121, 109,
                 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x110c);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1543,7 +1585,10 @@ mod tests {
                 39, 17, 0, 0, 0, 0, 128, 4, 0, 0, 182, 0, 99, 97, 112, 116, 117, 114, 101, 95, 99,
                 117, 114, 114, 101, 110, 116, 95, 99, 111, 110, 116, 101, 120, 116, 0, 0, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1127);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1564,7 +1609,10 @@ mod tests {
                 16, 0, 0, 64, 85, 0, 0, 1, 0, 0, 66, 97, 122, 58, 58, 102, 95, 112, 114, 111, 116,
                 101, 99, 116, 101, 100, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1110);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1604,7 +1652,10 @@ mod tests {
                 128, 16, 0, 0, 196, 87, 0, 0, 1, 0, 128, 95, 95, 115, 99, 114, 116, 95, 99, 111,
                 109, 109, 111, 110, 95, 109, 97, 105, 110, 0, 0, 0,
             ];
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x110f);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1644,7 +1695,10 @@ mod tests {
                 114, 111, 115, 111, 102, 116, 32, 40, 82, 41, 32, 76, 73, 78, 75, 0, 0, 0, 0,
             ];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x1116);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1690,7 +1744,10 @@ mod tests {
                 109, 105, 122, 105, 110, 103, 32, 67, 111, 109, 112, 105, 108, 101, 114, 0,
             ];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x113c);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1732,7 +1789,10 @@ mod tests {
         fn kind_113e() {
             let data = &[62, 17, 193, 19, 0, 0, 1, 0, 116, 104, 105, 115, 0, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x113e);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1759,7 +1819,10 @@ mod tests {
         fn kind_114c() {
             let data = &[76, 17, 95, 17, 0, 0];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x114c);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1773,7 +1836,10 @@ mod tests {
                 77, 17, 144, 1, 0, 0, 208, 1, 0, 0, 121, 17, 0, 0, 12, 6, 3, 0,
             ];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x114d);
             assert_eq!(
                 symbol.parse().expect("parse"),
@@ -1791,7 +1857,10 @@ mod tests {
         fn kind_114e() {
             let data = &[78, 17];
 
-            let symbol = Symbol(data);
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
             assert_eq!(symbol.raw_kind(), 0x114e);
             assert_eq!(symbol.parse().expect("parse"), SymbolData::InlineSiteEnd);
         }
