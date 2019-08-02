@@ -1570,6 +1570,7 @@ mod tests {
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: true,
+                    dpc: false,
                     parent: SymbolIndex(0),
                     end: SymbolIndex(560),
                     next: SymbolIndex(0),
@@ -1609,6 +1610,7 @@ mod tests {
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
                     global: false,
+                    dpc: false,
                     parent: SymbolIndex(0),
                     end: SymbolIndex(412),
                     next: SymbolIndex(0),
@@ -1776,8 +1778,8 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::InlineSite(InlineSiteSymbol {
-                    parent: SymbolIndex(0x00000190),
-                    end: SymbolIndex(0x000001d0),
+                    parent: SymbolIndex(0x0190),
+                    end: SymbolIndex(0x01d0),
                     inlinee: 4473,
                     invocations: None,
                     annotations: BinaryAnnotations::new(&[12, 6, 3, 0]),
