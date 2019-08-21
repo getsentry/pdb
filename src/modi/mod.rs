@@ -160,12 +160,12 @@ pub struct LineInfo {
     ///
     /// This value is only present if column information is provided by the PDB. Even then, it is
     /// often zero.
-    pub column_start: Option<u16>,
+    pub column_start: Option<u32>,
     /// Column number of the end of the covered range.
     ///
     /// This value is only present if column information is provided by the PDB. Even then, it is
     /// often zero.
-    pub column_end: Option<u16>,
+    pub column_end: Option<u32>,
     /// Kind of this line information.
     pub kind: LineInfoKind,
 }

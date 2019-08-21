@@ -630,8 +630,8 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
                     file_index: FileIndex(block_header.file_index),
                     line_start: line_entry.start_line,
                     line_end: line_entry.end_line,
-                    column_start: column_entry.map(|e| e.start_column),
-                    column_end: column_entry.map(|e| e.end_column),
+                    column_start: column_entry.map(|e| e.start_column.into()),
+                    column_end: column_entry.map(|e| e.end_column.into()),
                     kind: line_entry.kind,
                 }));
             }
@@ -661,12 +661,13 @@ pub struct C13InlineeLineIterator<'a> {
     file_index: FileIndex,
     code_offset_base: u32,
     code_offset: PdbInternalSectionOffset,
-    code_length: u32,
-    current_line: u32,
-    current_line_length: u32,
-    current_col_start: u32,
-    current_col_end: u32,
+    code_length: Option<u32>,
+    line: u32,
+    line_length: u32,
+    col_start: Option<u32>,
+    col_end: Option<u32>,
     line_kind: LineInfoKind,
+    last_info: Option<LineInfo>,
 }
 
 impl<'a> C13InlineeLineIterator<'a> {
@@ -680,12 +681,13 @@ impl<'a> C13InlineeLineIterator<'a> {
             file_index: inlinee_line.file_id,
             code_offset_base: 0,
             code_offset: parent_offset,
-            code_length: 0,
-            current_line: inlinee_line.line,
-            current_line_length: 1,
-            current_col_start: 1,
-            current_col_end: 100_000, // TODO(ja): Is this a good start value?
+            code_length: None,
+            line: inlinee_line.line,
+            line_length: 1,
+            col_start: None,
+            col_end: None,
             line_kind: LineInfoKind::Expression,
+            last_info: None,
         }
     }
 }
@@ -697,32 +699,32 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
     fn next(&mut self) -> Result<Option<Self::Item>> {
         while let Some(op) = self.annotations.next()? {
             match op {
-                BinaryAnnotation::CodeOffset(new_val) => {
-                    self.code_offset.offset = new_val;
+                BinaryAnnotation::CodeOffset(code_offset) => {
+                    self.code_offset.offset = code_offset;
                 }
-                BinaryAnnotation::ChangeCodeOffsetBase(new_val) => {
-                    self.code_offset_base = new_val;
+                BinaryAnnotation::ChangeCodeOffsetBase(code_offset_base) => {
+                    self.code_offset_base = code_offset_base;
                 }
                 BinaryAnnotation::ChangeCodeOffset(delta) => {
                     self.code_offset = self.code_offset.wrapping_add(delta);
                 }
-                BinaryAnnotation::ChangeCodeLength(val) => {
-                    // TODO(ja): Fix this
-                    // if let Some(last_loc) = rv.last_mut() {
-                    //     if last_loc.length.is_none() && last_loc.kind == self.line_kind {
-                    //         last_loc.length = Some(val);
-                    //     }
-                    // }
-                    self.code_offset = self.code_offset.wrapping_add(val);
+                BinaryAnnotation::ChangeCodeLength(code_length) => {
+                    if let Some(ref mut last_info) = self.last_info {
+                        if last_info.length.is_none() && last_info.kind == self.line_kind {
+                            last_info.length = Some(code_length);
+                        }
+                    }
+
+                    self.code_offset = self.code_offset.wrapping_add(code_length);
                 }
                 BinaryAnnotation::ChangeFile(new_val) => {
                     self.file_index = FileIndex(new_val);
                 }
                 BinaryAnnotation::ChangeLineOffset(delta) => {
-                    self.current_line = (i64::from(self.current_line) + i64::from(delta)) as u32;
+                    self.line = (i64::from(self.line) + i64::from(delta)) as u32;
                 }
-                BinaryAnnotation::ChangeLineEndDelta(new_val) => {
-                    self.current_line_length = new_val;
+                BinaryAnnotation::ChangeLineEndDelta(line_length) => {
+                    self.line_length = line_length;
                 }
                 BinaryAnnotation::ChangeRangeKind(kind) => {
                     self.line_kind = match kind {
@@ -731,58 +733,64 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                         _ => self.line_kind,
                     };
                 }
-                BinaryAnnotation::ChangeColumnStart(new_val) => {
-                    self.current_col_start = new_val;
+                BinaryAnnotation::ChangeColumnStart(col_start) => {
+                    self.col_start = Some(col_start);
                 }
                 BinaryAnnotation::ChangeColumnEndDelta(delta) => {
-                    self.current_col_end =
-                        (i64::from(self.current_col_end) + i64::from(delta)) as u32;
+                    self.col_end = self.col_end.map(|col_end| {
+                        (i64::from(col_end) + i64::from(delta)) as u32
+                    })
                 }
                 BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
                     self.code_offset = PdbInternalSectionOffset {
                         section: self.code_offset.section,
                         offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
                     };
-                    self.current_line =
-                        (i64::from(self.current_line) + i64::from(line_delta)) as u32;
+                    self.line = (i64::from(self.line) + i64::from(line_delta)) as u32;
                 }
-                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(new_code_length, code_delta) => {
-                    self.code_length = new_code_length;
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(code_length, code_delta) => {
+                    self.code_length = Some(code_length);
                     self.code_offset = PdbInternalSectionOffset {
                         section: self.code_offset.section,
                         offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
                     };
                 }
-                BinaryAnnotation::ChangeColumnEnd(new_val) => {
-                    self.current_col_end = new_val;
+                BinaryAnnotation::ChangeColumnEnd(col_end) => {
+                    self.col_end = Some(col_end);
                 }
             }
 
-            if op.emits_line_info() {
-                // TODO(ja): Fix this
-                // if let Some(last_loc) = rv.last_mut() {
-                //     if last_loc.length.is_none() && last_loc.kind == self.line_kind {
-                //         last_loc.length = Some(self.code_offset.offset - self.code_offset_base);
-                //     }
-                // }
+            if !op.emits_line_info() {
+                continue;
+            }
 
-                let line_info = LineInfo {
-                    kind: self.line_kind,
-                    file_index: self.file_index,
-                    offset: self.code_offset + self.code_offset_base,
-                    length: Some(self.code_length),
-                    line_start: self.current_line,
-                    line_end: self.current_line + self.current_line_length,
-                    column_start: Some(self.current_col_start as u16),
-                    column_end: Some(self.current_col_end as u16),
-                };
+            if let Some(ref mut last_info) = self.last_info {
+                if last_info.length.is_none() && last_info.kind == self.line_kind {
+                    last_info.length = Some(self.code_offset.offset - self.code_offset_base);
+                }
+            }
 
-                self.code_length = 0;
-                return Ok(Some(line_info));
+            let line_info = LineInfo {
+                kind: self.line_kind,
+                file_index: self.file_index,
+                offset: self.code_offset + self.code_offset_base,
+                length: self.code_length,
+                line_start: self.line,
+                line_end: self.line + self.line_length,
+                column_start: self.col_start,
+                column_end: self.col_end,
+            };
+
+            self.code_length = None;
+
+            // Finish the previous record and emit it. The current record is stored so that the
+            // length can be inferred from subsequent operators or the next line info.
+            if let Some(last_info) = std::mem::replace(&mut self.last_info, Some(line_info)) {
+                return Ok(Some(last_info));
             }
         }
 
-        Ok(None)
+        Ok(self.last_info.take())
     }
 }
 
