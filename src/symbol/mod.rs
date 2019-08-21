@@ -839,7 +839,7 @@ pub struct InlineSiteSymbol<'t> {
     ///
     /// This might either be a [`ProcedureSymbol`] or another `InlineSiteSymbol`.
     ///
-    /// [`ProcedureSymbol`](struct.ProcedureSymbol.html)
+    /// [`ProcedureSymbol`]: struct.ProcedureSymbol.html
     pub parent: SymbolIndex,
     /// The end symbol of this callsite.
     pub end: SymbolIndex,

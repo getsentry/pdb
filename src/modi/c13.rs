@@ -1,7 +1,8 @@
-use scroll::Pread;
+use scroll::{ctx::TryFromCtx, Pread};
 
 use crate::common::*;
 use crate::modi::{constants, FileChecksum, FileIndex, FileInfo, LineInfo, LineInfoKind};
+use crate::symbol::{BinaryAnnotation, BinaryAnnotationsIter, InlineSiteSymbol};
 use crate::FallibleIterator;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -97,6 +98,108 @@ impl<'a> FallibleIterator for DebugSubsectionIterator<'a> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Pread)]
+struct DebugInlineeLinesHeader {
+    /// The signature of the inlinees
+    signature: u32,
+}
+
+impl DebugInlineeLinesHeader {
+    pub fn has_extra_files(self) -> bool {
+        self.signature == constants::CV_INLINEE_SOURCE_LINE_SIGNATURE_EX
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct InlineeSourceLine<'a> {
+    pub inlinee: ItemId,
+    pub file_id: FileIndex,
+    pub line: u32,
+    extra_files: &'a [u8],
+}
+
+impl<'a> InlineeSourceLine<'a> {
+    // TODO(ja): Implement extra files iterator
+}
+
+impl<'a> TryFromCtx<'a, DebugInlineeLinesHeader> for InlineeSourceLine<'a> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], header: DebugInlineeLinesHeader) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+        let inlinee = buf.parse()?;
+        let file_id = buf.parse()?;
+        let line = buf.parse()?;
+
+        let extra_files = if header.has_extra_files() {
+            let file_count = buf.parse::<u32>()? as usize;
+            buf.take(file_count * std::mem::size_of::<u32>())?
+        } else {
+            &[]
+        };
+
+        let source_line = Self {
+            inlinee,
+            file_id,
+            line,
+            extra_files,
+        };
+
+        Ok((source_line, buf.pos()))
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+struct DebugInlineeLinesIterator<'a> {
+    header: DebugInlineeLinesHeader,
+    buf: ParseBuffer<'a>,
+}
+
+impl<'a> FallibleIterator for DebugInlineeLinesIterator<'a> {
+    type Item = InlineeSourceLine<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.buf.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(self.buf.parse_with(self.header)?))
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct DebugInlineeLinesSubsection<'a> {
+    header: DebugInlineeLinesHeader,
+    data: &'a [u8],
+}
+
+impl<'a> DebugInlineeLinesSubsection<'a> {
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        let mut buf = ParseBuffer::from(data);
+        let header = buf.parse::<DebugInlineeLinesHeader>()?;
+
+        Ok(DebugInlineeLinesSubsection {
+            header,
+            data: &data[buf.pos()..],
+        })
+    }
+
+    /// Iterate through all inlinees.
+    fn lines(&self) -> DebugInlineeLinesIterator<'a> {
+        DebugInlineeLinesIterator {
+            header: self.header,
+            buf: ParseBuffer::from(self.data),
+        }
+    }
+
+    /// Retrieve the inlinee source line for the given inlinee.
+    fn find(&self, inlinee: ItemId) -> Result<Option<InlineeSourceLine<'a>>> {
+        self.lines().find(|line| line.inlinee == inlinee)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Pread)]
 struct DebugLinesHeader {
     /// Section offset of this line contribution.
     offset: PdbInternalSectionOffset,
@@ -109,64 +212,6 @@ struct DebugLinesHeader {
 impl DebugLinesHeader {
     fn has_columns(self) -> bool {
         self.flags & constants::CV_LINES_HAVE_COLUMNS != 0
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, Pread)]
-struct DebugInlineesHeader {
-    /// The signature of the inlinees
-    signature: u32,
-}
-
-#[derive(Clone, Copy, Debug, Default, Pread)]
-pub struct InlineeSourceLine {
-    pub inlinee: ItemId,
-    // This should be FileIndex
-    pub file_id: u32,
-    pub source_line_num: u32,
-}
-
-#[derive(Debug, Clone)]
-struct DebugInlineesSubsection<'a> {
-    header: DebugInlineesHeader,
-    data: &'a [u8],
-}
-
-impl<'a> DebugInlineesSubsection<'a> {
-    fn parse(data: &'a [u8]) -> Result<Self> {
-        let mut buf = ParseBuffer::from(data);
-        let header = buf.parse()?;
-        let data = &data[buf.pos()..];
-        Ok(DebugInlineesSubsection { header, data })
-    }
-
-    fn lines(&self) -> DebugInlineesSourceLineIterator<'a> {
-        DebugInlineesSourceLineIterator {
-            header: self.header,
-            buf: ParseBuffer::from(self.data),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-struct DebugInlineesSourceLineIterator<'a> {
-    header: DebugInlineesHeader,
-    buf: ParseBuffer<'a>,
-}
-
-impl<'a> FallibleIterator for DebugInlineesSourceLineIterator<'a> {
-    type Item = InlineeSourceLine;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>> {
-        if self.header.signature != constants::CV_INLINEE_SOURCE_LINE_SIGNATURE {
-            return Ok(None);
-        }
-        if self.buf.is_empty() {
-            Ok(None)
-        } else {
-            Ok(Some(self.buf.parse()?))
-        }
     }
 }
 
@@ -581,7 +626,7 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 
                 return Ok(Some(LineInfo {
                     offset: section_header.offset + line_entry.offset,
-                    length: None,
+                    length: None, // TODO(ja): Infer length from the next entry or the parent..?
                     file_index: FileIndex(block_header.file_index),
                     line_start: line_entry.start_line,
                     line_end: line_entry.end_line,
@@ -612,31 +657,132 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 
 #[derive(Clone, Debug, Default)]
 pub struct C13InlineeLineIterator<'a> {
-    /// iterator over the inline source lines
-    lines: DebugInlineesSourceLineIterator<'a>,
-    /// Iterator over all subsections in the current module.
-    sections: DebugSubsectionIterator<'a>,
+    annotations: BinaryAnnotationsIter<'a>,
+    file_index: FileIndex,
+    code_offset_base: u32,
+    code_offset: PdbInternalSectionOffset,
+    code_length: u32,
+    current_line: u32,
+    current_line_length: u32,
+    current_col_start: u32,
+    current_col_end: u32,
+    line_kind: LineInfoKind,
+}
+
+impl<'a> C13InlineeLineIterator<'a> {
+    fn new(
+        parent_offset: PdbInternalSectionOffset,
+        inline_site: &InlineSiteSymbol<'a>,
+        inlinee_line: InlineeSourceLine<'a>,
+    ) -> Self {
+        C13InlineeLineIterator {
+            annotations: inline_site.annotations.iter(),
+            file_index: inlinee_line.file_id,
+            code_offset_base: 0,
+            code_offset: parent_offset,
+            code_length: 0,
+            current_line: inlinee_line.line,
+            current_line_length: 1,
+            current_col_start: 1,
+            current_col_end: 100_000, // TODO(ja): Is this a good start value?
+            line_kind: LineInfoKind::Expression,
+        }
+    }
 }
 
 impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
-    type Item = InlineeSourceLine;
+    type Item = LineInfo;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
-        loop {
-            if let Some(line) = self.lines.next()? {
-                return Ok(Some(line));
-            }
-            if let Some(section) = self.sections.next()? {
-                if section.kind == DebugSubsectionKind::InlineeLines {
-                    let inlinees_section = DebugInlineesSubsection::parse(section.data)?;
-                    self.lines = inlinees_section.lines();
+        while let Some(op) = self.annotations.next()? {
+            match op {
+                BinaryAnnotation::CodeOffset(new_val) => {
+                    self.code_offset.offset = new_val;
                 }
-                continue;
-            } else {
-                return Ok(None);
+                BinaryAnnotation::ChangeCodeOffsetBase(new_val) => {
+                    self.code_offset_base = new_val;
+                }
+                BinaryAnnotation::ChangeCodeOffset(delta) => {
+                    self.code_offset = self.code_offset.wrapping_add(delta);
+                }
+                BinaryAnnotation::ChangeCodeLength(val) => {
+                    // TODO(ja): Fix this
+                    // if let Some(last_loc) = rv.last_mut() {
+                    //     if last_loc.length.is_none() && last_loc.kind == self.line_kind {
+                    //         last_loc.length = Some(val);
+                    //     }
+                    // }
+                    self.code_offset = self.code_offset.wrapping_add(val);
+                }
+                BinaryAnnotation::ChangeFile(new_val) => {
+                    self.file_index = FileIndex(new_val);
+                }
+                BinaryAnnotation::ChangeLineOffset(delta) => {
+                    self.current_line = (i64::from(self.current_line) + i64::from(delta)) as u32;
+                }
+                BinaryAnnotation::ChangeLineEndDelta(new_val) => {
+                    self.current_line_length = new_val;
+                }
+                BinaryAnnotation::ChangeRangeKind(kind) => {
+                    self.line_kind = match kind {
+                        0 => LineInfoKind::Expression,
+                        1 => LineInfoKind::Statement,
+                        _ => self.line_kind,
+                    };
+                }
+                BinaryAnnotation::ChangeColumnStart(new_val) => {
+                    self.current_col_start = new_val;
+                }
+                BinaryAnnotation::ChangeColumnEndDelta(delta) => {
+                    self.current_col_end =
+                        (i64::from(self.current_col_end) + i64::from(delta)) as u32;
+                }
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
+                    self.code_offset = PdbInternalSectionOffset {
+                        section: self.code_offset.section,
+                        offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
+                    };
+                    self.current_line =
+                        (i64::from(self.current_line) + i64::from(line_delta)) as u32;
+                }
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(new_code_length, code_delta) => {
+                    self.code_length = new_code_length;
+                    self.code_offset = PdbInternalSectionOffset {
+                        section: self.code_offset.section,
+                        offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
+                    };
+                }
+                BinaryAnnotation::ChangeColumnEnd(new_val) => {
+                    self.current_col_end = new_val;
+                }
+            }
+
+            if op.emits_line_info() {
+                // TODO(ja): Fix this
+                // if let Some(last_loc) = rv.last_mut() {
+                //     if last_loc.length.is_none() && last_loc.kind == self.line_kind {
+                //         last_loc.length = Some(self.code_offset.offset - self.code_offset_base);
+                //     }
+                // }
+
+                let line_info = LineInfo {
+                    kind: self.line_kind,
+                    file_index: self.file_index,
+                    offset: self.code_offset + self.code_offset_base,
+                    length: Some(self.code_length),
+                    line_start: self.current_line,
+                    line_end: self.current_line + self.current_line_length,
+                    column_start: Some(self.current_col_start as u16),
+                    column_end: Some(self.current_col_end as u16),
+                };
+
+                self.code_length = 0;
+                return Ok(Some(line_info));
             }
         }
+
+        Ok(None)
     }
 }
 
@@ -664,22 +810,31 @@ impl<'a> FallibleIterator for C13FileIterator<'a> {
 pub struct C13LineProgram<'a> {
     data: &'a [u8],
     file_checksums: DebugFileChecksumsSubsection<'a>,
+    inlinee_lines: DebugInlineeLinesSubsection<'a>,
 }
 
 impl<'a> C13LineProgram<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
-        let checksums_data = DebugSubsectionIterator::new(data)
-            .find(|sec| sec.kind == DebugSubsectionKind::FileChecksums)?
-            .map(|sec| sec.data);
+        let mut file_checksums = DebugFileChecksumsSubsection::default();
+        let mut inlinee_lines = DebugInlineeLinesSubsection::default();
 
-        let file_checksums = match checksums_data {
-            Some(d) => DebugFileChecksumsSubsection::parse(d)?,
-            None => DebugFileChecksumsSubsection::default(),
-        };
+        let mut subsections = DebugSubsectionIterator::new(data);
+        while let Some(sec) = subsections.next()? {
+            match sec.kind {
+                DebugSubsectionKind::FileChecksums => {
+                    file_checksums = DebugFileChecksumsSubsection::parse(sec.data)?
+                }
+                DebugSubsectionKind::InlineeLines => {
+                    inlinee_lines = DebugInlineeLinesSubsection::parse(sec.data)?
+                }
+                _ => {}
+            }
+        }
 
         Ok(C13LineProgram {
             data,
             file_checksums,
+            inlinee_lines,
         })
     }
 
@@ -712,16 +867,22 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn files(&self) -> C13FileIterator<'a> {
-        C13FileIterator {
-            checksums: self.file_checksums.entries().unwrap_or_default(),
+    pub(crate) fn inlinee_lines(
+        &self,
+        parent_offset: PdbInternalSectionOffset,
+        inline_site: &InlineSiteSymbol<'a>,
+    ) -> C13InlineeLineIterator<'a> {
+        match self.inlinee_lines.find(inline_site.inlinee) {
+            Ok(Some(inlinee_line)) => {
+                C13InlineeLineIterator::new(parent_offset, inline_site, inlinee_line)
+            }
+            _ => C13InlineeLineIterator::default(),
         }
     }
 
-    pub(crate) fn inlinee_lines(&self) -> C13InlineeLineIterator<'a> {
-        C13InlineeLineIterator {
-            sections: DebugSubsectionIterator::new(self.data),
-            lines: Default::default(),
+    pub(crate) fn files(&self) -> C13FileIterator<'a> {
+        C13FileIterator {
+            checksums: self.file_checksums.entries().unwrap_or_default(),
         }
     }
 
@@ -737,5 +898,49 @@ impl<'a> C13LineProgram<'a> {
             name: entry.name,
             checksum: entry.checksum,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_inlinee_lines() {
+        let data = &[
+            0, 0, 0, 0, 254, 18, 0, 0, 104, 1, 0, 0, 24, 0, 0, 0, 253, 18, 0, 0, 104, 1, 0, 0, 28,
+            0, 0, 0, 1, 0, 0, 128, 192, 0, 0, 0, 129, 2, 0, 0, 7, 0, 0, 128, 240, 0, 0, 0, 121, 9,
+            0, 0, 8, 0, 0, 128, 240, 0, 0, 0, 62, 15, 0, 0, 9, 0, 0, 128, 240, 0, 0, 0, 10, 7, 0,
+            0, 10, 0, 0, 128, 16, 2, 0, 0, 85, 1, 0, 0, 11, 0, 0, 128, 208, 5, 0, 0, 6, 4, 0, 0,
+            12, 0, 0, 128, 208, 5, 0, 0, 211, 0, 0, 0, 14, 0, 0, 128, 208, 5, 0, 0, 119, 0, 0, 0,
+            16, 0, 0, 128, 232, 5, 0, 0, 125, 0, 0, 0, 18, 0, 0, 128, 0, 6, 0, 0, 51, 3, 0, 0, 19,
+            0, 0, 128, 0, 6, 0, 0, 236, 2, 0, 0, 20, 0, 0, 128, 0, 6, 0, 0, 4, 2, 0, 0, 21, 0, 0,
+            128, 0, 6, 0, 0, 138, 2, 0, 0, 23, 0, 0, 128, 224, 1, 0, 0, 55, 1, 0, 0, 24, 0, 0, 128,
+            0, 6, 0, 0, 220, 1, 0, 0, 25, 0, 0, 128, 240, 0, 0, 0, 72, 8, 0, 0, 26, 0, 0, 128, 240,
+            0, 0, 0, 51, 15, 0, 0, 27, 0, 0, 128, 224, 4, 0, 0, 92, 0, 0, 0, 28, 0, 0, 128, 240, 0,
+            0, 0, 113, 8, 0, 0, 29, 0, 0, 128, 240, 0, 0, 0, 71, 10, 0, 0,
+        ];
+
+        let inlinee_lines = DebugInlineeLinesSubsection::parse(data).expect("parse inlinee lines");
+        assert!(!inlinee_lines.header.has_extra_files());
+
+        let lines: Vec<_> = inlinee_lines
+            .lines()
+            .collect()
+            .expect("collect inlinee lines");
+
+        assert_eq!(lines.len(), 22);
+
+        println!("{:#?}", lines);
+
+        assert_eq!(
+            lines[0],
+            InlineeSourceLine {
+                inlinee: 0x12FE,
+                file_id: FileIndex(0x168),
+                line: 24,
+                extra_files: &[],
+            }
+        )
     }
 }

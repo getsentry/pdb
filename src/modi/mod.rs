@@ -1,13 +1,13 @@
+use scroll::{ctx::TryFromCtx, Endian};
+
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::{SymbolIndex, SymbolIter};
+use crate::symbol::{InlineSiteSymbol, SymbolIndex, SymbolIter};
 use crate::FallibleIterator;
 
 mod c13;
 mod constants;
-
-pub use crate::modi::c13::InlineeSourceLine;
 
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
@@ -117,6 +117,15 @@ pub struct FileInfo<'a> {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FileIndex(pub u32);
 
+impl<'a> TryFromCtx<'a, Endian> for FileIndex {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(num, s)| (Self(num), s))
+    }
+}
+
 /// The kind of source construct a line info is referring to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LineInfoKind {
@@ -124,6 +133,12 @@ pub enum LineInfoKind {
     Expression,
     /// A source code statement.
     Statement,
+}
+
+impl Default for LineInfoKind {
+    fn default() -> Self {
+        LineInfoKind::Expression
+    }
 }
 
 /// Mapping of a source code offset to a source file location.
@@ -178,15 +193,6 @@ impl<'a> LineProgram<'a> {
         }
     }
 
-    /// Returns an iterator over all inlinees of this module.
-    pub fn inlinee_lines(&self) -> InlineeLineIterator<'a> {
-        match self.inner {
-            LineProgramInner::C13(ref inner) => InlineeLineIterator {
-                inner: InlineeLineIteratorInner::C13(inner.inlinee_lines()),
-            },
-        }
-    }
-
     /// Returns an iterator over all file records of this module.
     pub fn files(&self) -> FileIterator<'a> {
         match self.inner {
@@ -209,6 +215,21 @@ impl<'a> LineProgram<'a> {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines_at_offset(offset)),
+            },
+        }
+    }
+
+    /// Returns an iterator over line records for an inline site.
+    pub fn inlinee_lines(
+        &self,
+        parent_offset: PdbInternalSectionOffset,
+        inline_site: &InlineSiteSymbol<'a>,
+    ) -> InlineeLineIterator<'a> {
+        match self.inner {
+            LineProgramInner::C13(ref inner) => InlineeLineIterator {
+                inner: InlineeLineIteratorInner::C13(
+                    inner.inlinee_lines(parent_offset, inline_site),
+                ),
             },
         }
     }
@@ -271,7 +292,7 @@ impl Default for InlineeLineIterator<'_> {
 }
 
 impl<'a> FallibleIterator for InlineeLineIterator<'a> {
-    type Item = InlineeSourceLine;
+    type Item = LineInfo;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
