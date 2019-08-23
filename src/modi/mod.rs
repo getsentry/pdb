@@ -220,6 +220,10 @@ impl<'a> LineProgram<'a> {
     }
 
     /// Returns an iterator over line records for an inline site.
+    ///
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
     pub fn inlinee_lines(
         &self,
         parent_offset: PdbInternalSectionOffset,
