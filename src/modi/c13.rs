@@ -686,7 +686,7 @@ impl<'a> C13InlineeLineIterator<'a> {
             line_length: 1,
             col_start: None,
             col_end: None,
-            line_kind: LineInfoKind::Expression,
+            line_kind: LineInfoKind::Statement,
             last_info: None,
         }
     }
@@ -737,9 +737,9 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                     self.col_start = Some(col_start);
                 }
                 BinaryAnnotation::ChangeColumnEndDelta(delta) => {
-                    self.col_end = self.col_end.map(|col_end| {
-                        (i64::from(col_end) + i64::from(delta)) as u32
-                    })
+                    self.col_end = self
+                        .col_end
+                        .map(|col_end| (i64::from(col_end) + i64::from(delta)) as u32)
                 }
                 BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
                     self.code_offset = PdbInternalSectionOffset {
@@ -913,20 +913,13 @@ impl<'a> C13LineProgram<'a> {
 mod tests {
     use super::*;
 
+    use crate::symbol::{BinaryAnnotations, SymbolIndex};
+
     #[test]
     fn test_parse_inlinee_lines() {
         let data = &[
             0, 0, 0, 0, 254, 18, 0, 0, 104, 1, 0, 0, 24, 0, 0, 0, 253, 18, 0, 0, 104, 1, 0, 0, 28,
-            0, 0, 0, 1, 0, 0, 128, 192, 0, 0, 0, 129, 2, 0, 0, 7, 0, 0, 128, 240, 0, 0, 0, 121, 9,
-            0, 0, 8, 0, 0, 128, 240, 0, 0, 0, 62, 15, 0, 0, 9, 0, 0, 128, 240, 0, 0, 0, 10, 7, 0,
-            0, 10, 0, 0, 128, 16, 2, 0, 0, 85, 1, 0, 0, 11, 0, 0, 128, 208, 5, 0, 0, 6, 4, 0, 0,
-            12, 0, 0, 128, 208, 5, 0, 0, 211, 0, 0, 0, 14, 0, 0, 128, 208, 5, 0, 0, 119, 0, 0, 0,
-            16, 0, 0, 128, 232, 5, 0, 0, 125, 0, 0, 0, 18, 0, 0, 128, 0, 6, 0, 0, 51, 3, 0, 0, 19,
-            0, 0, 128, 0, 6, 0, 0, 236, 2, 0, 0, 20, 0, 0, 128, 0, 6, 0, 0, 4, 2, 0, 0, 21, 0, 0,
-            128, 0, 6, 0, 0, 138, 2, 0, 0, 23, 0, 0, 128, 224, 1, 0, 0, 55, 1, 0, 0, 24, 0, 0, 128,
-            0, 6, 0, 0, 220, 1, 0, 0, 25, 0, 0, 128, 240, 0, 0, 0, 72, 8, 0, 0, 26, 0, 0, 128, 240,
-            0, 0, 0, 51, 15, 0, 0, 27, 0, 0, 128, 224, 4, 0, 0, 92, 0, 0, 0, 28, 0, 0, 128, 240, 0,
-            0, 0, 113, 8, 0, 0, 29, 0, 0, 128, 240, 0, 0, 0, 71, 10, 0, 0,
+            0, 0, 0,
         ];
 
         let inlinee_lines = DebugInlineeLinesSubsection::parse(data).expect("parse inlinee lines");
@@ -937,18 +930,89 @@ mod tests {
             .collect()
             .expect("collect inlinee lines");
 
-        assert_eq!(lines.len(), 22);
-
-        println!("{:#?}", lines);
-
-        assert_eq!(
-            lines[0],
+        let expected = [
             InlineeSourceLine {
                 inlinee: 0x12FE,
                 file_id: FileIndex(0x168),
                 line: 24,
                 extra_files: &[],
-            }
-        )
+            },
+            InlineeSourceLine {
+                inlinee: 0x12FD,
+                file_id: FileIndex(0x168),
+                line: 28,
+                extra_files: &[],
+            },
+        ];
+
+        assert_eq!(lines, expected)
+    }
+
+    // TODO: Parse extended version
+
+    #[test]
+    fn test_inlinee_lines() {
+        // Obtained from a PDB compiling Breakpad's crash_generation_client.obj
+
+        // S_GPROC32: [0001:00000120], Cb: 00000054
+        //   S_INLINESITE: Parent: 0000009C, End: 00000318, Inlinee:             0x1173
+        //     S_INLINESITE: Parent: 00000190, End: 000001EC, Inlinee:             0x1180
+        //     BinaryAnnotations:    CodeLengthAndCodeOffset 2 3f  CodeLengthAndCodeOffset 3 9
+        let inline_site = InlineSiteSymbol {
+            parent: SymbolIndex(0x190),
+            end: SymbolIndex(0x1ec),
+            inlinee: 0x1180,
+            invocations: None,
+            annotations: BinaryAnnotations::new(&[12, 2, 63, 12, 3, 9, 0, 0]),
+        };
+
+        // Inline site from corresponding DEBUG_S_INLINEELINES subsection:
+        let inlinee_line = InlineeSourceLine {
+            inlinee: 0x1180,
+            file_id: FileIndex(0x270),
+            line: 341,
+            extra_files: &[],
+        };
+
+        // Parent offset from procedure root:
+        // S_GPROC32: [0001:00000120]
+        let parent_offset = PdbInternalSectionOffset {
+            offset: 0x120,
+            section: 0x1,
+        };
+
+        let iter = C13InlineeLineIterator::new(parent_offset, &inline_site, inlinee_line);
+        let lines: Vec<_> = iter.collect().expect("collect inlinee lines");
+
+        let expected = [
+            LineInfo {
+                offset: PdbInternalSectionOffset {
+                    section: 0x1,
+                    offset: 0x0000015f,
+                },
+                length: Some(2),
+                file_index: FileIndex(0x270),
+                line_start: 341,
+                line_end: 342,
+                column_start: None,
+                column_end: None,
+                kind: LineInfoKind::Statement,
+            },
+            LineInfo {
+                offset: PdbInternalSectionOffset {
+                    section: 0x1,
+                    offset: 0x00000168,
+                },
+                length: Some(3),
+                file_index: FileIndex(0x270),
+                line_start: 341,
+                line_end: 342,
+                column_start: None,
+                column_end: None,
+                kind: LineInfoKind::Statement,
+            },
+        ];
+
+        assert_eq!(lines, expected);
     }
 }

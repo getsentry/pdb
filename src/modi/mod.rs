@@ -137,14 +137,14 @@ pub enum LineInfoKind {
 
 impl Default for LineInfoKind {
     fn default() -> Self {
-        LineInfoKind::Expression
+        LineInfoKind::Statement
     }
 }
 
 /// Mapping of a source code offset to a source file location.
 ///
 /// A line entry is always valid up to the subsequent entry.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LineInfo {
     /// Source code offset.
     pub offset: PdbInternalSectionOffset,
