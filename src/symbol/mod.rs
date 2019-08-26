@@ -777,9 +777,9 @@ pub struct ProcedureSymbol<'t> {
     pub next: SymbolIndex,
     /// The length of the code block covered by this procedure.
     pub len: u32,
-    /// Debug start.
+    /// Start offset of the procedure's body code, which marks the end of the prologue.
     pub dbg_start_offset: u32,
-    /// Debug end.
+    /// End offset of the procedure's body code, which marks the start of the epilogue.
     pub dbg_end_offset: u32,
     /// Identifier of the procedure type.
     ///
