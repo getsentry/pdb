@@ -8,7 +8,7 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
-use std::ops::{Add, Sub};
+use std::ops::{Add, AddAssign, Sub};
 use std::result;
 
 use scroll::ctx::TryFromCtx;
@@ -332,9 +332,18 @@ macro_rules! impl_va {
             type Output = Self;
 
             /// Adds the given offset to this address.
+            #[inline]
             fn add(mut self, offset: u32) -> Self {
                 self.0 += offset;
                 self
+            }
+        }
+
+        impl AddAssign<u32> for $type {
+            /// Adds the given offset to this address.
+            #[inline]
+            fn add_assign(&mut self, offset: u32) {
+                self.0 += offset;
             }
         }
 
@@ -441,9 +450,21 @@ macro_rules! impl_section_offset {
             ///
             /// This does not check whether the offset is still valid within the given section. If
             /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            #[inline]
             fn add(mut self, offset: u32) -> Self {
                 self.offset += offset;
                 self
+            }
+        }
+
+        impl AddAssign<u32> for $type {
+            /// Adds the given offset to this section offset.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            #[inline]
+            fn add_assign(&mut self, offset: u32) {
+                self.offset += offset;
             }
         }
 

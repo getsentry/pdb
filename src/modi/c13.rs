@@ -748,18 +748,12 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                         .map(|col_end| (i64::from(col_end) + i64::from(delta)) as u32)
                 }
                 BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
-                    self.code_offset = PdbInternalSectionOffset {
-                        section: self.code_offset.section,
-                        offset: self.code_offset.offset + code_delta,
-                    };
+                    self.code_offset += code_delta;
                     self.line = (i64::from(self.line) + i64::from(line_delta)) as u32;
                 }
                 BinaryAnnotation::ChangeCodeLengthAndCodeOffset(code_length, code_delta) => {
                     self.code_length = Some(code_length);
-                    self.code_offset = PdbInternalSectionOffset {
-                        section: self.code_offset.section,
-                        offset: self.code_offset.offset + code_delta,
-                    };
+                    self.code_offset += code_delta;
                 }
                 BinaryAnnotation::ChangeColumnEnd(col_end) => {
                     self.col_end = Some(col_end);
