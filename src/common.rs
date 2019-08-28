@@ -625,6 +625,23 @@ impl<'a> TryFromCtx<'a, Endian> for StringRef {
     }
 }
 
+/// Index of a file entry in the module.
+///
+/// Use the [`LineProgram`] to resolve information on the file from this offset.
+///
+/// [`LineProgram`]: struct.LineProgram.html
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct FileIndex(pub u32);
+
+impl<'a> TryFromCtx<'a, Endian> for FileIndex {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u32::try_from_ctx(this, le).map(|(num, s)| (Self(num), s))
+    }
+}
+
 /// Provides little-endian access to a &[u8].
 #[derive(Debug, Clone)]
 pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);

@@ -1,5 +1,3 @@
-use scroll::{ctx::TryFromCtx, Endian};
-
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
@@ -109,21 +107,6 @@ pub struct FileInfo<'a> {
 
     /// Checksum of the file contents.
     pub checksum: FileChecksum<'a>,
-}
-
-/// Index of a file entry in the module.
-///
-/// Use the [`LineProgram`] to resolve information on the file from this offset.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct FileIndex(pub u32);
-
-impl<'a> TryFromCtx<'a, Endian> for FileIndex {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(num, s)| (Self(num), s))
-    }
 }
 
 /// The kind of source construct a line info is referring to.

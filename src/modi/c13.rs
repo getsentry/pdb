@@ -118,7 +118,7 @@ pub struct InlineeSourceLine<'a> {
 }
 
 impl<'a> InlineeSourceLine<'a> {
-    // TODO(ja): Implement extra files iterator
+    // TODO: Implement extra files iterator when needed.
 }
 
 impl<'a> TryFromCtx<'a, DebugInlineeLinesHeader> for InlineeSourceLine<'a> {
@@ -717,8 +717,14 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
 
                     self.code_offset = self.code_offset.wrapping_add(code_length);
                 }
-                BinaryAnnotation::ChangeFile(new_val) => {
-                    self.file_index = FileIndex(new_val);
+                BinaryAnnotation::ChangeFile(file_index) => {
+                    // NOTE: There seems to be a bug in VS2015-VS2019 compilers that generates
+                    // invalid binary annotations when file changes are involved. This can be
+                    // triggered by #including files directly into inline functions. The
+                    // `ChangeFile` annotations are generated in the wrong spot or missing
+                    // completely. This renders information on the file effectively useless in a lot
+                    // of cases.
+                    self.file_index = file_index;
                 }
                 BinaryAnnotation::ChangeLineOffset(delta) => {
                     self.line = (i64::from(self.line) + i64::from(delta)) as u32;
@@ -744,7 +750,7 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                 BinaryAnnotation::ChangeCodeOffsetAndLineOffset(code_delta, line_delta) => {
                     self.code_offset = PdbInternalSectionOffset {
                         section: self.code_offset.section,
-                        offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
+                        offset: self.code_offset.offset + code_delta,
                     };
                     self.line = (i64::from(self.line) + i64::from(line_delta)) as u32;
                 }
@@ -752,7 +758,7 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                     self.code_length = Some(code_length);
                     self.code_offset = PdbInternalSectionOffset {
                         section: self.code_offset.section,
-                        offset: (i64::from(self.code_offset.offset) + i64::from(code_delta)) as u32,
+                        offset: self.code_offset.offset + code_delta,
                     };
                 }
                 BinaryAnnotation::ChangeColumnEnd(col_end) => {
@@ -781,6 +787,7 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
                 column_end: self.col_end,
             };
 
+            // Code length resets with every line record.
             self.code_length = None;
 
             // Finish the previous record and emit it. The current record is stored so that the
@@ -830,10 +837,10 @@ impl<'a> C13LineProgram<'a> {
         while let Some(sec) = subsections.next()? {
             match sec.kind {
                 DebugSubsectionKind::FileChecksums => {
-                    file_checksums = DebugFileChecksumsSubsection::parse(sec.data)?
+                    file_checksums = DebugFileChecksumsSubsection::parse(sec.data)?;
                 }
                 DebugSubsectionKind::InlineeLines => {
-                    inlinee_lines = DebugInlineeLinesSubsection::parse(sec.data)?
+                    inlinee_lines = DebugInlineeLinesSubsection::parse(sec.data)?;
                 }
                 _ => {}
             }
@@ -945,10 +952,41 @@ mod tests {
             },
         ];
 
-        assert_eq!(lines, expected)
+        assert_eq!(lines, expected);
     }
 
-    // TODO: Parse extended version
+    #[test]
+    fn test_parse_inlinee_lines_with_files() {
+        let data = &[
+            1, 0, 0, 0, 235, 102, 9, 0, 232, 37, 0, 0, 19, 0, 0, 0, 1, 0, 0, 0, 216, 26, 0, 0, 240,
+            163, 7, 0, 176, 44, 0, 0, 120, 0, 0, 0, 1, 0, 0, 0, 120, 3, 0, 0,
+        ];
+
+        let inlinee_lines = DebugInlineeLinesSubsection::parse(data).expect("parse inlinee lines");
+        assert!(inlinee_lines.header.has_extra_files());
+
+        let lines: Vec<_> = inlinee_lines
+            .lines()
+            .collect()
+            .expect("collect inlinee lines");
+
+        let expected = [
+            InlineeSourceLine {
+                inlinee: 0x966EB,
+                file_id: FileIndex(0x25e8),
+                line: 19,
+                extra_files: &[216, 26, 0, 0],
+            },
+            InlineeSourceLine {
+                inlinee: 0x7A3F0,
+                file_id: FileIndex(0x2cb0),
+                line: 120,
+                extra_files: &[120, 3, 0, 0],
+            },
+        ];
+
+        assert_eq!(lines, expected)
+    }
 
     #[test]
     fn test_inlinee_lines() {
@@ -988,7 +1026,7 @@ mod tests {
             LineInfo {
                 offset: PdbInternalSectionOffset {
                     section: 0x1,
-                    offset: 0x0000015f,
+                    offset: 0x015f,
                 },
                 length: Some(2),
                 file_index: FileIndex(0x270),
@@ -1001,7 +1039,7 @@ mod tests {
             LineInfo {
                 offset: PdbInternalSectionOffset {
                     section: 0x1,
-                    offset: 0x00000168,
+                    offset: 0x0168,
                 },
                 length: Some(3),
                 file_index: FileIndex(0x270),

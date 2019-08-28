@@ -75,13 +75,13 @@ pub enum BinaryAnnotation {
     ChangeCodeOffsetBase(u32),
     ChangeCodeOffset(u32),
     ChangeCodeLength(u32),
-    ChangeFile(u32),
+    ChangeFile(FileIndex),
     ChangeLineOffset(i32),
     ChangeLineEndDelta(u32),
     ChangeRangeKind(u32),
     ChangeColumnStart(u32),
     ChangeColumnEndDelta(i32),
-    ChangeCodeOffsetAndLineOffset(i32, i32),
+    ChangeCodeOffsetAndLineOffset(u32, i32),
     ChangeCodeLengthAndCodeOffset(u32, u32),
     ChangeColumnEnd(u32),
 }
@@ -167,7 +167,7 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
                 BinaryAnnotation::ChangeCodeLength(self.uncompress_next()?)
             }
             BinaryAnnotationOpcode::ChangeFile => {
-                BinaryAnnotation::ChangeFile(self.uncompress_next()?)
+                BinaryAnnotation::ChangeFile(FileIndex(self.uncompress_next()?))
             }
             BinaryAnnotationOpcode::ChangeLineOffset => {
                 BinaryAnnotation::ChangeLineOffset(decode_signed_operand(self.uncompress_next()?))
@@ -187,8 +187,8 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
             BinaryAnnotationOpcode::ChangeCodeOffsetAndLineOffset => {
                 let operand = self.uncompress_next()?;
                 BinaryAnnotation::ChangeCodeOffsetAndLineOffset(
+                    operand & 0xf,
                     decode_signed_operand(operand >> 4),
-                    decode_signed_operand(operand & 0xf),
                 )
             }
             BinaryAnnotationOpcode::ChangeCodeLengthAndCodeOffset => {
@@ -245,14 +245,14 @@ fn test_binary_annotation_iter() {
     assert_eq!(
         annotations,
         vec![
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(0, -1),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 0),
             BinaryAnnotation::ChangeLineOffset(5),
             BinaryAnnotation::ChangeCodeOffset(8),
             BinaryAnnotation::ChangeLineOffset(3),
             BinaryAnnotation::ChangeCodeOffset(45),
             BinaryAnnotation::ChangeLineOffset(4),
             BinaryAnnotation::ChangeCodeOffset(7),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(-3, 1),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(2, -3),
             BinaryAnnotation::ChangeLineOffset(3),
             BinaryAnnotation::ChangeCodeLengthAndCodeOffset(3, 7),
             BinaryAnnotation::ChangeLineOffset(-7),
@@ -276,10 +276,10 @@ fn test_binary_annotation_iter() {
             BinaryAnnotation::ChangeCodeOffset(50),
             BinaryAnnotation::ChangeLineOffset(3),
             BinaryAnnotation::ChangeCodeOffset(84),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(1, -1),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(-2, 6),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(2, -1),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(1, -7),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 1),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(12, -2),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 2),
+            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(15, 1),
             BinaryAnnotation::ChangeLineOffset(2),
             BinaryAnnotation::ChangeCodeLengthAndCodeOffset(45, 9),
             BinaryAnnotation::ChangeCodeOffset(59),
