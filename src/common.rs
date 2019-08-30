@@ -233,51 +233,109 @@ impl From<scroll::Error> for Error {
 /// The result type returned by this crate.
 pub type Result<T> = result::Result<T, Error>;
 
-/// Helper to format hexadecimal numbers.
-pub(crate) struct HexFmt<T>(pub T);
+/// Implements `Pread` using the inner type.
+macro_rules! impl_pread {
+    ($type:ty) => {
+        impl<'a> TryFromCtx<'a, Endian> for $type {
+            type Error = scroll::Error;
+            type Size = usize;
 
-impl<T> fmt::Debug for HexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
+            fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+                TryFromCtx::try_from_ctx(this, le).map(|(i, s)| (Self(i), s))
+            }
+        }
+    };
 }
 
-impl<T> fmt::Display for HexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
+/// Displays the type as hexadecimal number. Debug prints the type name around.
+macro_rules! impl_hex_fmt {
+    ($type:ty) => {
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:#x}", self.0)
+            }
+        }
+
+        impl fmt::Debug for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, concat!(stringify!($type), "({})"), self)
+            }
+        }
+    };
 }
 
-/// Helper to format hexadecimal numbers with fixed width.
-pub(crate) struct FixedHexFmt<T>(pub T);
+/// Same as `impl_hex_fmt`, but prints `None` for none values.
+macro_rules! impl_hex_fmt_opt {
+    ($type:ty, $none:literal) => {
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                match self.0 {
+                    $none => f.write_str("None"),
+                    val => write!(f, "{:#x}", val),
+                }
+            }
+        }
 
-impl<T> fmt::Debug for FixedHexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let width = 2 * std::mem::size_of::<T>();
-        write!(f, "{:#01$x}", self.0, width + 2)
-    }
+        impl fmt::Debug for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, concat!(stringify!($type), "({})"), self)
+            }
+        }
+    };
 }
 
-impl<T> fmt::Display for FixedHexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
+/// Implements bidirectional conversion traits for the newtype.
+macro_rules! impl_convert {
+    ($type:ty, $inner:ty) => {
+        impl From<$inner> for $type {
+            fn from(offset: $inner) -> Self {
+                Self(offset)
+            }
+        }
+
+        impl From<$type> for $inner {
+            fn from(string_ref: $type) -> Self {
+                string_ref.0
+            }
+        }
+    };
+}
+
+/// Declares that the given value represents `None`.
+///
+///  - `Type::none` and `Default::default` return the none value.
+///  - `Type::is_some` and `Type::is_none` check for the none value.
+macro_rules! impl_opt {
+    ($type:ty, $none:literal) => {
+        impl $type {
+            /// Returns an index that points to no value.
+            #[inline]
+            pub const fn none() -> Self {
+                Self($none)
+            }
+
+            /// Returns `true` if the index points to a valid value.
+            #[inline]
+            #[must_use]
+            pub fn is_some(self) -> bool {
+                self.0 != $none
+            }
+
+            /// Returns `true` if the index indicates the absence of a value.
+            #[inline]
+            #[must_use]
+            pub fn is_none(self) -> bool {
+                self.0 == $none
+            }
+        }
+
+        impl Default for $type {
+            #[inline]
+            fn default() -> Self {
+                Self::none()
+            }
+        }
+    };
 }
 
 /// Implements common functionality for virtual addresses.
@@ -316,18 +374,6 @@ macro_rules! impl_va {
             }
         }
 
-        impl From<u32> for $type {
-            fn from(addr: u32) -> Self {
-                Self(addr)
-            }
-        }
-
-        impl From<$type> for u32 {
-            fn from(addr: $type) -> Self {
-                addr.0
-            }
-        }
-
         impl Add<u32> for $type {
             type Output = Self;
 
@@ -355,17 +401,8 @@ macro_rules! impl_va {
             }
         }
 
-        impl fmt::Display for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                HexFmt(self.0).fmt(f)
-            }
-        }
-
-        impl fmt::Debug for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, concat!(stringify!($type, "({})")), self)
-            }
-        }
+        impl_convert!($type, u32);
+        impl_hex_fmt!($type);
     };
 }
 
@@ -391,15 +428,7 @@ impl_va!(Rva);
 pub struct PdbInternalRva(pub u32);
 
 impl_va!(PdbInternalRva);
-
-impl<'a> TryFromCtx<'a, Endian> for PdbInternalRva {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (PdbInternalRva(i), s))
-    }
-}
+impl_pread!(PdbInternalRva);
 
 /// Implements common functionality for section offsets.
 macro_rules! impl_section_offset {
@@ -483,8 +512,8 @@ macro_rules! impl_section_offset {
         impl fmt::Debug for $type {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.debug_struct(stringify!($type))
-                    .field("section", &HexFmt(self.section))
-                    .field("offset", &FixedHexFmt(self.offset))
+                    .field("section", &format_args!("{:#x}", self.section))
+                    .field("offset", &format_args!("{:#x}", self.offset))
                     .finish()
             }
         }
@@ -548,20 +577,6 @@ impl_section_offset!(PdbInternalSectionOffset);
 pub struct StreamIndex(pub u16);
 
 impl StreamIndex {
-    /// Creates a stream index that points to no stream.
-    pub fn none() -> Self {
-        StreamIndex(0xffff)
-    }
-
-    /// Determines whether this index indicates the absence of a stream.
-    ///
-    /// Loading a missing stream from the PDB will result in `None`. Otherwise, the stream is
-    /// expected to be present in the MSF and will result in an error if loading.
-    #[inline]
-    pub fn is_none(self) -> bool {
-        self.msf_number().is_none()
-    }
-
     /// Returns the MSF stream number, if this stream is not a NULL stream.
     #[inline]
     pub(crate) fn msf_number(self) -> Option<u32> {
@@ -569,12 +584,6 @@ impl StreamIndex {
             0xffff => None,
             index => Some(u32::from(index)),
         }
-    }
-}
-
-impl Default for StreamIndex {
-    fn default() -> Self {
-        Self::none()
     }
 }
 
@@ -593,14 +602,8 @@ impl fmt::Debug for StreamIndex {
     }
 }
 
-impl<'a> TryFromCtx<'a, Endian> for StreamIndex {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u16::try_from_ctx(this, le).map(|(i, s)| (StreamIndex(i), s))
-    }
-}
+impl_opt!(StreamIndex, 0xffff);
+impl_pread!(StreamIndex);
 
 /// A reference to a string in the string table.
 ///
@@ -613,55 +616,40 @@ impl<'a> TryFromCtx<'a, Endian> for StreamIndex {
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StringRef(pub u32);
 
-impl From<u32> for StringRef {
-    fn from(offset: u32) -> Self {
-        StringRef(offset)
-    }
-}
-
-impl From<StringRef> for u32 {
-    fn from(string_ref: StringRef) -> Self {
-        string_ref.0
-    }
-}
-
-impl fmt::Display for StringRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#010x}", self.0)
-    }
-}
-
-impl fmt::Debug for StringRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StringRef({})", self)
-    }
-}
-
-impl<'a> TryFromCtx<'a, Endian> for StringRef {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (StringRef(i), s))
-    }
-}
+impl_convert!(StringRef, u32);
+impl_hex_fmt!(StringRef);
+impl_pread!(StringRef);
 
 /// Index of a file entry in the module.
 ///
 /// Use the [`LineProgram`] to resolve information on the file from this offset.
 ///
 /// [`LineProgram`]: struct.LineProgram.html
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FileIndex(pub u32);
 
-impl<'a> TryFromCtx<'a, Endian> for FileIndex {
-    type Error = scroll::Error;
-    type Size = usize;
+impl_convert!(FileIndex, u32);
+impl_hex_fmt!(FileIndex);
+impl_pread!(FileIndex);
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(num, s)| (Self(num), s))
-    }
-}
+/// A reference into the symbol table of a module.
+///
+/// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
+/// use [`SymbolIter::seek`] to jump between symbols.
+///
+/// The numeric value of this index corresponds to the binary offset of the symbol in its symbol
+/// stream. The index might also indicate the absence of a symbol (numeric value `0`). This is
+/// indicated by `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
+///
+/// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
+/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SymbolIndex(pub u32);
+
+impl_opt!(SymbolIndex, 0);
+impl_convert!(SymbolIndex, u32);
+impl_hex_fmt_opt!(SymbolIndex, 0);
+impl_pread!(SymbolIndex);
 
 /// Provides little-endian access to a &[u8].
 #[derive(Debug, Clone)]
@@ -1146,6 +1134,44 @@ mod tests {
                 Err(Error::UnexpectedEof) => (),
                 _ => panic!("expected EOF"),
             }
+        }
+    }
+
+    mod newtypes {
+        use crate::common::*;
+
+        // These tests use SymbolIndex as a proxy for all other types.
+
+        #[test]
+        fn test_format_newtype() {
+            let val = SymbolIndex(0x42);
+            assert_eq!(format!("{}", val), "0x42");
+        }
+
+        #[test]
+        fn test_format_newtype_none() {
+            let val = SymbolIndex::none();
+            assert_eq!(format!("{}", val), "None");
+        }
+
+        #[test]
+        fn test_debug_newtype() {
+            let val = SymbolIndex(0x42);
+            assert_eq!(format!("{:?}", val), "SymbolIndex(0x42)");
+        }
+
+        #[test]
+        fn test_debug_newtype_none() {
+            let val = SymbolIndex::none();
+            assert_eq!(format!("{:?}", val), "SymbolIndex(None)");
+        }
+
+        #[test]
+        fn test_pread() {
+            let mut buf = ParseBuffer::from(&[0x42, 0, 0, 0][..]);
+            let val = buf.parse::<SymbolIndex>().expect("parse");
+            assert_eq!(val, SymbolIndex(0x42));
+            assert!(buf.is_empty());
         }
     }
 }

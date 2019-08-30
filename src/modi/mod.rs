@@ -1,7 +1,7 @@
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::{InlineSiteSymbol, SymbolIndex, SymbolIter};
+use crate::symbol::{InlineSiteSymbol, SymbolIter};
 use crate::FallibleIterator;
 
 mod c13;

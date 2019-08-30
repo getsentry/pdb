@@ -104,21 +104,33 @@ impl fmt::Debug for ImageSectionHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageSectionHeader")
             .field("name()", &self.name().to_string())
-            .field("physical_address", &FixedHexFmt(self.physical_address))
-            .field("virtual_address", &FixedHexFmt(self.virtual_address))
+            .field(
+                "physical_address",
+                &format_args!("{:#x}", self.physical_address),
+            )
+            .field(
+                "virtual_address",
+                &format_args!("{:#x}", self.virtual_address),
+            )
             .field("size_of_raw_data", &self.size_of_raw_data)
-            .field("pointer_to_raw_data", &HexFmt(self.pointer_to_raw_data))
+            .field(
+                "pointer_to_raw_data",
+                &format_args!("{:#x}", self.pointer_to_raw_data),
+            )
             .field(
                 "pointer_to_relocations",
-                &HexFmt(self.pointer_to_relocations),
+                &format_args!("{:#x}", self.pointer_to_relocations),
             )
             .field(
                 "pointer_to_line_numbers",
-                &HexFmt(self.pointer_to_line_numbers),
+                &format_args!("{:#x}", self.pointer_to_line_numbers),
             )
             .field("number_of_relocations", &self.number_of_relocations)
             .field("number_of_line_numbers", &self.number_of_line_numbers)
-            .field("characteristics", &FixedHexFmt(self.characteristics))
+            .field(
+                "characteristics",
+                &format_args!("{:#x}", self.characteristics),
+            )
             .finish()
     }
 }

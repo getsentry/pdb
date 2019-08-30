@@ -63,8 +63,14 @@ impl OMAPRecord {
 impl fmt::Debug for OMAPRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("OMAPRecord")
-            .field("source_address", &FixedHexFmt(self.source_address()))
-            .field("target_address", &FixedHexFmt(self.target_address()))
+            .field(
+                "source_address",
+                &format_args!("{:#010x}", self.source_address()),
+            )
+            .field(
+                "target_address",
+                &format_args!("{:#010x}", self.target_address()),
+            )
             .finish()
     }
 }

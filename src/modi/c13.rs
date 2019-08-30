@@ -914,7 +914,7 @@ impl<'a> C13LineProgram<'a> {
 mod tests {
     use super::*;
 
-    use crate::symbol::{BinaryAnnotations, SymbolIndex};
+    use crate::symbol::BinaryAnnotations;
 
     #[test]
     fn test_parse_inlinee_lines() {

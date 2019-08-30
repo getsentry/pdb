@@ -26,71 +26,6 @@ pub type SymbolKind = u16;
 /// A register referred to by its number.
 pub type Register = u16;
 
-/// A reference into the symbol table of a module.
-///
-/// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
-/// use [`SymbolIter::seek`] to jump between symbols.
-///
-/// The numeric value of this index corresponds to the binary offset of the symbol in its symbol
-/// stream. The index might also indicate the absence of a symbol (numeric value `0`). This is
-/// indicated by `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
-///
-/// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
-/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
-#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct SymbolIndex(pub u32);
-
-impl SymbolIndex {
-    /// Returns `true` if the symbol index points to a symbol.
-    #[inline]
-    #[must_use]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn is_some(&self) -> bool {
-        self.0 != 0
-    }
-
-    /// Returns `true` if the symbol index indicates the absence of a symbol.
-    #[inline]
-    #[must_use]
-    #[allow(clippy::trivially_copy_pass_by_ref)]
-    pub fn is_none(&self) -> bool {
-        self.0 == 0
-    }
-}
-
-impl From<u32> for SymbolIndex {
-    fn from(offset: u32) -> Self {
-        Self(offset)
-    }
-}
-
-impl From<SymbolIndex> for u32 {
-    fn from(string_ref: SymbolIndex) -> Self {
-        string_ref.0
-    }
-}
-
-impl fmt::Display for SymbolIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#010x}", self.0)
-    }
-}
-
-impl fmt::Debug for SymbolIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "SymbolIndex({})", self)
-    }
-}
-
-impl<'a> TryFromCtx<'a, Endian> for SymbolIndex {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (Self(i), s))
-    }
-}
-
 /// Represents a symbol from the symbol table.
 ///
 /// A `Symbol` is represented internally as a `&[u8]`, and in general the bytes inside are not
@@ -1315,13 +1250,12 @@ impl<'t> SymbolIter<'t> {
     ///
     /// This can be used to jump to the sibiling or parent of a symbol record.
     pub fn seek(&mut self, index: SymbolIndex) {
-        // A symbol index of 0 referes to no symbol. Seek to the end of the iterator.
-        let pos = match index.0 {
-            0 => self.buf.pos() + self.buf.len(),
-            pos => pos as usize,
-        };
-
-        self.buf.seek(pos);
+        if index.is_some() {
+            self.buf.seek(index.0 as usize);
+        } else {
+            // Seek to the end of the iterator.
+            self.buf.seek(self.buf.pos() + self.buf.len());
+        }
     }
 
     /// Skip to the symbol referred to by `index`, returning the symbol.
