@@ -64,11 +64,11 @@ pub enum Error {
     TypeTooShort,
 
     /// Type not found.
-    TypeNotFound(TypeIndex),
+    TypeNotFound(u32),
 
     /// Type not indexed -- the requested type (`.0`) is larger than the maximum `TypeIndex` covered
     /// by the `TypeFinder` (`.1`).
-    TypeNotIndexed(TypeIndex, TypeIndex),
+    TypeNotIndexed(u32, u32),
 
     /// Support for types of this kind is not implemented.
     UnimplementedTypeKind(u16),

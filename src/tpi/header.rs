@@ -20,8 +20,8 @@ pub struct Slice {
 pub struct Header {
     pub version: u32,
     pub header_size: u32,
-    pub minimum_type_index: TypeIndex,
-    pub maximum_type_index: TypeIndex,
+    pub minimum_index: u32,
+    pub maximum_index: u32,
     pub gprec_size: u32,
     pub tpi_hash_stream: u16,
     pub tpi_hash_pad_stream: u16,
@@ -39,8 +39,8 @@ impl Header {
         let header = Header {
             version: buf.parse()?,
             header_size: buf.parse()?,
-            minimum_type_index: buf.parse()?,
-            maximum_type_index: buf.parse()?,
+            minimum_index: buf.parse()?,
+            maximum_index: buf.parse()?,
             gprec_size: buf.parse()?,
             tpi_hash_stream: buf.parse()?,
             tpi_hash_pad_stream: buf.parse()?,
@@ -77,12 +77,12 @@ impl Header {
         buf.take((header.header_size - bytes_read) as usize)?;
 
         // do some final validations
-        if header.minimum_type_index < TypeIndex(4096) {
+        if header.minimum_index < 4096 {
             return Err(Error::InvalidTypeInformationHeader(
                 "minimum type index is < 4096",
             ));
         }
-        if header.maximum_type_index < header.minimum_type_index {
+        if header.maximum_index < header.minimum_index {
             return Err(Error::InvalidTypeInformationHeader(
                 "maximum type index is < minimum type index",
             ));

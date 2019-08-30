@@ -614,7 +614,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
             if class.name.as_bytes() == class_name.as_bytes()
                 && !class.properties.forward_reference()
             {
-                data.add(&type_finder, typ.type_index(), &mut needed_types)?;
+                data.add(&type_finder, typ.index(), &mut needed_types)?;
                 break;
             }
         }

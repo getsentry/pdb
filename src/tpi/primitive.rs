@@ -176,7 +176,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x500 => Indirection::Pointer1632,
         0x600 => Indirection::Pointer64,
         _ => {
-            return Err(Error::TypeNotFound(index));
+            return Err(Error::TypeNotFound(index.0));
         }
     };
 
@@ -235,7 +235,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x33 => PrimitiveKind::Bool64,
 
         _ => {
-            return Err(Error::TypeNotFound(index));
+            return Err(Error::TypeNotFound(index.0));
         }
     };
 
