@@ -629,10 +629,6 @@ impl_pread!(FileIndex);
 /// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
 /// use [`SymbolIter::seek`] to jump between symbols.
 ///
-/// The numeric value of this index corresponds to the binary offset of the symbol in its symbol
-/// stream. The index might also indicate the absence of a symbol (numeric value `0`). This is
-/// indicated by `is_none` returning `false`. Seeking to this symbol will return an empty iterator.
-///
 /// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
 /// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
