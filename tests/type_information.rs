@@ -48,7 +48,10 @@ fn type_finder() {
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type().0 >> 3, typ.type_index().0 >> 3);
+            assert_eq!(
+                type_finder.max_indexed_type().0 >> 3,
+                typ.type_index().0 >> 3
+            );
 
             // update the type finder
             type_finder.update(&iter);
