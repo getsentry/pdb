@@ -111,7 +111,7 @@ impl DebugInlineeLinesHeader {
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct InlineeSourceLine<'a> {
-    pub inlinee: ItemId,
+    pub inlinee: IdIndex,
     pub file_id: FileIndex,
     pub line: u32,
     extra_files: &'a [u8],
@@ -194,7 +194,7 @@ impl<'a> DebugInlineeLinesSubsection<'a> {
     }
 
     /// Retrieve the inlinee source line for the given inlinee.
-    fn find(&self, inlinee: ItemId) -> Result<Option<InlineeSourceLine<'a>>> {
+    fn find(&self, inlinee: IdIndex) -> Result<Option<InlineeSourceLine<'a>>> {
         self.lines().find(|line| line.inlinee == inlinee)
     }
 }
@@ -933,13 +933,13 @@ mod tests {
 
         let expected = [
             InlineeSourceLine {
-                inlinee: 0x12FE,
+                inlinee: IdIndex(0x12FE),
                 file_id: FileIndex(0x168),
                 line: 24,
                 extra_files: &[],
             },
             InlineeSourceLine {
-                inlinee: 0x12FD,
+                inlinee: IdIndex(0x12FD),
                 file_id: FileIndex(0x168),
                 line: 28,
                 extra_files: &[],
@@ -966,13 +966,13 @@ mod tests {
 
         let expected = [
             InlineeSourceLine {
-                inlinee: 0x966EB,
+                inlinee: IdIndex(0x966EB),
                 file_id: FileIndex(0x25e8),
                 line: 19,
                 extra_files: &[216, 26, 0, 0],
             },
             InlineeSourceLine {
-                inlinee: 0x7A3F0,
+                inlinee: IdIndex(0x7A3F0),
                 file_id: FileIndex(0x2cb0),
                 line: 120,
                 extra_files: &[120, 3, 0, 0],
@@ -993,14 +993,14 @@ mod tests {
         let inline_site = InlineSiteSymbol {
             parent: SymbolIndex(0x190),
             end: SymbolIndex(0x1ec),
-            inlinee: 0x1180,
+            inlinee: IdIndex(0x1180),
             invocations: None,
             annotations: BinaryAnnotations::new(&[12, 2, 63, 12, 3, 9, 0, 0]),
         };
 
         // Inline site from corresponding DEBUG_S_INLINEELINES subsection:
         let inlinee_line = InlineeSourceLine {
-            inlinee: 0x1180,
+            inlinee: IdIndex(0x1180),
             file_id: FileIndex(0x270),
             line: 341,
             extra_files: &[],

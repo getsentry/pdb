@@ -25,10 +25,10 @@ fn iteration() {
         let len = type_information.len();
 
         let mut count: usize = 0;
-        let mut last_index: pdb::TypeIndex = 4095;
+        let mut last_index = pdb::TypeIndex(4095);
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(typ.type_index(), last_index + 1);
+            assert_eq!(typ.type_index().0, last_index.0 + 1);
             last_index = typ.type_index();
             count += 1;
         }
@@ -43,12 +43,12 @@ fn type_finder() {
         let mut type_finder = type_information.type_finder();
         let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
-        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+        assert_eq!(type_finder.max_indexed_type().0 >> 3, 4096 >> 3);
 
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type() >> 3, typ.type_index() >> 3);
+            assert_eq!(type_finder.max_indexed_type().0 >> 3, typ.type_index().0 >> 3);
 
             // update the type finder
             type_finder.update(&iter);

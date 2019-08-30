@@ -779,7 +779,7 @@ pub struct InlineSiteSymbol<'t> {
     /// The end symbol of this callsite.
     pub end: SymbolIndex,
     /// Identifier of the type describing the inline function.
-    pub inlinee: ItemId,
+    pub inlinee: IdIndex,
     /// The total number of invocations of the inline function.
     pub invocations: Option<u32>,
     /// Binary annotations containing the line program of this call site.
@@ -813,8 +813,8 @@ impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
 /// Symbol kind `S_BUILDINFO`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BuildInfoSymbol {
-    /// Identifier of the build information record.
-    pub id: ItemId,
+    /// Index of the build information record.
+    pub id: IdIndex,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for BuildInfoSymbol {
@@ -1348,7 +1348,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::RegisterVariable(RegisterVariableSymbol {
-                    type_index: 8824,
+                    type_index: TypeIndex(8824),
                     register: 18,
                     name: "this".into(),
                 })
@@ -1433,7 +1433,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::UserDefinedType(UserDefinedTypeSymbol {
-                    type_index: 1648,
+                    type_index: TypeIndex(1648),
                     name: "va_list".into(),
                 })
             );
@@ -1454,7 +1454,7 @@ mod tests {
                 symbol.parse().expect("parse"),
                 SymbolData::Constant(ConstantSymbol {
                     managed: false,
-                    type_index: 4809,
+                    type_index: TypeIndex(4809),
                     value: Variant::U16(1),
                     name: "__ISA_AVAILABLE_SSE2".into(),
                 })
@@ -1477,7 +1477,7 @@ mod tests {
                 SymbolData::Data(DataSymbol {
                     global: true,
                     managed: false,
-                    type_index: 116,
+                    type_index: TypeIndex(116),
                     offset: PdbInternalSectionOffset {
                         offset: 16,
                         section: 3
@@ -1503,7 +1503,7 @@ mod tests {
                 SymbolData::Data(DataSymbol {
                     global: false,
                     managed: false,
-                    type_index: 32,
+                    type_index: TypeIndex(32),
                     offset: PdbInternalSectionOffset {
                         offset: 74992,
                         section: 2
@@ -1559,7 +1559,7 @@ mod tests {
                     len: 6,
                     dbg_start_offset: 5,
                     dbg_end_offset: 5,
-                    type_index: 4103,
+                    type_index: TypeIndex(4103),
                     offset: PdbInternalSectionOffset {
                         offset: 21824,
                         section: 1
@@ -1602,7 +1602,7 @@ mod tests {
                     len: 18,
                     dbg_start_offset: 4,
                     dbg_end_offset: 9,
-                    type_index: 4224,
+                    type_index: TypeIndex(4224),
                     offset: PdbInternalSectionOffset {
                         offset: 22468,
                         section: 1
@@ -1731,7 +1731,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Local(LocalSymbol {
-                    type_index: 5057,
+                    type_index: TypeIndex(5057),
                     flags: LocalVariableFlags {
                         isparam: true,
                         addrtaken: false,
@@ -1760,7 +1760,9 @@ mod tests {
             assert_eq!(symbol.raw_kind(), 0x114c);
             assert_eq!(
                 symbol.parse().expect("parse"),
-                SymbolData::BuildInfo(BuildInfoSymbol { id: 0x115F })
+                SymbolData::BuildInfo(BuildInfoSymbol {
+                    id: IdIndex(0x115F)
+                })
             );
         }
 
@@ -1780,7 +1782,7 @@ mod tests {
                 SymbolData::InlineSite(InlineSiteSymbol {
                     parent: SymbolIndex(0x0190),
                     end: SymbolIndex(0x01d0),
-                    inlinee: 4473,
+                    inlinee: IdIndex(4473),
                     invocations: None,
                     annotations: BinaryAnnotations::new(&[12, 6, 3, 0]),
                 })

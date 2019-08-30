@@ -16,12 +16,6 @@ use scroll::{self, Endian, Pread, LE};
 
 use crate::tpi::constants;
 
-/// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
-pub type TypeIndex = u32;
-
-/// `ItemId` refers to an item ID.
-pub type ItemId = u32;
-
 /// An error that occurred while reading or parsing the PDB.
 #[derive(Debug)]
 pub enum Error {
@@ -605,6 +599,24 @@ impl fmt::Debug for StreamIndex {
 impl_opt!(StreamIndex, 0xffff);
 impl_pread!(StreamIndex);
 
+/// Index of a [`Type`] in `PDB.type_information()`.
+///
+/// [`Type`]: struct.Type.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TypeIndex(pub u32);
+
+impl_convert!(TypeIndex, u32);
+impl_hex_fmt!(TypeIndex);
+impl_pread!(TypeIndex);
+
+/// Index of an [`Id`] in `PDB. id_information()`.
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct IdIndex(pub u32);
+
+impl_convert!(IdIndex, u32);
+impl_hex_fmt!(IdIndex);
+impl_pread!(IdIndex);
+
 /// A reference to a string in the string table.
 ///
 /// This type stores an offset into the global string table of the PDB. To retrieve the string
@@ -1138,7 +1150,7 @@ mod tests {
 
         #[test]
         fn test_seek() {
-            let mut buf = ParseBuffer::from("hello".as_bytes());
+            let mut buf = ParseBuffer::from(&b"hello"[..]);
             buf.seek(5);
             assert_eq!(buf.pos(), 5);
             buf.seek(2);

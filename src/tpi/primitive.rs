@@ -164,10 +164,10 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
     // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L326-L750
 
     // primitives live under 0x1000, and we should never reach here for non-primitive indexes
-    assert!(index < 0x1000);
+    assert!(index < TypeIndex(0x1000));
 
     // indirection is stored in these bits
-    let indirection = match index & 0xf00 {
+    let indirection = match index.0 & 0xf00 {
         0x000 => Indirection::None,
         0x100 => Indirection::Pointer16,
         0x200 => Indirection::FarPointer1616,
@@ -182,7 +182,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
 
     // primitive types are stored in the lowest octet
     // this groups "short" and "16-bit integer" together, but... right? *scratches head*
-    let kind = match index & 0xff {
+    let kind = match index.0 & 0xff {
         0x03 => PrimitiveKind::Void,
         0x08 => PrimitiveKind::HRESULT,
 

@@ -85,7 +85,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2580-L2586
         LF_MEMBER | LF_MEMBER_ST => Ok(TypeData::Member(MemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            field_type: buf.parse_u32()? as TypeIndex,
+            field_type: buf.parse()?,
             offset: parse_unsigned(&mut buf)? as u16,
             name: parse_string(leaf, &mut buf)?,
         })),
@@ -105,26 +105,26 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
             Ok(TypeData::Nested(NestedType {
                 attributes: FieldAttributes(raw_attr),
-                nested_type: buf.parse_u32()? as TypeIndex,
+                nested_type: buf.parse()?,
                 name: parse_string(leaf, &mut buf)?,
             }))
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1801-L1811
         LF_MFUNCTION => Ok(TypeData::MemberFunction(MemberFunctionType {
-            return_type: buf.parse_u32()? as TypeIndex,
-            class_type: buf.parse_u32()? as TypeIndex,
+            return_type: buf.parse()?,
+            class_type: buf.parse()?,
             this_pointer_type: parse_optional_type_index(&mut buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
-            argument_list: buf.parse_u32()? as TypeIndex,
+            argument_list: buf.parse()?,
             this_adjustment: buf.parse_u32()?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2650-L2655
         LF_METHOD | LF_METHOD_ST => Ok(TypeData::OverloadedMethod(OverloadedMethodType {
             count: buf.parse_u16()?,
-            method_list: buf.parse_u32()? as TypeIndex,
+            method_list: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
@@ -133,7 +133,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let attr = FieldAttributes(buf.parse_u16()?);
             Ok(TypeData::Method(MethodType {
                 attributes: attr,
-                method_type: buf.parse_u32()? as TypeIndex,
+                method_type: buf.parse()?,
                 vtable_offset: if attr.is_intro_virtual() {
                     Some(buf.parse_u32()? as u32)
                 } else {
@@ -152,7 +152,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 _ => unreachable!(),
             },
             attributes: FieldAttributes(buf.parse_u16()?),
-            base_class: buf.parse_u32()? as TypeIndex,
+            base_class: buf.parse()?,
             offset: parse_unsigned(&mut buf)? as u32,
         })),
 
@@ -162,7 +162,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             buf.parse_u16()?;
             Ok(TypeData::VirtualFunctionTablePointer(
                 VirtualFunctionTablePointerType {
-                    table: buf.parse_u32()? as TypeIndex,
+                    table: buf.parse()?,
                 },
             ))
         }
@@ -170,13 +170,13 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2599-L2604
         LF_STMEMBER | LF_STMEMBER_ST => Ok(TypeData::StaticMember(StaticMemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            field_type: buf.parse_u32()? as TypeIndex,
+            field_type: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1469-L1506
         LF_POINTER => Ok(TypeData::Pointer(PointerType {
-            underlying_type: buf.parse_u32()? as TypeIndex,
+            underlying_type: buf.parse()?,
             attributes: PointerAttributes(buf.parse_u32()?),
         })),
 
@@ -185,12 +185,12 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             return_type: parse_optional_type_index(&mut buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
-            argument_list: buf.parse_u32()? as TypeIndex,
+            argument_list: buf.parse()?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1460-L1464
         LF_MODIFIER => {
-            let type_index = buf.parse_u32()? as TypeIndex;
+            let type_index = buf.parse()?;
 
             // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1090-L1095
             let flags = buf.parse_u16()?;
@@ -207,8 +207,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_ENUM | LF_ENUM_ST => Ok(TypeData::Enumeration(EnumerationType {
             count: buf.parse_u16()?,
             properties: TypeProperties(buf.parse_u16()?),
-            underlying_type: buf.parse_u32()? as TypeIndex,
-            fields: buf.parse_u32()? as TypeIndex,
+            underlying_type: buf.parse()?,
+            fields: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
@@ -221,8 +221,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1564-L1579
         LF_ARRAY | LF_ARRAY_ST | LF_STRIDED_ARRAY => {
-            let element_type = buf.parse_u32()? as TypeIndex;
-            let indexing_type = buf.parse_u32()? as TypeIndex;
+            let element_type = buf.parse()?;
+            let indexing_type = buf.parse()?;
             let stride: Option<u32> = if leaf == LF_STRIDED_ARRAY {
                 Some(buf.parse_u32()?)
             } else {
@@ -270,14 +270,14 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_UNION | LF_UNION_ST => Ok(TypeData::Union(UnionType {
             count: buf.parse_u16()?,
             properties: TypeProperties(buf.parse_u16()?),
-            fields: buf.parse_u32()? as TypeIndex,
+            fields: buf.parse()?,
             size: parse_unsigned(&mut buf)? as u32,
             name: parse_string(leaf, &mut buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2164-L2170
         LF_BITFIELD => Ok(TypeData::Bitfield(BitfieldType {
-            underlying_type: buf.parse_u32()? as TypeIndex,
+            underlying_type: buf.parse()?,
             length: buf.parse_u8()?,
             position: buf.parse_u8()?,
         })),
@@ -298,8 +298,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_VBCLASS | LF_IVBCLASS => Ok(TypeData::VirtualBaseClass(VirtualBaseClassType {
             direct: leaf == LF_VBCLASS,
             attributes: FieldAttributes(buf.parse_u16()?),
-            base_class: buf.parse_u32()? as TypeIndex,
-            base_pointer: buf.parse_u32()? as TypeIndex,
+            base_class: buf.parse()?,
+            base_pointer: buf.parse()?,
             base_pointer_offset: parse_unsigned(&mut buf)? as u32,
             virtual_base_offset: parse_unsigned(&mut buf)? as u32,
         })),
@@ -320,7 +320,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                         buf.parse_u16()?;
 
                         // parse the TypeIndex where we continue
-                        continuation = Some(buf.parse_u32()? as TypeIndex);
+                        continuation = Some(buf.parse()?);
                     }
                     _ => {
                         // other type
@@ -343,7 +343,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let count = buf.parse_u32()?;
             let mut arglist: Vec<TypeIndex> = Vec::with_capacity(count as usize);
             for _ in 0..count {
-                arglist.push(buf.parse_u32()? as TypeIndex);
+                arglist.push(buf.parse()?);
             }
             Ok(TypeData::ArgumentList(ArgumentList { arguments: arglist }))
         }
@@ -358,7 +358,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
                 methods.push(MethodListEntry {
                     attributes: attr,
-                    method_type: buf.parse_u32()?,
+                    method_type: buf.parse()?,
                     vtable_offset: if attr.is_intro_virtual() {
                         Some(buf.parse_u32()?)
                     } else {
@@ -376,8 +376,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
 #[inline]
 fn parse_optional_type_index<'t>(buf: &mut ParseBuffer<'t>) -> Result<Option<TypeIndex>> {
-    let index = buf.parse_u32()? as TypeIndex;
-    if index == 0 || index == u32::from(u16::max_value()) {
+    let index = buf.parse()?;
+    if index == TypeIndex(0) || index == TypeIndex(0xffff) {
         Ok(None)
     } else {
         Ok(Some(index))
