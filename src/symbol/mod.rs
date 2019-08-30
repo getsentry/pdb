@@ -125,6 +125,13 @@ fn parse_optional_name<'t>(
     }
 }
 
+fn parse_optional_index(buf: &mut ParseBuffer<'_>) -> Result<Option<SymbolIndex>> {
+    Ok(match buf.parse()? {
+        SymbolIndex(0) => None,
+        index => Some(index),
+    })
+}
+
 // data types are defined at:
 //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L3038
 // constants defined at:
@@ -705,11 +712,11 @@ pub struct ProcedureSymbol<'t> {
     /// Indicates Deferred Procedure Calls (DPC).
     pub dpc: bool,
     /// The parent scope that this procedure is nested in.
-    pub parent: SymbolIndex,
+    pub parent: Option<SymbolIndex>,
     /// The end symbol of this procedure.
     pub end: SymbolIndex,
     /// The next procedure symbol.
-    pub next: SymbolIndex,
+    pub next: Option<SymbolIndex>,
     /// The length of the code block covered by this procedure.
     pub len: u32,
     /// Start offset of the procedure's body code, which marks the end of the prologue.
@@ -749,9 +756,9 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
         let symbol = ProcedureSymbol {
             global,
             dpc,
-            parent: buf.parse()?,
+            parent: parse_optional_index(&mut buf)?,
             end: buf.parse()?,
-            next: buf.parse()?,
+            next: parse_optional_index(&mut buf)?,
             len: buf.parse()?,
             dbg_start_offset: buf.parse()?,
             dbg_end_offset: buf.parse()?,
@@ -775,7 +782,7 @@ pub struct InlineSiteSymbol<'t> {
     /// This might either be a [`ProcedureSymbol`] or another `InlineSiteSymbol`.
     ///
     /// [`ProcedureSymbol`]: struct.ProcedureSymbol.html
-    pub parent: SymbolIndex,
+    pub parent: Option<SymbolIndex>,
     /// The end symbol of this callsite.
     pub end: SymbolIndex,
     /// Identifier of the type describing the inline function.
@@ -794,7 +801,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = InlineSiteSymbol {
-            parent: buf.parse()?,
+            parent: parse_optional_index(&mut buf)?,
             end: buf.parse()?,
             inlinee: buf.parse()?,
             invocations: match kind {
@@ -1250,12 +1257,7 @@ impl<'t> SymbolIter<'t> {
     ///
     /// This can be used to jump to the sibiling or parent of a symbol record.
     pub fn seek(&mut self, index: SymbolIndex) {
-        if index.is_some() {
-            self.buf.seek(index.0 as usize);
-        } else {
-            // Seek to the end of the iterator.
-            self.buf.seek(self.buf.pos() + self.buf.len());
-        }
+        self.buf.seek(index.0 as usize);
     }
 
     /// Skip to the symbol referred to by `index`, returning the symbol.
@@ -1553,9 +1555,9 @@ mod tests {
                 SymbolData::Procedure(ProcedureSymbol {
                     global: true,
                     dpc: false,
-                    parent: SymbolIndex(0),
+                    parent: None,
                     end: SymbolIndex(560),
-                    next: SymbolIndex(0),
+                    next: None,
                     len: 6,
                     dbg_start_offset: 5,
                     dbg_end_offset: 5,
@@ -1596,9 +1598,9 @@ mod tests {
                 SymbolData::Procedure(ProcedureSymbol {
                     global: false,
                     dpc: false,
-                    parent: SymbolIndex(0),
+                    parent: None,
                     end: SymbolIndex(412),
-                    next: SymbolIndex(0),
+                    next: None,
                     len: 18,
                     dbg_start_offset: 4,
                     dbg_end_offset: 9,
@@ -1780,7 +1782,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::InlineSite(InlineSiteSymbol {
-                    parent: SymbolIndex(0x0190),
+                    parent: Some(SymbolIndex(0x0190)),
                     end: SymbolIndex(0x01d0),
                     inlinee: IdIndex(4473),
                     invocations: None,
@@ -1836,7 +1838,7 @@ mod tests {
         }
 
         #[test]
-        fn test_seek_some() {
+        fn test_seek() {
             let mut symbols = create_iter();
             symbols.seek(SymbolIndex(0x8));
 
@@ -1850,16 +1852,7 @@ mod tests {
         }
 
         #[test]
-        fn test_seek_none() {
-            let mut symbols = create_iter();
-            symbols.seek(SymbolIndex::none());
-
-            let symbol = symbols.next().expect("get symbol");
-            assert_eq!(symbol, None);
-        }
-
-        #[test]
-        fn test_skip_to_some() {
+        fn test_skip_to() {
             let mut symbols = create_iter();
             let symbol = symbols.skip_to(SymbolIndex(0x8)).expect("get symbol");
 
@@ -1869,13 +1862,6 @@ mod tests {
             };
 
             assert_eq!(symbol, Some(expected));
-        }
-
-        #[test]
-        fn test_skip_to_none() {
-            let mut symbols = create_iter();
-            let symbol = symbols.skip_to(SymbolIndex::none()).expect("get symbol");
-            assert_eq!(symbol, None);
         }
     }
 }

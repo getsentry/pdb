@@ -991,7 +991,7 @@ mod tests {
         //     S_INLINESITE: Parent: 00000190, End: 000001EC, Inlinee:             0x1180
         //     BinaryAnnotations:    CodeLengthAndCodeOffset 2 3f  CodeLengthAndCodeOffset 3 9
         let inline_site = InlineSiteSymbol {
-            parent: SymbolIndex(0x190),
+            parent: Some(SymbolIndex(0x190)),
             end: SymbolIndex(0x1ec),
             inlinee: IdIndex(0x1180),
             invocations: None,

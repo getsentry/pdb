@@ -258,26 +258,6 @@ macro_rules! impl_hex_fmt {
     };
 }
 
-/// Same as `impl_hex_fmt`, but prints `None` for none values.
-macro_rules! impl_hex_fmt_opt {
-    ($type:ty, $none:literal) => {
-        impl fmt::Display for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                match self.0 {
-                    $none => f.write_str("None"),
-                    val => write!(f, "{:#x}", val),
-                }
-            }
-        }
-
-        impl fmt::Debug for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, concat!(stringify!($type), "({})"), self)
-            }
-        }
-    };
-}
-
 /// Implements bidirectional conversion traits for the newtype.
 macro_rules! impl_convert {
     ($type:ty, $inner:ty) => {
@@ -658,9 +638,8 @@ impl_pread!(FileIndex);
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SymbolIndex(pub u32);
 
-impl_opt!(SymbolIndex, 0);
 impl_convert!(SymbolIndex, u32);
-impl_hex_fmt_opt!(SymbolIndex, 0);
+impl_hex_fmt!(SymbolIndex);
 impl_pread!(SymbolIndex);
 
 /// Provides little-endian access to a &[u8].
@@ -1172,21 +1151,9 @@ mod tests {
         }
 
         #[test]
-        fn test_format_newtype_none() {
-            let val = SymbolIndex::none();
-            assert_eq!(format!("{}", val), "None");
-        }
-
-        #[test]
         fn test_debug_newtype() {
             let val = SymbolIndex(0x42);
             assert_eq!(format!("{:?}", val), "SymbolIndex(0x42)");
-        }
-
-        #[test]
-        fn test_debug_newtype_none() {
-            let val = SymbolIndex::none();
-            assert_eq!(format!("{:?}", val), "SymbolIndex(None)");
         }
 
         #[test]
@@ -1195,20 +1162,6 @@ mod tests {
             let val = buf.parse::<SymbolIndex>().expect("parse");
             assert_eq!(val, SymbolIndex(0x42));
             assert!(buf.is_empty());
-        }
-
-        #[test]
-        fn test_is_some() {
-            let val = SymbolIndex(0x42);
-            assert!(val.is_some());
-            assert!(!val.is_none());
-        }
-
-        #[test]
-        fn test_is_none() {
-            let val = SymbolIndex::none();
-            assert!(val.is_none());
-            assert!(!val.is_some());
         }
     }
 }
