@@ -698,7 +698,7 @@ impl<'b> ParseBuffer<'b> {
     /// Seek to the given absolute position.
     #[inline]
     pub fn seek(&mut self, pos: usize) {
-        self.1 = std::cmp::min(pos, self.len());
+        self.1 = std::cmp::min(pos, self.0.len());
     }
 
     /// Truncates the buffer at the given absolute position.
@@ -1135,6 +1135,17 @@ mod tests {
                 _ => panic!("expected EOF"),
             }
         }
+
+        #[test]
+        fn test_seek() {
+            let mut buf = ParseBuffer::from("hello".as_bytes());
+            buf.seek(5);
+            assert_eq!(buf.pos(), 5);
+            buf.seek(2);
+            assert_eq!(buf.pos(), 2);
+            buf.seek(10);
+            assert_eq!(buf.pos(), 5);
+        }
     }
 
     mod newtypes {
@@ -1172,6 +1183,20 @@ mod tests {
             let val = buf.parse::<SymbolIndex>().expect("parse");
             assert_eq!(val, SymbolIndex(0x42));
             assert!(buf.is_empty());
+        }
+
+        #[test]
+        fn test_is_some() {
+            let val = SymbolIndex(0x42);
+            assert!(val.is_some());
+            assert!(!val.is_none());
+        }
+
+        #[test]
+        fn test_is_none() {
+            let val = SymbolIndex::none();
+            assert!(val.is_none());
+            assert!(!val.is_some());
         }
     }
 }

@@ -95,7 +95,7 @@ impl<'t> fmt::Debug for Symbol<'t> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Symbol{{ kind: 0x{:4x} [{} bytes] }}",
+            "Symbol{{ kind: 0x{:x} [{} bytes] }}",
             self.raw_kind(),
             self.data.len()
         )
@@ -1797,6 +1797,83 @@ mod tests {
             };
             assert_eq!(symbol.raw_kind(), 0x114e);
             assert_eq!(symbol.parse().expect("parse"), SymbolData::InlineSiteEnd);
+        }
+    }
+
+    mod iterator {
+        use crate::symbol::*;
+
+        fn create_iter() -> SymbolIter<'static> {
+            let data = &[
+                0x00, 0x00, 0x00, 0x00, // module signature (padding)
+                0x02, 0x00, 0x4e, 0x11, // S_INLINESITE_END
+                0x02, 0x00, 0x06, 0x00, // S_END
+            ];
+
+            let mut buf = ParseBuffer::from(&data[..]);
+            buf.seek(4); // skip the module signature
+            SymbolIter::new(buf)
+        }
+
+        #[test]
+        fn test_iter() {
+            let symbols: Vec<_> = create_iter().collect().expect("collect");
+
+            let expected = [
+                Symbol {
+                    index: SymbolIndex(0x4),
+                    data: &[0x4e, 0x11], // S_INLINESITE_END
+                },
+                Symbol {
+                    index: SymbolIndex(0x8),
+                    data: &[0x06, 0x00], // S_END
+                },
+            ];
+
+            assert_eq!(symbols, expected);
+        }
+
+        #[test]
+        fn test_seek_some() {
+            let mut symbols = create_iter();
+            symbols.seek(SymbolIndex(0x8));
+
+            let symbol = symbols.next().expect("get symbol");
+            let expected = Symbol {
+                index: SymbolIndex(0x8),
+                data: &[0x06, 0x00], // S_END
+            };
+
+            assert_eq!(symbol, Some(expected));
+        }
+
+        #[test]
+        fn test_seek_none() {
+            let mut symbols = create_iter();
+            symbols.seek(SymbolIndex::none());
+
+            let symbol = symbols.next().expect("get symbol");
+            assert_eq!(symbol, None);
+        }
+
+        #[test]
+        fn test_skip_to_some() {
+            let mut symbols = create_iter();
+            let symbol = symbols.skip_to(SymbolIndex(0x8)).expect("get symbol");
+
+            let expected = Symbol {
+                index: SymbolIndex(0x8),
+                data: &[0x06, 0x00], // S_END
+            };
+
+            assert_eq!(symbol, Some(expected));
+        }
+
+        #[test]
+        fn test_skip_to_none() {
+            let mut symbols = create_iter();
+            let symbol = symbols.skip_to(SymbolIndex::none()).expect("get symbol");
+            assert_eq!(symbol, None);
         }
     }
 }
