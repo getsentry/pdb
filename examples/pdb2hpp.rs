@@ -600,7 +600,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
     let mut pdb = pdb::PDB::open(file)?;
 
     let type_information = pdb.type_information()?;
-    let mut type_finder = type_information.type_finder();
+    let mut type_finder = type_information.finder();
 
     let mut needed_types = TypeSet::new();
     let mut data = Data::new();

@@ -40,15 +40,15 @@ fn iteration() {
 #[test]
 fn type_finder() {
     setup(|type_information| {
-        let mut type_finder = type_information.type_finder();
+        let mut type_finder = type_information.finder();
         let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
-        assert_eq!(type_finder.max_indexed_type().0 >> 3, 4096 >> 3);
+        assert_eq!(type_finder.max_index().0 >> 3, 4096 >> 3);
 
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type().0 >> 3, typ.index().0 >> 3);
+            assert_eq!(type_finder.max_index().0 >> 3, typ.index().0 >> 3);
 
             // update the type finder
             type_finder.update(&iter);
@@ -68,7 +68,7 @@ fn type_finder() {
 #[test]
 fn find_classes() {
     setup(|type_information| {
-        let mut type_finder = type_information.type_finder();
+        let mut type_finder = type_information.finder();
 
         // iterate over all the types
         let mut iter = type_information.iter();
@@ -160,14 +160,14 @@ fn find_classes() {
 #[bench]
 fn bench_type_finder(b: &mut test::Bencher) {
     setup(|type_information| {
-        let mut type_finder = type_information.type_finder();
+        let mut type_finder = type_information.finder();
 
-        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+        assert_eq!(type_finder.max_index() >> 3, 4096 >> 3);
 
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type() >> 3, typ.index() >> 3);
+            assert_eq!(type_finder.max_index() >> 3, typ.index() >> 3);
             type_finder.update(&iter);
         }
 

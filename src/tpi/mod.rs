@@ -27,7 +27,7 @@ pub use self::id::*;
 pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 
 /// An index into either the type stream or id stream.
-pub trait Index: Copy + From<u32> + Into<u32> {}
+pub trait ItemIndex: Copy + PartialEq + PartialOrd + From<u32> + Into<u32> {}
 
 /// `TypeInformation` provides zero-copy access to a PDB type data stream.
 ///
@@ -57,7 +57,7 @@ pub trait Index: Copy + From<u32> + Into<u32> {}
 /// # let mut pdb = pdb::PDB::open(file)?;
 ///
 /// let type_information = pdb.type_information()?;
-/// let mut type_finder = type_information.type_finder();
+/// let mut type_finder = type_information.finder();
 ///
 /// # let expected_count = type_information.len();
 /// # let mut count: usize = 0;
@@ -124,7 +124,7 @@ pub struct ItemInformation<'s, I> {
 
 impl<'s, I> ItemInformation<'s, I>
 where
-    I: Index,
+    I: ItemIndex,
 {
     /// Parses `TypeInformation` from raw stream data.
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
@@ -171,7 +171,7 @@ where
     /// Returns a `TypeFinder` with a default time-space tradeoff.
     ///
     /// The `TypeFinder` is initially empty and must be populated by iterating.
-    pub fn type_finder(&self) -> ItemFinder<'_, I> {
+    pub fn finder(&self) -> ItemFinder<'_, I> {
         ItemFinder::new(self, 3)
     }
 }
@@ -194,7 +194,7 @@ pub struct Item<'t, I> {
 
 impl<'t, I> Item<'t, I>
 where
-    I: Index,
+    I: ItemIndex,
 {
     /// Returns this type's `TypeIndex`.
     pub fn index(&self) -> I {
@@ -230,7 +230,7 @@ where
 
 impl<'t, I> fmt::Debug for Item<'t, I>
 where
-    I: Index,
+    I: ItemIndex,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -291,7 +291,7 @@ pub struct ItemFinder<'t, I> {
 
 impl<'t, I> ItemFinder<'t, I>
 where
-    I: Index,
+    I: ItemIndex,
 {
     fn new(info: &'t ItemInformation<'_, I>, shift: u8) -> Self {
         let count = info.header.maximum_index - info.header.minimum_index;
@@ -331,12 +331,12 @@ where
     /// `TypeIndex`es, and either:
     ///
     ///  * You obtained a `Type` by iterating, in which case you should be calling `update()` as you
-    ///    iterate, and in which case all types it can reference are <= `max_indexed_type()`, or
+    ///    iterate, and in which case all types it can reference are <= `max_index()`, or
     ///  * You got a `Type` from this `TypeFinder`, in which case all types it can reference are
-    ///    still <= `max_indexed_type()`.
+    ///    still <= `max_index()`.
     ///
     #[inline]
-    pub fn max_indexed_type(&self) -> I {
+    pub fn max_index(&self) -> I {
         I::from((self.positions.len() << self.shift) as u32 + self.minimum_index - 1)
     }
 
@@ -358,7 +358,7 @@ where
     /// # Errors
     ///
     /// * `Error::TypeNotFound(type_index)` if you ask for a type that doesn't exist
-    /// * `Error::TypeNotIndexed(type_index, max_indexed_type)` if you ask for a type that is known
+    /// * `Error::TypeNotIndexed(type_index, max_index)` if you ask for a type that is known
     ///   to exist but is not currently known by this `TypeFinder`.
     pub fn find(&self, index: I) -> Result<Item<'t, I>> {
         let index: u32 = index.into();
@@ -396,7 +396,7 @@ where
             })
         } else {
             // miss
-            Err(Error::TypeNotIndexed(index, self.max_indexed_type().into()))
+            Err(Error::TypeNotIndexed(index, self.max_index().into()))
         }
     }
 }
@@ -415,7 +415,7 @@ pub struct ItemIter<'t, I> {
 
 impl<'t, I> FallibleIterator for ItemIter<'t, I>
 where
-    I: Index,
+    I: ItemIndex,
 {
     type Item = Item<'t, I>;
     type Error = Error;
@@ -449,13 +449,13 @@ where
     }
 }
 
-impl Index for TypeIndex {}
+impl ItemIndex for TypeIndex {}
 
 pub type TypeInformation<'s> = ItemInformation<'s, TypeIndex>;
 pub type Type<'t> = Item<'t, TypeIndex>;
 pub type TypeFinder<'t> = ItemFinder<'t, TypeIndex>;
 
-impl<'t> Type<'t> {
+impl<'t> Item<'t, TypeIndex> {
     /// Parse this Type into a TypeData.
     ///
     /// # Errors
@@ -474,13 +474,13 @@ impl<'t> Type<'t> {
     }
 }
 
-impl Index for IdIndex {}
+impl ItemIndex for IdIndex {}
 
 pub type IdInformation<'s> = ItemInformation<'s, IdIndex>;
 pub type Id<'t> = Item<'t, IdIndex>;
 pub type IdFinder<'t> = ItemFinder<'t, IdIndex>;
 
-impl<'t> Id<'t> {
+impl<'t> Item<'t, IdIndex> {
     /// Parse this Id into a IdData.
     ///
     /// # Errors
