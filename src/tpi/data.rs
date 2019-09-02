@@ -65,7 +65,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1631-L1642
         LF_CLASS | LF_CLASS_ST | LF_STRUCTURE | LF_STRUCTURE_ST | LF_INTERFACE => {
-            Ok(TypeData::Class(ClassType {
+            let mut class = ClassType {
                 kind: match leaf {
                     LF_CLASS | LF_CLASS_ST => ClassKind::Class,
                     LF_STRUCTURE | LF_STRUCTURE_ST => ClassKind::Struct,
@@ -79,7 +79,14 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 vtable_shape: parse_optional_type_index(&mut buf)?,
                 size: parse_unsigned(&mut buf)? as u16,
                 name: parse_string(leaf, buf)?,
-            }))
+                unique_name: None,
+            };
+
+            if class.properties.has_unique_name() {
+                class.unique_name = Some(parse_string(leaf, buf)?);
+            }
+
+            Ok(TypeData::Class(class))
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2580-L2586
@@ -216,13 +223,22 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1752-L1759
-        LF_ENUM | LF_ENUM_ST => Ok(TypeData::Enumeration(EnumerationType {
-            count: buf.parse_u16()?,
-            properties: TypeProperties(buf.parse_u16()?),
-            underlying_type: buf.parse()?,
-            fields: buf.parse()?,
-            name: parse_string(leaf, &mut buf)?,
-        })),
+        LF_ENUM | LF_ENUM_ST => {
+            let mut enumeration = EnumerationType {
+                count: buf.parse_u16()?,
+                properties: TypeProperties(buf.parse_u16()?),
+                underlying_type: buf.parse()?,
+                fields: buf.parse()?,
+                name: parse_string(leaf, &mut buf)?,
+                unique_name: None,
+            };
+
+            if enumeration.properties.has_unique_name() {
+                enumeration.unique_name = Some(parse_string(leaf, &mut buf)?);
+            }
+
+            Ok(TypeData::Enumeration(enumeration))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2683-L2688
         LF_ENUMERATE | LF_ENUMERATE_ST => Ok(TypeData::Enumerate(EnumerateType {
@@ -279,13 +295,22 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1657-L1664
-        LF_UNION | LF_UNION_ST => Ok(TypeData::Union(UnionType {
-            count: buf.parse_u16()?,
-            properties: TypeProperties(buf.parse_u16()?),
-            fields: buf.parse()?,
-            size: parse_unsigned(&mut buf)? as u32,
-            name: parse_string(leaf, &mut buf)?,
-        })),
+        LF_UNION | LF_UNION_ST => {
+            let mut union = UnionType {
+                count: buf.parse_u16()?,
+                properties: TypeProperties(buf.parse_u16()?),
+                fields: buf.parse()?,
+                size: parse_unsigned(&mut buf)? as u32,
+                name: parse_string(leaf, &mut buf)?,
+                unique_name: None,
+            };
+
+            if union.properties.has_unique_name() {
+                union.unique_name = Some(parse_string(leaf, &mut buf)?);
+            }
+
+            Ok(TypeData::Union(union))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2164-L2170
         LF_BITFIELD => Ok(TypeData::Bitfield(BitfieldType {
@@ -833,7 +858,11 @@ pub struct ClassType<'t> {
 
     pub size: u16,
 
+    /// Display name of the class including type parameters.
     pub name: RawString<'t>,
+
+    /// Mangled name, if present.
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// Used by `ClassType` to distinguish class-like concepts.
@@ -962,6 +991,7 @@ pub struct EnumerationType<'t> {
     pub underlying_type: TypeIndex,
     pub fields: TypeIndex,
     pub name: RawString<'t>,
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// The information parsed from a type record with kind `LF_ENUMERATE` or `LF_ENUMERATE_ST`.
@@ -1000,6 +1030,7 @@ pub struct UnionType<'t> {
     pub fields: TypeIndex,
     pub size: u32,
     pub name: RawString<'t>,
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// The information parsed from a type record with kind `LF_BITFIELD`.
