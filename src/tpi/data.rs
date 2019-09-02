@@ -175,10 +175,22 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1469-L1506
-        LF_POINTER => Ok(TypeData::Pointer(PointerType {
-            underlying_type: buf.parse()?,
-            attributes: PointerAttributes(buf.parse_u32()?),
-        })),
+        LF_POINTER => {
+            let underlying_type = buf.parse()?;
+            let attributes = PointerAttributes(buf.parse()?);
+
+            let containing_class = if attributes.pointer_to_member() {
+                Some(buf.parse()?)
+            } else {
+                None
+            };
+
+            Ok(TypeData::Pointer(PointerType {
+                underlying_type,
+                attributes,
+                containing_class,
+            }))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1775-L1782
         LF_PROCEDURE => Ok(TypeData::Procedure(ProcedureType {
@@ -609,21 +621,6 @@ impl FunctionAttributes {
 }
 
 /*
-struct lfPointerAttr {
-    unsigned long   ptrtype     :5; // ordinal specifying pointer type (CV_ptrtype_e)
-    unsigned long   ptrmode     :3; // ordinal specifying pointer mode (CV_ptrmode_e)
-    unsigned long   isflat32    :1; // true if 0:32 pointer
-    unsigned long   isvolatile  :1; // TRUE if volatile pointer
-    unsigned long   isconst     :1; // TRUE if const pointer
-    unsigned long   isunaligned :1; // TRUE if unaligned pointer
-    unsigned long   isrestrict  :1; // TRUE if restricted pointer (allow agressive opts)
-    unsigned long   size        :6; // size of pointer (in bytes)
-    unsigned long   ismocom     :1; // TRUE if it is a MoCOM pointer (^ or %)
-    unsigned long   islref      :1; // TRUE if it is this pointer of member function with & ref-qualifier
-    unsigned long   isrref      :1; // TRUE if it is this pointer of member function with && ref-qualifier
-    unsigned long   unused      :10;// pad out to 32-bits for following cv_typ_t's
-} attr;
-
 typedef enum CV_ptrtype_e {
     CV_PTR_NEAR         = 0x00, // 16 bit pointer
     CV_PTR_FAR          = 0x01, // 16:16 far pointer
@@ -640,7 +637,40 @@ typedef enum CV_ptrtype_e {
     CV_PTR_64           = 0x0c, // 64 bit pointer
     CV_PTR_UNUSEDPTR    = 0x0d  // first unused pointer type
 } CV_ptrtype_e;
+*/
 
+/// The kind of a `PointerType`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerKind {
+    /// 16 bit pointer.
+    Near16,
+    /// 16:16 far pointer.
+    Far16,
+    /// 16:16 huge pointer.
+    Huge16,
+    /// Based on segment.
+    BaseSeg,
+    /// Based on value of base.
+    BaseVal,
+    /// Based on segment value of base.
+    BaseSegVal,
+    /// Based on address of base.
+    BaseAddr,
+    /// Based on segment address of base.
+    BaseSegAddr,
+    /// Based on type.
+    BaseType,
+    /// Based on self.
+    BaseSelf,
+    /// 32 bit pointer.
+    Near32,
+    /// 16:32 pointer.
+    Far32,
+    /// 64 bit pointer.
+    Ptr64,
+}
+
+/*
 typedef enum CV_ptrmode_e {
     CV_PTR_MODE_PTR     = 0x00, // "normal" pointer
     CV_PTR_MODE_REF     = 0x01, // "old" reference
@@ -650,27 +680,113 @@ typedef enum CV_ptrmode_e {
     CV_PTR_MODE_RVREF   = 0x04, // r-value reference
     CV_PTR_MODE_RESERVED= 0x05  // first unused pointer mode
 } CV_ptrmode_e;
-
 */
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct PointerAttributes(u32);
-impl PointerAttributes {
-    // TODO
 
+/// The mode of a `PointerType`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerMode {
+    /// A regular pointer.
+    Pointer,
+    /// L-Value reference.
+    LValueReference,
+    /// Pointer to data member.
+    Member,
+    /// Pointer to member function.
+    MemberFunction,
+    /// R-Value reference.
+    RValueReference,
+}
+
+/*
+struct lfPointerAttr {
+    unsigned long   ptrtype     :5; // ordinal specifying pointer type (CV_ptrtype_e)
+    unsigned long   ptrmode     :3; // ordinal specifying pointer mode (CV_ptrmode_e)
+    unsigned long   isflat32    :1; // true if 0:32 pointer
+    unsigned long   isvolatile  :1; // TRUE if volatile pointer
+    unsigned long   isconst     :1; // TRUE if const pointer
+    unsigned long   isunaligned :1; // TRUE if unaligned pointer
+    unsigned long   isrestrict  :1; // TRUE if restricted pointer (allow agressive opts)
+    unsigned long   size        :6; // size of pointer (in bytes)
+    unsigned long   ismocom     :1; // TRUE if it is a MoCOM pointer (^ or %)
+    unsigned long   islref      :1; // TRUE if it is this pointer of member function with & ref-qualifier
+    unsigned long   isrref      :1; // TRUE if it is this pointer of member function with && ref-qualifier
+    unsigned long   unused      :10;// pad out to 32-bits for following cv_typ_t's
+} attr;
+*/
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerAttributes(u32);
+
+impl PointerAttributes {
     /// Indicates the type of pointer.
-    pub fn pointer_type(self) -> u8 {
-        (self.0 & 0x1f) as u8
+    pub fn pointer_kind(self) -> PointerKind {
+        match self.0 & 0x1f {
+            0x00 => PointerKind::Near16,
+            0x01 => PointerKind::Far16,
+            0x02 => PointerKind::Huge16,
+            0x03 => PointerKind::BaseSeg,
+            0x04 => PointerKind::BaseVal,
+            0x05 => PointerKind::BaseSegVal,
+            0x06 => PointerKind::BaseAddr,
+            0x07 => PointerKind::BaseSegAddr,
+            0x08 => PointerKind::BaseType,
+            0x09 => PointerKind::BaseSelf,
+            0x0a => PointerKind::Near32,
+            0x0b => PointerKind::Far32,
+            0x0c => PointerKind::Ptr64,
+            _ => unreachable!(),
+        }
     }
 
-    /// Indicates if this pointer is `const`.
+    /// Returns the mode of this pointer.
+    pub fn pointer_mode(self) -> PointerMode {
+        match (self.0 >> 5) & 0x7 {
+            0x00 => PointerMode::Pointer,
+            0x01 => PointerMode::LValueReference,
+            0x02 => PointerMode::Member,
+            0x03 => PointerMode::MemberFunction,
+            0x04 => PointerMode::RValueReference,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns `true` if this points to a member (either data or function).
+    pub fn pointer_to_member(self) -> bool {
+        match self.pointer_mode() {
+            PointerMode::Member | PointerMode::MemberFunction => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this is a flat `0:32` pointer.
+    pub fn is_flat_32(self) -> bool {
+        (self.0 & 0x100) != 0
+    }
+
+    /// Returns `true` if this pointer is `volatile`.
+    pub fn is_volatile(self) -> bool {
+        (self.0 & 0x200) != 0
+    }
+
+    /// Returns `true` if this pointer is `const`.
     pub fn is_const(self) -> bool {
-        (self.0 & 0x40) != 0
+        (self.0 & 0x400) != 0
+    }
+
+    /// Returns `true` if this pointer is unaligned.
+    pub fn is_unaligned(self) -> bool {
+        (self.0 & 0x800) != 0
+    }
+
+    /// Returns `true` if this pointer is restricted (allow aggressive opts).
+    pub fn is_restrict(self) -> bool {
+        (self.0 & 0x1000) != 0
     }
 
     /// Is this a C++ reference, as opposed to a C pointer?
     pub fn is_reference(self) -> bool {
-        match (self.0 >> 5) & 0x07 {
-            0x01 | 0x04 => true,
+        match self.pointer_mode() {
+            PointerMode::LValueReference | PointerMode::RValueReference => true,
             _ => false,
         }
     }
@@ -681,11 +797,17 @@ impl PointerAttributes {
         if size != 0 {
             return size;
         }
-        match self.pointer_type() {
-            0x0a => 4,
-            0x0c => 8,
+
+        match self.pointer_kind() {
+            PointerKind::Near32 | PointerKind::Far32 => 4,
+            PointerKind::Ptr64 => 8,
             _ => 0,
         }
+    }
+
+    /// Returns `true` if this is a MoCOM pointer (`^` or `%`).
+    pub fn is_mocom(self) -> bool {
+        (self.0 & 0x40000) != 0
     }
 }
 
@@ -820,6 +942,7 @@ pub struct ProcedureType {
 pub struct PointerType {
     pub underlying_type: TypeIndex,
     pub attributes: PointerAttributes,
+    pub containing_class: Option<TypeIndex>,
 }
 
 /// The information parsed from a type record with kind `LF_MODIFIER`.
