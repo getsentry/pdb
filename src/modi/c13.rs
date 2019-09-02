@@ -192,11 +192,6 @@ impl<'a> DebugInlineeLinesSubsection<'a> {
             buf: ParseBuffer::from(self.data),
         }
     }
-
-    /// Retrieve the inlinee source line for the given inlinee.
-    fn find(&self, inlinee: IdIndex) -> Result<Option<InlineeSourceLine<'a>>> {
-        self.lines().find(|line| line.inlinee == inlinee)
-    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Pread)]
@@ -796,6 +791,41 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct C13Inlinee<'a>(InlineeSourceLine<'a>);
+
+impl<'a> C13Inlinee<'a> {
+    pub(crate) fn index(&self) -> IdIndex {
+        self.0.inlinee
+    }
+
+    pub(crate) fn lines(
+        &self,
+        parent_offset: PdbInternalSectionOffset,
+        inline_site: &InlineSiteSymbol<'a>,
+    ) -> C13InlineeLineIterator<'a> {
+        C13InlineeLineIterator::new(parent_offset, inline_site, self.0)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct C13InlineeIterator<'a> {
+    inlinee_lines: DebugInlineeLinesIterator<'a>,
+}
+
+impl<'a> FallibleIterator for C13InlineeIterator<'a> {
+    type Item = C13Inlinee<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.inlinee_lines.next() {
+            Ok(Some(inlinee_line)) => Ok(Some(C13Inlinee(inlinee_line))),
+            Ok(None) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct C13FileIterator<'a> {
     checksums: DebugFileChecksumsIterator<'a>,
 }
@@ -876,16 +906,9 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn inlinee_lines(
-        &self,
-        parent_offset: PdbInternalSectionOffset,
-        inline_site: &InlineSiteSymbol<'a>,
-    ) -> C13InlineeLineIterator<'a> {
-        match self.inlinee_lines.find(inline_site.inlinee) {
-            Ok(Some(inlinee_line)) => {
-                C13InlineeLineIterator::new(parent_offset, inline_site, inlinee_line)
-            }
-            _ => C13InlineeLineIterator::default(),
+    pub(crate) fn inlinees(&self) -> C13InlineeIterator<'a> {
+        C13InlineeIterator {
+            inlinee_lines: self.inlinee_lines.lines(),
         }
     }
 
