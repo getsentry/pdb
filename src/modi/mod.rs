@@ -48,6 +48,11 @@ impl<'s> ModuleInfo<'s> {
         })
     }
 
+    fn lines_data(&self, size: usize) -> &[u8] {
+        let start = self.symbols_size as usize;
+        &self.stream[start..start + size]
+    }
+
     /// Get an iterator over the all symbols in this module.
     pub fn symbols(&self) -> Result<SymbolIter<'_>> {
         let mut buf = self.stream.parse_buffer();
@@ -65,16 +70,26 @@ impl<'s> ModuleInfo<'s> {
 
     /// Returns a line program that gives access to file and line information in this module.
     pub fn line_program(&self) -> Result<LineProgram<'_>> {
-        let start = self.symbols_size as usize;
         let inner = match self.lines_size {
             LinesSize::C11(_size) => return Err(Error::UnimplementedFeature("C11 line programs")),
             LinesSize::C13(size) => {
-                let data = &self.stream[start..start + size];
-                LineProgramInner::C13(c13::C13LineProgram::parse(data)?)
+                LineProgramInner::C13(c13::C13LineProgram::parse(self.lines_data(size))?)
             }
         };
 
         Ok(LineProgram { inner })
+    }
+
+    /// Returns an iterator over all inlinees in this module.
+    ///
+    /// Inlinees are not guaranteed to be sorted. When requiring random access by `ItemId`, collect
+    /// them into a mapping structure rather than reiterating multiple times.
+    pub fn inlinees(&self) -> Result<InlineeIterator<'_>> {
+        Ok(InlineeIterator(match self.lines_size {
+            // C11 does not contain inlinee information.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => c13::C13InlineeIterator::parse(self.lines_data(size))?,
+        }))
     }
 }
 
@@ -199,13 +214,6 @@ impl<'a> LineProgram<'a> {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines_at_offset(offset)),
             },
-        }
-    }
-
-    /// Returns an iterator over all inlinees in this module.
-    pub fn inlinees(&self) -> InlineeIterator<'a> {
-        match self.inner {
-            LineProgramInner::C13(ref inner) => InlineeIterator(inner.inlinees()),
         }
     }
 

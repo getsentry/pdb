@@ -812,6 +812,23 @@ pub struct C13InlineeIterator<'a> {
     inlinee_lines: DebugInlineeLinesIterator<'a>,
 }
 
+impl<'a> C13InlineeIterator<'a> {
+    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+        let inlinee_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::InlineeLines)?
+            .map(|sec| sec.data);
+
+        let inlinee_lines = match inlinee_data {
+            Some(d) => DebugInlineeLinesSubsection::parse(d)?,
+            None => DebugInlineeLinesSubsection::default(),
+        };
+
+        Ok(Self {
+            inlinee_lines: inlinee_lines.lines(),
+        })
+    }
+}
+
 impl<'a> FallibleIterator for C13InlineeIterator<'a> {
     type Item = C13Inlinee<'a>;
     type Error = Error;
@@ -849,31 +866,22 @@ impl<'a> FallibleIterator for C13FileIterator<'a> {
 pub struct C13LineProgram<'a> {
     data: &'a [u8],
     file_checksums: DebugFileChecksumsSubsection<'a>,
-    inlinee_lines: DebugInlineeLinesSubsection<'a>,
 }
 
 impl<'a> C13LineProgram<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
-        let mut file_checksums = DebugFileChecksumsSubsection::default();
-        let mut inlinee_lines = DebugInlineeLinesSubsection::default();
+        let checksums_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::FileChecksums)?
+            .map(|sec| sec.data);
 
-        let mut subsections = DebugSubsectionIterator::new(data);
-        while let Some(sec) = subsections.next()? {
-            match sec.kind {
-                DebugSubsectionKind::FileChecksums => {
-                    file_checksums = DebugFileChecksumsSubsection::parse(sec.data)?;
-                }
-                DebugSubsectionKind::InlineeLines => {
-                    inlinee_lines = DebugInlineeLinesSubsection::parse(sec.data)?;
-                }
-                _ => {}
-            }
-        }
+        let file_checksums = match checksums_data {
+            Some(d) => DebugFileChecksumsSubsection::parse(d)?,
+            None => DebugFileChecksumsSubsection::default(),
+        };
 
         Ok(C13LineProgram {
             data,
             file_checksums,
-            inlinee_lines,
         })
     }
 
@@ -903,12 +911,6 @@ impl<'a> C13LineProgram<'a> {
                 columns: DebugColumnsIterator::default(),
             },
             _ => Default::default(),
-        }
-    }
-
-    pub(crate) fn inlinees(&self) -> C13InlineeIterator<'a> {
-        C13InlineeIterator {
-            inlinee_lines: self.inlinee_lines.lines(),
         }
     }
 
