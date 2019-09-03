@@ -662,7 +662,7 @@ impl<'b> ParseBuffer<'b> {
     pub fn align(&mut self, alignment: usize) -> Result<()> {
         let diff = self.1 % alignment;
         if diff > 0 {
-            if self.len() < diff {
+            if self.len() < (alignment - diff) {
                 return Err(Error::UnexpectedEof);
             }
             self.1 += alignment - diff;
@@ -1108,6 +1108,31 @@ mod tests {
                 Err(Error::UnexpectedEof) => (),
                 _ => panic!("expected EOF"),
             }
+        }
+
+        #[test]
+        fn test_parse_buffer_align() {
+            let mut buf = ParseBuffer::from(&b"1234"[..]);
+            buf.take(1).unwrap();
+            assert!(buf.align(4).is_ok());
+            assert_eq!(buf.pos(), 4);
+            assert_eq!(buf.len(), 0);
+
+            let mut buf = ParseBuffer::from(&b"1234"[..]);
+            buf.take(3).unwrap();
+            assert!(buf.align(4).is_ok());
+            assert_eq!(buf.pos(), 4);
+            assert_eq!(buf.len(), 0);
+
+            let mut buf = ParseBuffer::from(&b"12345"[..]);
+            buf.take(3).unwrap();
+            assert!(buf.align(4).is_ok());
+            assert_eq!(buf.pos(), 4);
+            assert_eq!(buf.len(), 1);
+
+            let mut buf = ParseBuffer::from(&b"123"[..]);
+            buf.take(3).unwrap();
+            assert!(buf.align(4).is_err());
         }
     }
 }
