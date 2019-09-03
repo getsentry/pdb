@@ -248,6 +248,7 @@ impl<'a> FallibleIterator for LineIterator<'a> {
 }
 
 /// An inlined function that can evaluate to line information.
+#[derive(Clone, Debug)]
 pub struct Inlinee<'a>(c13::C13Inlinee<'a>);
 
 impl<'a> Inlinee<'a> {
