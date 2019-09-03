@@ -814,6 +814,7 @@ impl<'b> fmt::LowerHex for ParseBuffer<'b> {
 
 /// Value of an enumerate type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
 pub enum Variant {
     U8(u8),
     U16(u16),

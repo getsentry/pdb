@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![allow(missing_docs)]
+
 use crate::common::*;
 use crate::tpi::constants::*;
 use crate::tpi::primitive::*;
@@ -668,11 +670,11 @@ pub enum PointerKind {
     BaseType,
     /// Based on self.
     BaseSelf,
-    /// 32 bit pointer.
+    /// 32-bit pointer.
     Near32,
-    /// 16:32 pointer.
+    /// 48-bit 16:32 pointer.
     Far32,
-    /// 64 bit pointer.
+    /// 64-bit pointer.
     Ptr64,
 }
 

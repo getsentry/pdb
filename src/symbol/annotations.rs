@@ -67,18 +67,43 @@ impl BinaryAnnotationOpcode {
 /// evaluate the state changes for inline information.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BinaryAnnotation {
+    /// Sets the code offset to the given absolute value.
     CodeOffset(u32),
+    /// Sets the base for all code offsets to the given absolute value. All following code offsets
+    /// are relative to this base value.
     ChangeCodeOffsetBase(u32),
+    /// **Emitting**. Advances the code offset by the given value.
+    ///
+    /// This annotation emits a line record. The length of the covered code block can be established
+    /// by a following `ChangeCodeLength` annotation, or by the offset of the next emitted record.
     ChangeCodeOffset(u32),
+    /// Adjusts the code length of the previously emitted line record. The code length resets with
+    /// every line record.
     ChangeCodeLength(u32),
+    /// Sets the file index of following line records.
     ChangeFile(FileIndex),
+    /// Advances the line number by the given value.
     ChangeLineOffset(i32),
+    /// Sets the number of source lines covered by following line records. Defaults to `1`.
     ChangeLineEndDelta(u32),
+    /// Sets the kind of the line record. Defaults to `Statement`.
     ChangeRangeKind(u32),
+    /// Sets the start column number. Defaults to `None`.
     ChangeColumnStart(u32),
+    /// Advances the end column number by the given value.
     ChangeColumnEndDelta(i32),
+    /// **Emitting**. Advances the code offset and the line number by the given values.
+    ///
+    /// This annotation emits a line record. The length of the covered code block can be established
+    /// by a following `ChangeCodeLength` annotation, or by the offset of the next emitted record.
     ChangeCodeOffsetAndLineOffset(u32, i32),
+    /// **Emitting**. Sets the code length and advances the code offset by the given value.
+    ///
+    /// This annotation emits a line record that is valid for the given code length. This is usually
+    /// issued as one of the last annotations, as there is no subsequent line record to derive the
+    /// code length from.
     ChangeCodeLengthAndCodeOffset(u32, u32),
+    /// Sets the end column number.
     ChangeColumnEnd(u32),
 }
 
