@@ -1,5 +1,3 @@
-use std::result;
-
 use crate::common::*;
 use crate::FallibleIterator;
 
@@ -39,13 +37,11 @@ enum BinaryAnnotationOpcode {
     ChangeCodeLengthAndCodeOffset = 12,
     /// param : end column number
     ChangeColumnEnd = 13,
-    /// A non valid value
-    Invalid,
 }
 
-impl From<u32> for BinaryAnnotationOpcode {
-    fn from(value: u32) -> Self {
-        match value {
+impl BinaryAnnotationOpcode {
+    fn parse(value: u32) -> Result<Self> {
+        Ok(match value {
             0 => BinaryAnnotationOpcode::Eof,
             1 => BinaryAnnotationOpcode::CodeOffset,
             2 => BinaryAnnotationOpcode::ChangeCodeOffsetBase,
@@ -60,8 +56,8 @@ impl From<u32> for BinaryAnnotationOpcode {
             11 => BinaryAnnotationOpcode::ChangeCodeOffsetAndLineOffset,
             12 => BinaryAnnotationOpcode::ChangeCodeLengthAndCodeOffset,
             13 => BinaryAnnotationOpcode::ChangeColumnEnd,
-            _ => BinaryAnnotationOpcode::Invalid,
-        }
+            _ => return Err(Error::UnknownBinaryAnnotation(value)),
+        })
     }
 }
 
@@ -105,6 +101,10 @@ pub struct BinaryAnnotationsIter<'t> {
 }
 
 impl<'t> BinaryAnnotationsIter<'t> {
+    /// Parse a compact version of an unsigned integer.
+    ///
+    /// This implements `CVUncompressData`, which can decode numbers no larger than 0x1FFFFFFF. It
+    /// seems that values compressed this way are only used for binary annotations at this point.
     fn uncompress_next(&mut self) -> Result<u32> {
         let b1 = u32::from(self.buffer.parse::<u8>()?);
         if (b1 & 0x80) == 0x00 {
@@ -142,13 +142,13 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
     type Item = BinaryAnnotation;
     type Error = Error;
 
-    fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
+    fn next(&mut self) -> Result<Option<Self::Item>> {
         if self.buffer.is_empty() {
             return Ok(None);
         }
 
         let op = self.uncompress_next()?;
-        let annotation = match BinaryAnnotationOpcode::from(op) {
+        let annotation = match BinaryAnnotationOpcode::parse(op)? {
             BinaryAnnotationOpcode::Eof => {
                 // This makes the end of the stream
                 self.buffer = ParseBuffer::default();
@@ -199,9 +199,6 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
             }
             BinaryAnnotationOpcode::ChangeColumnEnd => {
                 BinaryAnnotation::ChangeColumnEnd(self.uncompress_next()?)
-            }
-            BinaryAnnotationOpcode::Invalid => {
-                return Err(Error::UnknownBinaryAnnotation(op));
             }
         };
 
