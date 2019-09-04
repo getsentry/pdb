@@ -638,6 +638,13 @@ impl_convert!(SymbolIndex, u32);
 impl_hex_fmt!(SymbolIndex);
 impl_pread!(SymbolIndex);
 
+/// A register referred to by its number.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Register(pub u16);
+
+impl_convert!(Register, u16);
+impl_pread!(Register);
+
 /// Provides little-endian access to a &[u8].
 #[derive(Debug, Clone)]
 pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);

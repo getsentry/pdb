@@ -23,9 +23,6 @@ pub use self::annotations::*;
 /// The raw type discriminator for `Symbols`.
 pub type SymbolKind = u16;
 
-/// A register referred to by its number.
-pub type Register = u16;
-
 /// Represents a symbol from the symbol table.
 ///
 /// A `Symbol` is represented internally as a `&[u8]`, and in general the bytes inside are not
@@ -1351,7 +1348,7 @@ mod tests {
                 symbol.parse().expect("parse"),
                 SymbolData::RegisterVariable(RegisterVariableSymbol {
                     type_index: TypeIndex(8824),
-                    register: 18,
+                    register: Register(18),
                     name: "this".into(),
                 })
             );
