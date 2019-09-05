@@ -28,8 +28,8 @@ pub struct PrimitiveType {
     /// The kind of the primitive type.
     pub kind: PrimitiveKind,
 
-    /// What kind of indirection was applied to the underlying type.
-    pub indirection: Indirection,
+    /// Pointer indirection applied to the primitive type.
+    pub indirection: Option<Indirection>,
 }
 
 /// A simple type.
@@ -137,29 +137,27 @@ pub enum PrimitiveKind {
     HRESULT,
 }
 
-/// Pointer kinds.
+/// Pointer mode of primitive types.
+///
+/// This is partially overlapping with [`PointerKind`](enum.PointerKind.html) for regular pointer
+/// type definitions. While `PointerKind` can specify many more pointer types, including relative
+/// pointers, `Indirection` also contains a 128-bit variant.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Indirection {
-    ///
-    None,
-
-    /// 16-bit ("near") pointer
-    Pointer16,
-
-    /// 16:16 far pointer
-    FarPointer1616,
-
-    /// 16:16 huge pointer
-    HugePointer1616,
-
-    /// 32-bit pointer
-    Pointer32,
-
-    /// 48-bit 16:32 pointer
-    Pointer1632,
-
-    /// 64-bit pointer
-    Pointer64,
+    /// 16-bit ("near") pointer.
+    Near16,
+    /// 16:16 far pointer.
+    Far16,
+    /// 16:16 huge pointer.
+    Huge16,
+    /// 32-bit pointer.
+    Near32,
+    /// 48-bit 16:32 pointer.
+    Far32,
+    /// 64-bit near pointer.
+    Near64,
+    /// 128-bit near pointer.
+    Near128,
 }
 
 pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
@@ -170,13 +168,14 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
 
     // indirection is stored in these bits
     let indirection = match index.0 & 0xf00 {
-        0x000 => Indirection::None,
-        0x100 => Indirection::Pointer16,
-        0x200 => Indirection::FarPointer1616,
-        0x300 => Indirection::FarPointer1616,
-        0x400 => Indirection::Pointer32,
-        0x500 => Indirection::Pointer1632,
-        0x600 => Indirection::Pointer64,
+        0x000 => None,
+        0x100 => Some(Indirection::Near16),
+        0x200 => Some(Indirection::Far16),
+        0x300 => Some(Indirection::Huge16),
+        0x400 => Some(Indirection::Near32),
+        0x500 => Some(Indirection::Far32),
+        0x600 => Some(Indirection::Near64),
+        0x700 => Some(Indirection::Near128),
         _ => {
             return Err(Error::TypeNotFound(index.0));
         }
