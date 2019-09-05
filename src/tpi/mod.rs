@@ -26,24 +26,41 @@ pub use self::data::*;
 pub use self::id::*;
 pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 
-/// An index into either the type stream or id stream.
-pub trait ItemIndex: Copy + PartialEq + PartialOrd + From<u32> + Into<u32> {}
+/// An index into either the [`TypeInformation`] or [`IdInformation`] stream.
+///
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+pub trait ItemIndex:
+    Copy + Default + fmt::Debug + fmt::Display + PartialEq + PartialOrd + From<u32> + Into<u32>
+{
+}
 
-/// `TypeInformation` provides zero-copy access to a PDB type data stream.
+/// Zero-copy access to a PDB type or id stream.
 ///
-/// PDB type information is stored as a stream of length-prefixed `Type` records, and thus the most
-/// fundamental operation supported by `TypeInformation` is to iterate over `Type`s.
+/// PDBs store two kinds of related streams with an identical internal structure:
 ///
-/// Types are uniquely identified by `TypeIndex`, and types are stored within the PDB in ascending
-/// order of `TypeIndex`.
+///  - [`TypeInformation`] (TPI stream) contains information on primitive types, classes and
+///    procedures, including their return type and arguments. Its contents are identified by
+///    [`TypeIndex`].
+///  - [`IdInformation`] (IPI stream) is a stricter version of the above stream that contains inline
+///    functions, build infos and source references. Its contents are identified by [`IdIndex`].
 ///
-/// Many types refer to other types by `TypeIndex`, and these references may refer to other types
-/// forming a chain that's arbitrarily long. Fortunately, PDB format requires that types refer only
-/// to types with lower `TypeIndex`es; thus, the stream of types form a directed acyclic graph.
+/// Items in these streams are stored by their index in ascending order. Symbols declared in
+/// [`ModuleInfo`] can refer to items in both streams, as well as items to other items with one
+/// exception: `Type`s cannot refer to `Id`s. Also, the PDB format requires that items refer only to
+/// types with lower indexes. Thus, the stream of items forms a directed acyclic graph.
 ///
-/// `TypeInformation` can iterate by `TypeIndex`, since that's essentially the only operation
-/// permitted by the data. `TypeFinder` is a secondary data structure to provide efficient
-/// backtracking.
+/// Both streams can iterate by their index using [`ItemInformation::iter`]. Additionally,
+/// [`ItemFinder`] is a secondary data structure to provide efficient backtracking for random
+/// access.
+///
+/// There are type definitions for both streams:
+///
+///  - `ItemInformation`: [`TypeInformation`] and [`IdInformation`]
+///  - [`ItemFinder`]: [`TypeFinder`] and [`IdFinder`]
+///  - [`ItemIndex`]: [`TypeIndex`] and [`IdIndex`]
+///  - [`ItemIter`]: [`TypeIter`] and [`IdIter`]
+///  - [`Item`]: [`Type`] and [`Id`]
 ///
 /// # Examples
 ///
@@ -115,6 +132,22 @@ pub trait ItemIndex: Copy + PartialEq + PartialOrd + From<u32> + Into<u32> {}
 /// # }
 /// # assert!(test().expect("test") > 8000);
 /// ```
+///
+/// [`ItemInformation::iter`]: struct.ItemInformation.html#method.iter
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+/// [`ItemFinder`]: struct.ItemFinder.html
+/// [`TypeFinder`]: type.TypeFinder.html
+/// [`IdFinder`]: type.IdFinder.html
+/// [`ItemIndex`]: trait.ItemIndex.html
+/// [`TypeIndex`]: struct.TypeIndex.html
+/// [`IdIndex`]: struct.IdIndex.html
+/// [`ItemIter`]: struct.ItemIter.html
+/// [`TypeIter`]: type.TypeIter.html
+/// [`IdIter`]: type.IdIter.html
+/// [`Item`]: struct.Item.html
+/// [`Type`]: type.Type.html
+/// [`Id`]: type.Id.html
 #[derive(Debug)]
 pub struct ItemInformation<'s, I> {
     stream: Stream<'s>,
@@ -155,22 +188,29 @@ where
         }
     }
 
-    /// Returns the number of types contained in this `TypeInformation`.
+    /// Returns the number of items contained in this `ItemInformation`.
     ///
-    /// Note that primitive types are not stored in the PDB file, so the number of distinct types
-    /// reachable via this `TypeInformation` will be higher than `len()`.
+    /// Note that in the case of the type stream ([`TypeInformation`]) primitive types are not
+    /// stored in the PDB file. The number of distinct types reachable via this table will be higher
+    /// than `len()`.
+    ///
+    /// [`TypeInformation`]: type.TypeInformation.html
     pub fn len(&self) -> usize {
         (self.header.maximum_index - self.header.minimum_index) as usize
     }
 
-    /// Returns whether this `TypeInformation` contains any types.
+    /// Returns whether this `ItemInformation` contains any data.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// Returns a `TypeFinder` with a default time-space tradeoff.
+    /// Returns an `ItemFinder` with a default time-space tradeoff useful for access by
+    /// [`ItemIndex`].
     ///
-    /// The `TypeFinder` is initially empty and must be populated by iterating.
+    /// The `ItemFinder` is initially empty and must be populated by iterating. See the struct-level
+    /// docs for an example.
+    ///
+    /// [`ItemIndex`]: trait.ItemIndex.html
     pub fn finder(&self) -> ItemFinder<'_, I> {
         ItemFinder::new(self, 3)
     }
@@ -181,11 +221,25 @@ where
 /// like a reasonable thing to do.
 const PRIMITIVE_TYPE: &[u8] = b"\xff\xff";
 
-/// Represents a type from the type table. A `Type` has been minimally processed and may not be
-/// correctly formed or even understood by this library.
+/// Represents an entry in the type or id stream.
 ///
-/// To avoid copying, `Type`s exist as references to data owned by the parent `TypeInformation`.
-/// Therefore, a `Type` may not outlive its parent.
+/// An `Item` has been minimally processed and may not be correctly formed or even understood by
+/// this library. To avoid copying, `Items`s exist as references to data owned by the parent
+/// `ItemInformation`. Therefore, an `Item` may not outlive its parent.
+///
+/// The data held by items can be parsed:
+///
+///  - [`Type::parse`] returns [`TypeData`].
+///  - [`Id::parse`] returns [`IdData`].
+///
+/// Depending on the stream, this can either be a [`Type`] or [`Id`].
+///
+/// [`Type`]: type.Type.html
+/// [`Id`]: type.Id.html
+/// [`Type::parse`]: struct.Item.html#method.parse
+/// [`Id::parse`]: struct.Item.html#method.parse-1
+/// [`TypeData`]: enum.TypeData.html
+/// [`IdData`]: enum.IdData.html
 #[derive(Copy, Clone, PartialEq)]
 pub struct Item<'t, I> {
     index: I,
@@ -196,29 +250,35 @@ impl<'t, I> Item<'t, I>
 where
     I: ItemIndex,
 {
-    /// Returns this type's `TypeIndex`.
+    /// Returns this item's index.
+    ///
+    /// Depending on the stream, either a [`TypeIndex`] or [`IdIndex`].
+    ///
+    /// [`TypeIndex`]: struct.TypeIndex.html
+    /// [`IdIndex`]: struct.IdIndex.html
     pub fn index(&self) -> I {
         self.index
     }
 
-    /// Returns the length of this type's data in terms of bytes in the on-disk format.
+    /// Returns the the binary data length in the on-disk format.
     ///
-    /// Types are prefixed by length, which is not included in this count.
+    /// Items are prefixed by a 16-bit length number, which is not included in this length.
     pub fn len(&self) -> usize {
         self.data.len()
     }
 
-    /// Returns whether this type's data is empty.
+    /// Returns whether this items's data is empty.
     ///
-    /// Types are prefixed by length, which is not included in this operation.
+    /// Items are prefixed by a 16-bit length number, which is not included in this operation.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
-    /// Returns the kind of type identified by this `Type`.
+    /// Returns the identifier of the kind of data stored by this this `Item`.
     ///
-    /// As a special case, if this `Type` is actually a primitive type, `raw_kind()` will return
-    /// `0xffff`.
+    /// As a special case, if this is a primitive [`Type`], this function will return `0xffff`.
+    ///
+    /// [`Type`]: type.Type.html
     #[inline]
     pub fn raw_kind(&self) -> u16 {
         debug_assert!(self.data.len() >= 2);
@@ -242,43 +302,62 @@ where
     }
 }
 
-/// A `TypeFinder` is a secondary, in-memory data structure that permits efficiently finding types
-/// by `TypeIndex`. It starts out empty and must be populated by calling `update(&TypeIter)` while
-/// iterating.
+/// In-memory index for efficient random-access of [`Items`] by index.
 ///
-/// `TypeFinder` allocates all the memory it needs when it is first created. The footprint is
-/// directly proportional to the total number of types; see `TypeInformation.len()`.
+/// `ItemFinder` can be obtained via [`ItemInformation::finder`]. It starts out empty and must be
+/// populated by calling [`update`] while iterating. There are two typedefs for easier use:
+///
+///  - [`TypeFinder`] for finding [`Types`] in a [`TypeInformation`] (TPI stream).
+///  - [`IdFinder`] for finding [`Ids`] in a [`IdInformation`] (IPI stream).
+///
+/// `ItemFinder` allocates all the memory it needs when it is first created. The footprint is
+/// directly proportional to the total number of types; see [`ItemInformation::len`].
 ///
 /// # Time/space trade-off
 ///
-/// The naïve approach is to store the position of each `Type` as they are covered in the stream.
-/// The cost is memory: namely one `u32` per `Type`.
+/// The naïve approach is to store the position of each `Item` as they are covered in the stream.
+/// The cost is memory: namely one `u32` per `Item`.
 ///
-/// Compare this approach to a `TypeFinder` that stores the position of every Nth type. Memory
+/// Compare this approach to an `ItemFinder` that stores the position of every Nth item. Memory
 /// requirements would be reduced by a factor of N in exchange for requiring an average of (N-1)/2
 /// iterations per lookup. However, iteration is cheap sequential memory access, and spending less
-/// memory on `TypeFinder` means more of the data can fit in the cache, so this is likely a good
+/// memory on `ItemFinder` means more of the data can fit in the cache, so this is likely a good
 /// trade-off for small-ish values of N.
 ///
-/// `TypeFinder` is parameterized by `shift` which controls this trade-off as powers of two:
+/// `ItemFinder` is parameterized by `shift` which controls this trade-off as powers of two:
 ///
-///   * If `shift` is 0, `TypeFinder` stores 4 bytes per `Type` and always performs direct lookups.
-///   * If `shift` is 1, `TypeFinder` stores 2 bytes per `Type` and averages 0.5 iterations per lookup.
-///   * If `shift` is 2, `TypeFinder` stores 1 byte per `Type` and averages 1.5 iterations per lookup.
-///   * If `shift` is 3, `TypeFinder` stores 4 bits per `Type` and averages 3.5 iterations per lookup.
-///   * If `shift` is 4, `TypeFinder` stores 2 bits per `Type` and averages 7.5 iterations per lookup.
-///   * If `shift` is 5, `TypeFinder` stores 1 bit per `Type` and averages 15.5 iterations per lookup.
+///   * If `shift` is 0, `ItemFinder` stores 4 bytes per `Item` and always performs direct lookups.
+///   * If `shift` is 1, `ItemFinder` stores 2 bytes per `Item` and averages 0.5 iterations per
+///     lookup.
+///   * If `shift` is 2, `ItemFinder` stores 1 byte per `Item` and averages 1.5 iterations per
+///     lookup.
+///   * If `shift` is 3, `ItemFinder` stores 4 bits per `Item` and averages 3.5 iterations per
+///     lookup.
+///   * If `shift` is 4, `ItemFinder` stores 2 bits per `Item` and averages 7.5 iterations per
+///     lookup.
+///   * If `shift` is 5, `ItemFinder` stores 1 bit per `Item` and averages 15.5 iterations per
+///     lookup.
 ///
 /// This list can continue but with rapidly diminishing returns. Iteration cost is proportional to
-/// type size, which varies, but typical numbers from a large program are:
+/// item size, which varies, but typical numbers from a large program are:
 ///
-///   * 24% of types are    12 bytes
-///   * 34% of types are <= 16 bytes
-///   * 84% of types are <= 32 bytes
+///   * 24% of items are    12 bytes
+///   * 34% of items are <= 16 bytes
+///   * 84% of items are <= 32 bytes
 ///
-/// A `shift` of 2 or 3 is likely appropriate for most workloads. 500K types would require 1 MB or
+/// A `shift` of 2 or 3 is likely appropriate for most workloads. 500K items would require 1 MB or
 /// 500 KB of memory respectively, and lookups -- though indirect -- would still usually need only
 /// one or two 64-byte cache lines.
+///
+/// [`Items`]: struct.Item.html
+/// [`ItemInformation::finder`]: struct.ItemInformation.html#method.finder
+/// [`ItemInformation::len`]: struct.ItemInformation.html#method.len
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+/// [`TypeFinder`]: type.TypeFinder.html
+/// [`Types`]: type.Type.html
+/// [`IdFinder`]: type.IdFinder.html
+/// [`Ids`]: type.Id.html
 #[derive(Debug)]
 pub struct ItemFinder<'t, I> {
     buffer: ParseBuffer<'t>,
@@ -312,7 +391,7 @@ where
         }
     }
 
-    /// Given a `TypeIndex`, find which position in the Vec we should jump to and how many times we
+    /// Given an index, find which position in the Vec we should jump to and how many times we
     /// need to iterate to find the requested type.
     ///
     /// `shift` refers to the size of these bit shifts.
@@ -325,24 +404,23 @@ where
         )
     }
 
-    /// Returns the highest `TypeIndex` which is currently served by this `TypeFinder`.
+    /// Returns the highest index which is currently served by this `ItemFinder`.
     ///
-    /// In general, you shouldn't need to consider this. Types always refer to types with lower
-    /// `TypeIndex`es, and either:
-    ///
-    ///  * You obtained a `Type` by iterating, in which case you should be calling `update()` as you
-    ///    iterate, and in which case all types it can reference are <= `max_index()`, or
-    ///  * You got a `Type` from this `TypeFinder`, in which case all types it can reference are
-    ///    still <= `max_index()`.
-    ///
+    /// When iterating through the stream, you shouldn't need to consider this. Items only ever
+    /// reference lower indexes. However, when loading items referenced by the symbols stream, this
+    /// can be useful to check whether iteration is required.
     #[inline]
     pub fn max_index(&self) -> I {
         I::from((self.positions.len() << self.shift) as u32 + self.minimum_index - 1)
     }
 
-    /// Update this `TypeFinder` based on the current position of a `TypeIter`.
+    /// Update this `ItemFinder` based on the current position of a [`ItemIter`].
     ///
-    /// Do this each time you call `.next()`.
+    /// Do this each time you call `.next()`. See documentation of [`ItemInformation`] for an
+    /// example.
+    ///
+    /// [`ItemIter`]: struct.ItemIter.html
+    /// [`ItemInformation`]: struct.ItemInformation.html
     #[inline]
     pub fn update(&mut self, iterator: &ItemIter<'t, I>) {
         let (vec_index, iteration_count) = self.resolve(iterator.index);
@@ -353,13 +431,13 @@ where
         }
     }
 
-    /// Find a type by `TypeIndex`.
+    /// Find an `Item` by its index.
     ///
     /// # Errors
     ///
-    /// * `Error::TypeNotFound(type_index)` if you ask for a type that doesn't exist
-    /// * `Error::TypeNotIndexed(type_index, max_index)` if you ask for a type that is known
-    ///   to exist but is not currently known by this `TypeFinder`.
+    /// * `Error::TypeNotFound(index)` if you ask for an item that doesn't exist.
+    /// * `Error::TypeNotIndexed(index, max_index)` if you ask for an item that is known to exist
+    ///   but is not currently known by this `ItemFinder`.
     pub fn find(&self, index: I) -> Result<Item<'t, I>> {
         let index: u32 = index.into();
         if index < self.minimum_index {
@@ -401,11 +479,14 @@ where
     }
 }
 
-/// A `TypeIter` iterates over a `TypeInformation`, producing `Types`s.
+/// An iterator over items in [`TypeInformation`] or [`IdInformation`].
 ///
-/// Type streams are represented internally as a series of records, each of which have a length, a
-/// type, and a type-specific field layout. Iteration performance is therefore similar to a linked
-/// list.
+/// The TPI and IPI streams are represented internally as a series of records, each of which have a
+/// length, a kind, and a type-specific field layout. Iteration performance is therefore similar to
+/// a linked list.
+///
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
 #[derive(Debug)]
 pub struct ItemIter<'t, I> {
     buf: ParseBuffer<'t>,
@@ -451,12 +532,36 @@ where
 
 impl ItemIndex for TypeIndex {}
 
+/// Zero-copy access to the PDB type stream (TPI).
+///
+/// This stream exposes types, the variants of which are enumerated by [`TypeData`]. See
+/// [`ItemInformation`] for more information on accessing types.
+///
+/// [`TypeData`]: enum.TypeData.html
+/// [`ItemInformation`]: struct.ItemInformation.html
 pub type TypeInformation<'s> = ItemInformation<'s, TypeIndex>;
-pub type Type<'t> = Item<'t, TypeIndex>;
+
+/// In-memory index for efficient random-access of [`Types`] by index.
+///
+/// `TypeFinder` can be obtained via [`TypeInformation::finder`]. See [`ItemFinder`] for more
+/// information.
+///
+/// [`Types`]: type.Type.html
+/// [`TypeInformation::finder`]: struct.ItemInformation.html#method.finder
+/// [`ItemFinder`]: struct.ItemFinder.html
 pub type TypeFinder<'t> = ItemFinder<'t, TypeIndex>;
 
+/// An iterator over [`Types`] returned by [`TypeInformation::iter`].
+///
+/// [`TypeInformation::iter`]: struct.ItemInformation.html#method.iter
+/// [`Types`]: type.Type.html
+pub type TypeIter<'t> = ItemIter<'t, TypeIndex>;
+
+/// Information on a primitive type, class, or procedure.
+pub type Type<'t> = Item<'t, TypeIndex>;
+
 impl<'t> Item<'t, TypeIndex> {
-    /// Parse this Type into a TypeData.
+    /// Parse this `Type` into `TypeData`.
     ///
     /// # Errors
     ///
@@ -476,18 +581,42 @@ impl<'t> Item<'t, TypeIndex> {
 
 impl ItemIndex for IdIndex {}
 
+/// Zero-copy access to the PDB type stream (TPI).
+///
+/// This stream exposes types, the variants of which are enumerated by [`IdData`]. See
+/// [`ItemInformation`] for more information on accessing types.
+///
+/// [`IdData`]: enum.IdData.html
+/// [`ItemInformation`]: struct.ItemInformation.html
 pub type IdInformation<'s> = ItemInformation<'s, IdIndex>;
-pub type Id<'t> = Item<'t, IdIndex>;
+
+/// In-memory index for efficient random-access of [`Ids`] by index.
+///
+/// `IdFinder` can be obtained via [`IdInformation::finder`]. See [`ItemFinder`] for more
+/// information.
+///
+/// [`Ids`]: type.Id.html
+/// [`IdInformation::finder`]: struct.ItemInformation.html#method.finder
+/// [`ItemFinder`]: struct.ItemFinder.html
 pub type IdFinder<'t> = ItemFinder<'t, IdIndex>;
 
+/// An iterator over [`Ids`] returned by [`IdInformation::iter`].
+///
+/// [`IdInformation::iter`]: struct.ItemInformation.html#method.iter
+/// [`Ids`]: type.Id.html
+pub type IdIter<'t> = ItemIter<'t, IdIndex>;
+
+/// Information on an inline function, build infos or source references.
+pub type Id<'t> = Item<'t, IdIndex>;
+
 impl<'t> Item<'t, IdIndex> {
-    /// Parse this Id into a IdData.
+    /// Parse this `Id` into `IdData`.
     ///
     /// # Errors
     ///
-    /// * `Error::UnimplementedTypeKind(kind)` if the type record isn't currently understood by this
+    /// * `Error::UnimplementedTypeKind(kind)` if the id record isn't currently understood by this
     ///   library
-    /// * `Error::UnexpectedEof` if the type record is malformed
+    /// * `Error::UnexpectedEof` if the id record is malformed
     pub fn parse(&self) -> Result<IdData<'t>> {
         ParseBuffer::from(self.data).parse()
     }

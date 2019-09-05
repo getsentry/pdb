@@ -86,7 +86,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// # Errors
     ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain the type information stream
+    /// * `Error::StreamNotFound` if the PDB does not contain the type information stream
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
@@ -96,16 +96,16 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         TypeInformation::parse(stream)
     }
 
-    /// Retrieve the `TypeInformation` for this PDB.
+    /// Retrieve the `IdInformation` for this PDB.
     ///
     /// The `IdInformation` object owns a `SourceView` for the type information ("IPI") stream.
     ///
     /// # Errors
     ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain the type information stream
+    /// * `Error::StreamNotFound` if the PDB does not contain the id information stream
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
+    /// * `Error::InvalidTypeInformationHeader` if the id information stream header was not
     ///   understood
     pub fn id_information(&mut self) -> Result<IdInformation<'s>> {
         let stream = self.msf.get(IPI_STREAM, None)?;

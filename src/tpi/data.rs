@@ -645,25 +645,6 @@ impl FunctionAttributes {
     }
 }
 
-/*
-typedef enum CV_ptrtype_e {
-    CV_PTR_NEAR         = 0x00, // 16 bit pointer
-    CV_PTR_FAR          = 0x01, // 16:16 far pointer
-    CV_PTR_HUGE         = 0x02, // 16:16 huge pointer
-    CV_PTR_BASE_SEG     = 0x03, // based on segment
-    CV_PTR_BASE_VAL     = 0x04, // based on value of base
-    CV_PTR_BASE_SEGVAL  = 0x05, // based on segment value of base
-    CV_PTR_BASE_ADDR    = 0x06, // based on address of base
-    CV_PTR_BASE_SEGADDR = 0x07, // based on segment address of base
-    CV_PTR_BASE_TYPE    = 0x08, // based on type
-    CV_PTR_BASE_SELF    = 0x09, // based on self
-    CV_PTR_NEAR32       = 0x0a, // 32 bit pointer
-    CV_PTR_FAR32        = 0x0b, // 16:32 pointer
-    CV_PTR_64           = 0x0c, // 64 bit pointer
-    CV_PTR_UNUSEDPTR    = 0x0d  // first unused pointer type
-} CV_ptrtype_e;
-*/
-
 /// The kind of a `PointerType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PointerKind {
@@ -694,18 +675,6 @@ pub enum PointerKind {
     /// 64 bit pointer.
     Ptr64,
 }
-
-/*
-typedef enum CV_ptrmode_e {
-    CV_PTR_MODE_PTR     = 0x00, // "normal" pointer
-    CV_PTR_MODE_REF     = 0x01, // "old" reference
-    CV_PTR_MODE_LVREF   = 0x01, // l-value reference
-    CV_PTR_MODE_PMEM    = 0x02, // pointer to data member
-    CV_PTR_MODE_PMFUNC  = 0x03, // pointer to member function
-    CV_PTR_MODE_RVREF   = 0x04, // r-value reference
-    CV_PTR_MODE_RESERVED= 0x05  // first unused pointer mode
-} CV_ptrmode_e;
-*/
 
 /// The mode of a `PointerType`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

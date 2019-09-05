@@ -63,11 +63,11 @@ pub enum Error {
     /// A type record's length value was impossibly small.
     TypeTooShort,
 
-    /// Type not found.
+    /// Type or Id not found.
     TypeNotFound(u32),
 
-    /// Type not indexed -- the requested type (`.0`) is larger than the maximum `TypeIndex` covered
-    /// by the `TypeFinder` (`.1`).
+    /// Type or Id not indexed -- the requested type (`.0`) is larger than the maximum index covered
+    /// by the `ItemFinder` (`.1`).
     TypeNotIndexed(u32, u32),
 
     /// Support for types of this kind is not implemented.
@@ -579,9 +579,10 @@ impl fmt::Debug for StreamIndex {
 impl_opt!(StreamIndex, 0xffff);
 impl_pread!(StreamIndex);
 
-/// Index of a [`Type`] in `PDB.type_information()`.
+/// Index of a [`Type`] in the [`TypeInformation`] stream.
 ///
-/// [`Type`]: struct.Type.html
+/// [`Type`]: type.Type.html
+/// [`TypeInformation`]: type.TypeInformation.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TypeIndex(pub u32);
 
@@ -589,7 +590,10 @@ impl_convert!(TypeIndex, u32);
 impl_hex_fmt!(TypeIndex);
 impl_pread!(TypeIndex);
 
-/// Index of an [`Id`] in `PDB. id_information()`.
+/// Index of an [`Id`] in [`IdInformation`] stream.
+///
+/// [`Id`]: type.Id.html
+/// [`IdInformation`]: type.IdInformation.html
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdIndex(pub u32);
 

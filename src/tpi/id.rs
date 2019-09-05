@@ -3,7 +3,6 @@ use scroll::ctx::TryFromCtx;
 use crate::common::*;
 use crate::tpi::constants::*;
 
-// TODO(ja): MOve these
 #[inline]
 fn parse_optional_id_index<'t>(buf: &mut ParseBuffer<'t>) -> Result<Option<IdIndex>> {
     Ok(match buf.parse()? {
