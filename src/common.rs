@@ -8,16 +8,13 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
-use std::ops::{Add, Sub};
+use std::ops::{Add, AddAssign, Sub};
 use std::result;
 
 use scroll::ctx::TryFromCtx;
 use scroll::{self, Endian, Pread, LE};
 
 use crate::tpi::constants;
-
-/// `TypeIndex` refers to a type somewhere in `PDB.type_information()`.
-pub type TypeIndex = u32;
 
 /// An error that occurred while reading or parsing the PDB.
 #[derive(Debug)]
@@ -96,6 +93,12 @@ pub enum Error {
 
     /// The lines table is missing.
     LinesNotFound,
+
+    /// A binary annotation was compressed incorrectly.
+    InvalidCompressedAnnotation,
+
+    /// An unknown binary annotation was encountered.
+    UnknownBinaryAnnotation(u32),
 }
 
 impl std::error::Error for Error {
@@ -135,6 +138,8 @@ impl std::error::Error for Error {
             Error::UnimplementedFileChecksumKind(_) => "Unknown source file checksum kind",
             Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
             Error::LinesNotFound => "Line information not found for a module",
+            Error::InvalidCompressedAnnotation => "Invalid compressed annoation",
+            Error::UnknownBinaryAnnotation(_) => "Unknown binary annotation",
         }
     }
 }
@@ -197,6 +202,7 @@ impl fmt::Display for Error {
             Error::InvalidFileChecksumOffset(offset) => {
                 write!(f, "Invalid source file checksum offset {:#x}", offset)
             }
+            Error::UnknownBinaryAnnotation(num) => write!(f, "Unknown binary annotation {}", num),
             _ => fmt::Debug::fmt(self, f),
         }
     }
@@ -221,51 +227,89 @@ impl From<scroll::Error> for Error {
 /// The result type returned by this crate.
 pub type Result<T> = result::Result<T, Error>;
 
-/// Helper to format hexadecimal numbers.
-pub(crate) struct HexFmt<T>(pub T);
+/// Implements `Pread` using the inner type.
+macro_rules! impl_pread {
+    ($type:ty) => {
+        impl<'a> TryFromCtx<'a, Endian> for $type {
+            type Error = scroll::Error;
+            type Size = usize;
 
-impl<T> fmt::Debug for HexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#x}", self.0)
-    }
+            fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+                TryFromCtx::try_from_ctx(this, le).map(|(i, s)| (Self(i), s))
+            }
+        }
+    };
 }
 
-impl<T> fmt::Display for HexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
+/// Displays the type as hexadecimal number. Debug prints the type name around.
+macro_rules! impl_hex_fmt {
+    ($type:ty) => {
+        impl fmt::Display for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{:#x}", self.0)
+            }
+        }
+
+        impl fmt::Debug for $type {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, concat!(stringify!($type), "({})"), self)
+            }
+        }
+    };
 }
 
-/// Helper to format hexadecimal numbers with fixed width.
-pub(crate) struct FixedHexFmt<T>(pub T);
+/// Implements bidirectional conversion traits for the newtype.
+macro_rules! impl_convert {
+    ($type:ty, $inner:ty) => {
+        impl From<$inner> for $type {
+            fn from(offset: $inner) -> Self {
+                Self(offset)
+            }
+        }
 
-impl<T> fmt::Debug for FixedHexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let width = 2 * std::mem::size_of::<T>();
-        write!(f, "{:#01$x}", self.0, width + 2)
-    }
+        impl From<$type> for $inner {
+            fn from(string_ref: $type) -> Self {
+                string_ref.0
+            }
+        }
+    };
 }
 
-impl<T> fmt::Display for FixedHexFmt<T>
-where
-    T: fmt::LowerHex,
-{
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
-    }
+/// Declares that the given value represents `None`.
+///
+///  - `Type::none` and `Default::default` return the none value.
+///  - `Type::is_some` and `Type::is_none` check for the none value.
+macro_rules! impl_opt {
+    ($type:ty, $none:literal) => {
+        impl $type {
+            /// Returns an index that points to no value.
+            #[inline]
+            pub const fn none() -> Self {
+                Self($none)
+            }
+
+            /// Returns `true` if the index points to a valid value.
+            #[inline]
+            #[must_use]
+            pub fn is_some(self) -> bool {
+                self.0 != $none
+            }
+
+            /// Returns `true` if the index indicates the absence of a value.
+            #[inline]
+            #[must_use]
+            pub fn is_none(self) -> bool {
+                self.0 == $none
+            }
+        }
+
+        impl Default for $type {
+            #[inline]
+            fn default() -> Self {
+                Self::none()
+            }
+        }
+    };
 }
 
 /// Implements common functionality for virtual addresses.
@@ -304,25 +348,22 @@ macro_rules! impl_va {
             }
         }
 
-        impl From<u32> for $type {
-            fn from(addr: u32) -> Self {
-                Self(addr)
-            }
-        }
-
-        impl From<$type> for u32 {
-            fn from(addr: $type) -> Self {
-                addr.0
-            }
-        }
-
         impl Add<u32> for $type {
             type Output = Self;
 
             /// Adds the given offset to this address.
+            #[inline]
             fn add(mut self, offset: u32) -> Self {
                 self.0 += offset;
                 self
+            }
+        }
+
+        impl AddAssign<u32> for $type {
+            /// Adds the given offset to this address.
+            #[inline]
+            fn add_assign(&mut self, offset: u32) {
+                self.0 += offset;
             }
         }
 
@@ -334,17 +375,8 @@ macro_rules! impl_va {
             }
         }
 
-        impl fmt::Display for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                HexFmt(self.0).fmt(f)
-            }
-        }
-
-        impl fmt::Debug for $type {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, concat!(stringify!($type, "({})")), self)
-            }
-        }
+        impl_convert!($type, u32);
+        impl_hex_fmt!($type);
     };
 }
 
@@ -370,15 +402,7 @@ impl_va!(Rva);
 pub struct PdbInternalRva(pub u32);
 
 impl_va!(PdbInternalRva);
-
-impl<'a> TryFromCtx<'a, Endian> for PdbInternalRva {
-    type Error = scroll::Error;
-    type Size = usize;
-
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (PdbInternalRva(i), s))
-    }
-}
+impl_pread!(PdbInternalRva);
 
 /// Implements common functionality for section offsets.
 macro_rules! impl_section_offset {
@@ -429,9 +453,21 @@ macro_rules! impl_section_offset {
             ///
             /// This does not check whether the offset is still valid within the given section. If
             /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            #[inline]
             fn add(mut self, offset: u32) -> Self {
                 self.offset += offset;
                 self
+            }
+        }
+
+        impl AddAssign<u32> for $type {
+            /// Adds the given offset to this section offset.
+            ///
+            /// This does not check whether the offset is still valid within the given section. If
+            /// the offset is out of bounds, the conversion to `Rva` will return `None`.
+            #[inline]
+            fn add_assign(&mut self, offset: u32) {
+                self.offset += offset;
             }
         }
 
@@ -450,8 +486,8 @@ macro_rules! impl_section_offset {
         impl fmt::Debug for $type {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 f.debug_struct(stringify!($type))
-                    .field("section", &HexFmt(self.section))
-                    .field("offset", &FixedHexFmt(self.offset))
+                    .field("section", &format_args!("{:#x}", self.section))
+                    .field("offset", &format_args!("{:#x}", self.offset))
                     .finish()
             }
         }
@@ -515,20 +551,6 @@ impl_section_offset!(PdbInternalSectionOffset);
 pub struct StreamIndex(pub u16);
 
 impl StreamIndex {
-    /// Creates a stream index that points to no stream.
-    pub fn none() -> Self {
-        StreamIndex(0xffff)
-    }
-
-    /// Determines whether this index indicates the absence of a stream.
-    ///
-    /// Loading a missing stream from the PDB will result in `None`. Otherwise, the stream is
-    /// expected to be present in the MSF and will result in an error if loading.
-    #[inline]
-    pub fn is_none(self) -> bool {
-        self.msf_number().is_none()
-    }
-
     /// Returns the MSF stream number, if this stream is not a NULL stream.
     #[inline]
     pub(crate) fn msf_number(self) -> Option<u32> {
@@ -536,12 +558,6 @@ impl StreamIndex {
             0xffff => None,
             index => Some(u32::from(index)),
         }
-    }
-}
-
-impl Default for StreamIndex {
-    fn default() -> Self {
-        Self::none()
     }
 }
 
@@ -560,14 +576,26 @@ impl fmt::Debug for StreamIndex {
     }
 }
 
-impl<'a> TryFromCtx<'a, Endian> for StreamIndex {
-    type Error = scroll::Error;
-    type Size = usize;
+impl_opt!(StreamIndex, 0xffff);
+impl_pread!(StreamIndex);
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u16::try_from_ctx(this, le).map(|(i, s)| (StreamIndex(i), s))
-    }
-}
+/// Index of a [`Type`] in `PDB.type_information()`.
+///
+/// [`Type`]: struct.Type.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct TypeIndex(pub u32);
+
+impl_convert!(TypeIndex, u32);
+impl_hex_fmt!(TypeIndex);
+impl_pread!(TypeIndex);
+
+/// Index of an [`Id`] in `PDB. id_information()`.
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct IdIndex(pub u32);
+
+impl_convert!(IdIndex, u32);
+impl_hex_fmt!(IdIndex);
+impl_pread!(IdIndex);
 
 /// A reference to a string in the string table.
 ///
@@ -580,41 +608,44 @@ impl<'a> TryFromCtx<'a, Endian> for StreamIndex {
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StringRef(pub u32);
 
-impl From<u32> for StringRef {
-    fn from(offset: u32) -> Self {
-        StringRef(offset)
-    }
-}
+impl_convert!(StringRef, u32);
+impl_hex_fmt!(StringRef);
+impl_pread!(StringRef);
 
-impl From<StringRef> for u32 {
-    fn from(string_ref: StringRef) -> Self {
-        string_ref.0
-    }
-}
+/// Index of a file entry in the module.
+///
+/// Use the [`LineProgram`] to resolve information on the file from this offset.
+///
+/// [`LineProgram`]: struct.LineProgram.html
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct FileIndex(pub u32);
 
-impl fmt::Display for StringRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:#010x}", self.0)
-    }
-}
+impl_convert!(FileIndex, u32);
+impl_hex_fmt!(FileIndex);
+impl_pread!(FileIndex);
 
-impl fmt::Debug for StringRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "StringRef({})", self)
-    }
-}
+/// A reference into the symbol table of a module.
+///
+/// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
+/// use [`SymbolIter::seek`] to jump between symbols.
+///
+/// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
+/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
+#[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct SymbolIndex(pub u32);
 
-impl<'a> TryFromCtx<'a, Endian> for StringRef {
-    type Error = scroll::Error;
-    type Size = usize;
+impl_convert!(SymbolIndex, u32);
+impl_hex_fmt!(SymbolIndex);
+impl_pread!(SymbolIndex);
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
-        u32::try_from_ctx(this, le).map(|(i, s)| (StringRef(i), s))
-    }
-}
+/// A register referred to by its number.
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Register(pub u16);
+
+impl_convert!(Register, u16);
+impl_pread!(Register);
 
 /// Provides little-endian access to a &[u8].
-#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
 
@@ -622,6 +653,7 @@ macro_rules! def_parse {
     ( $( ($n:ident, $t:ty) ),* $(,)* ) => {
         $(#[doc(hidden)]
           #[inline]
+          #[allow(unused)]
           pub fn $n(&mut self) -> Result<$t> {
               Ok(self.parse()?)
           })*
@@ -657,6 +689,23 @@ impl<'b> ParseBuffer<'b> {
         self.1
     }
 
+    /// Seek to the given absolute position.
+    #[inline]
+    pub fn seek(&mut self, pos: usize) {
+        self.1 = std::cmp::min(pos, self.0.len());
+    }
+
+    /// Truncates the buffer at the given absolute position.
+    #[inline]
+    pub fn truncate(&mut self, len: usize) -> Result<()> {
+        if self.0.len() >= len {
+            self.0 = &self.0[..len];
+            Ok(())
+        } else {
+            Err(Error::UnexpectedEof)
+        }
+    }
+
     /// Align the current position to the next multiple of `alignment` bytes.
     #[inline]
     pub fn align(&mut self, alignment: usize) -> Result<()> {
@@ -673,9 +722,22 @@ impl<'b> ParseBuffer<'b> {
     /// Parse an object that implements `Pread`.
     pub fn parse<T>(&mut self) -> Result<T>
     where
-        T: TryFromCtx<'b, Endian, [u8], Error = scroll::Error, Size = usize>,
+        T: TryFromCtx<'b, Endian, [u8], Size = usize>,
+        T::Error: From<scroll::Error>,
+        Error: From<T::Error>,
     {
         Ok(self.0.gread_with(&mut self.1, LE)?)
+    }
+
+    /// Parse an object that implements `Pread` with the given context.
+    pub fn parse_with<T, C>(&mut self, ctx: C) -> Result<T>
+    where
+        T: TryFromCtx<'b, C, [u8], Size = usize>,
+        T::Error: From<scroll::Error>,
+        Error: From<T::Error>,
+        C: Copy,
+    {
+        Ok(self.0.gread_with(&mut self.1, ctx)?)
     }
 
     def_parse!(
@@ -691,7 +753,6 @@ impl<'b> ParseBuffer<'b> {
     def_peek!((peek_u8, u8), (peek_u16, u16),);
 
     /// Parse a NUL-terminated string from the input.
-    #[doc(hidden)]
     #[inline]
     pub fn parse_cstring(&mut self) -> Result<RawString<'b>> {
         let input = &self.0[self.1..];
@@ -706,7 +767,6 @@ impl<'b> ParseBuffer<'b> {
     }
 
     /// Parse a u8-length-prefixed string from the input.
-    #[doc(hidden)]
     #[inline]
     pub fn parse_u8_pascal_string(&mut self) -> Result<RawString<'b>> {
         let length = self.parse_u8()? as usize;
@@ -714,7 +774,6 @@ impl<'b> ParseBuffer<'b> {
     }
 
     /// Take n bytes from the input
-    #[doc(hidden)]
     #[inline]
     pub fn take(&mut self, n: usize) -> Result<&'b [u8]> {
         let input = &self.0[self.1..];
@@ -723,69 +782,6 @@ impl<'b> ParseBuffer<'b> {
             Ok(&input[..n])
         } else {
             Err(Error::UnexpectedEof)
-        }
-    }
-
-    pub fn parse_variant(&mut self) -> Result<Variant> {
-        let leaf = self.parse_u16()?;
-        if leaf < constants::LF_NUMERIC {
-            // the u16 directly encodes a value
-            return Ok(Variant::U16(leaf));
-        }
-
-        match leaf {
-            constants::LF_CHAR => Ok(Variant::U8(self.parse_u8()?)),
-            constants::LF_SHORT => Ok(Variant::I16(self.parse_i16()?)),
-            constants::LF_LONG => Ok(Variant::I32(self.parse_i32()?)),
-            constants::LF_QUADWORD => Ok(Variant::I64(self.parse_i64()?)),
-            constants::LF_USHORT => Ok(Variant::U16(self.parse_u16()?)),
-            constants::LF_ULONG => Ok(Variant::U32(self.parse_u32()?)),
-            constants::LF_UQUADWORD => Ok(Variant::U64(self.parse_u64()?)),
-            _ => {
-                if cfg!(debug_assertions) {
-                    unreachable!();
-                } else {
-                    Err(Error::UnexpectedNumericPrefix(leaf))
-                }
-            }
-        }
-    }
-
-    #[doc(hidden)]
-    #[inline]
-    pub(crate) fn get_variant_size(&mut self) -> usize {
-        let leaf = self.parse_u16();
-        match leaf {
-            Ok(leaf) => {
-                if leaf < constants::LF_NUMERIC {
-                    // the u16 directly encodes a value
-                    return 2;
-                }
-
-                match leaf {
-                    constants::LF_CHAR => 2 + 1,
-                    constants::LF_SHORT => 2 + 2,
-                    constants::LF_LONG => 2 + 4,
-                    constants::LF_QUADWORD => 2 + 8,
-                    constants::LF_USHORT => 2 + 2,
-                    constants::LF_ULONG => 2 + 4,
-                    constants::LF_UQUADWORD => 2 + 8,
-                    _ => {
-                        if cfg!(debug_assertions) {
-                            unreachable!();
-                        } else {
-                            2
-                        }
-                    }
-                }
-            }
-            Err(_) => {
-                if cfg!(debug_assertions) {
-                    unreachable!();
-                } else {
-                    2
-                }
-            }
         }
     }
 }
@@ -825,8 +821,8 @@ pub enum Variant {
     I64(i64),
 }
 
-impl ::std::fmt::Display for Variant {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+impl fmt::Display for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Variant::U8(value) => write!(f, "{}", value),
             Variant::U16(value) => write!(f, "{}", value),
@@ -840,10 +836,34 @@ impl ::std::fmt::Display for Variant {
     }
 }
 
+impl<'a> TryFromCtx<'a, Endian> for Variant {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> Result<(Self, Self::Size)> {
+        let mut offset = 0;
+
+        let variant = match this.gread_with(&mut offset, le)? {
+            value if value < constants::LF_NUMERIC => Variant::U16(value),
+            constants::LF_CHAR => Variant::U8(this.gread_with(&mut offset, le)?),
+            constants::LF_SHORT => Variant::I16(this.gread_with(&mut offset, le)?),
+            constants::LF_LONG => Variant::I32(this.gread_with(&mut offset, le)?),
+            constants::LF_QUADWORD => Variant::I64(this.gread_with(&mut offset, le)?),
+            constants::LF_USHORT => Variant::U16(this.gread_with(&mut offset, le)?),
+            constants::LF_ULONG => Variant::U32(this.gread_with(&mut offset, le)?),
+            constants::LF_UQUADWORD => Variant::U64(this.gread_with(&mut offset, le)?),
+            _ if cfg!(debug_assertions) => unreachable!(),
+            other => return Err(Error::UnexpectedNumericPrefix(other)),
+        };
+
+        Ok((variant, offset))
+    }
+}
+
 /// `RawString` refers to a `&[u8]` that physically resides somewhere inside a PDB data structure.
 ///
 /// A `RawString` may not be valid UTF-8.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct RawString<'b>(&'b [u8]);
 
 impl fmt::Debug for RawString<'_> {
@@ -1133,6 +1153,43 @@ mod tests {
             let mut buf = ParseBuffer::from(&b"123"[..]);
             buf.take(3).unwrap();
             assert!(buf.align(4).is_err());
+        }
+
+        #[test]
+        fn test_seek() {
+            let mut buf = ParseBuffer::from(&b"hello"[..]);
+            buf.seek(5);
+            assert_eq!(buf.pos(), 5);
+            buf.seek(2);
+            assert_eq!(buf.pos(), 2);
+            buf.seek(10);
+            assert_eq!(buf.pos(), 5);
+        }
+    }
+
+    mod newtypes {
+        use crate::common::*;
+
+        // These tests use SymbolIndex as a proxy for all other types.
+
+        #[test]
+        fn test_format_newtype() {
+            let val = SymbolIndex(0x42);
+            assert_eq!(format!("{}", val), "0x42");
+        }
+
+        #[test]
+        fn test_debug_newtype() {
+            let val = SymbolIndex(0x42);
+            assert_eq!(format!("{:?}", val), "SymbolIndex(0x42)");
+        }
+
+        #[test]
+        fn test_pread() {
+            let mut buf = ParseBuffer::from(&[0x42, 0, 0, 0][..]);
+            let val = buf.parse::<SymbolIndex>().expect("parse");
+            assert_eq!(val, SymbolIndex(0x42));
+            assert!(buf.is_empty());
         }
     }
 }

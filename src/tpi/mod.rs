@@ -145,7 +145,7 @@ impl<'s> TypeInformation<'s> {
     /// Note that primitive types are not stored in the PDB file, so the number of distinct types
     /// reachable via this `TypeInformation` will be higher than `len()`.
     pub fn len(&self) -> usize {
-        (self.header.maximum_type_index - self.header.minimum_type_index) as usize
+        (self.header.maximum_type_index.0 - self.header.minimum_type_index.0) as usize
     }
 
     /// Returns whether this `TypeInformation` contains any types.
@@ -220,7 +220,7 @@ impl<'t> Type<'t> {
     ///   library
     /// * `Error::UnexpectedEof` if the type record is malformed
     pub fn parse(&self) -> Result<TypeData<'t>> {
-        if self.0 < 0x1000 {
+        if self.0 < TypeIndex(0x1000) {
             // Primitive type
             type_data_for_primitive(self.0)
         } else {
@@ -289,7 +289,7 @@ pub struct TypeFinder<'t> {
 
 impl<'t> TypeFinder<'t> {
     fn new(type_info: &'t TypeInformation<'_>, shift: u8) -> Self {
-        let count = type_info.header.maximum_type_index - type_info.header.minimum_type_index;
+        let count = type_info.header.maximum_type_index.0 - type_info.header.minimum_type_index.0;
         let shifted_count = (count >> shift) as usize;
 
         let mut positions = Vec::with_capacity(shifted_count);
@@ -312,7 +312,7 @@ impl<'t> TypeFinder<'t> {
     /// `shift` refers to the size of these bit shifts.
     #[inline]
     fn resolve(&self, type_index: TypeIndex) -> (usize, usize) {
-        let raw = type_index - self.minimum_type_index;
+        let raw = type_index.0 - self.minimum_type_index.0;
         (
             (raw >> self.shift) as usize,
             (raw & ((1 << self.shift) - 1)) as usize,
@@ -331,7 +331,7 @@ impl<'t> TypeFinder<'t> {
     ///
     #[inline]
     pub fn max_indexed_type(&self) -> TypeIndex {
-        (self.positions.len() << self.shift) as TypeIndex + self.minimum_type_index - 1
+        TypeIndex((self.positions.len() << self.shift) as u32 + self.minimum_type_index.0 - 1)
     }
 
     /// Update this `TypeFinder` based on the current position of a `TypeIter`.
@@ -421,7 +421,7 @@ impl<'t> FallibleIterator for TypeIter<'t> {
         let type_buf = self.buf.take(length)?;
         let my_type_index = self.type_index;
 
-        self.type_index += 1;
+        self.type_index.0 += 1;
 
         // Done
         Ok(Some(Type(my_type_index, type_buf)))

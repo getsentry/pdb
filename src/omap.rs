@@ -63,8 +63,14 @@ impl OMAPRecord {
 impl fmt::Debug for OMAPRecord {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.debug_struct("OMAPRecord")
-            .field("source_address", &FixedHexFmt(self.source_address()))
-            .field("target_address", &FixedHexFmt(self.target_address()))
+            .field(
+                "source_address",
+                &format_args!("{:#010x}", self.source_address()),
+            )
+            .field(
+                "target_address",
+                &format_args!("{:#010x}", self.target_address()),
+            )
             .finish()
     }
 }
@@ -374,7 +380,7 @@ impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 ///
 /// # let symbol_table = pdb.global_symbols()?;
 /// # let symbol = symbol_table.iter().next()?.unwrap();
-/// # match symbol.parse() { Ok(pdb::SymbolData::PublicSymbol(pubsym)) => {
+/// # match symbol.parse() { Ok(pdb::SymbolData::Public(pubsym)) => {
 /// // Obtain some section offset, eg from a symbol, and convert it
 /// match pubsym.offset.to_rva(&address_map) {
 ///     Some(rva) => {

@@ -37,26 +37,26 @@ impl Header {
         assert!(buf.pos() == 0);
 
         let header = Header {
-            version: buf.parse_u32()?,
-            header_size: buf.parse_u32()?,
-            minimum_type_index: buf.parse_u32()?,
-            maximum_type_index: buf.parse_u32()?,
-            gprec_size: buf.parse_u32()?,
-            tpi_hash_stream: buf.parse_u16()?,
-            tpi_hash_pad_stream: buf.parse_u16()?,
-            hash_key_size: buf.parse_u32()?,
-            hash_bucket_size: buf.parse_u32()?,
+            version: buf.parse()?,
+            header_size: buf.parse()?,
+            minimum_type_index: buf.parse()?,
+            maximum_type_index: buf.parse()?,
+            gprec_size: buf.parse()?,
+            tpi_hash_stream: buf.parse()?,
+            tpi_hash_pad_stream: buf.parse()?,
+            hash_key_size: buf.parse()?,
+            hash_bucket_size: buf.parse()?,
             hash_values: Slice {
-                offset: buf.parse_i32()?,
-                size: buf.parse_u32()?,
+                offset: buf.parse()?,
+                size: buf.parse()?,
             },
             ti_off: Slice {
-                offset: buf.parse_i32()?,
-                size: buf.parse_u32()?,
+                offset: buf.parse()?,
+                size: buf.parse()?,
             },
             hash_adj: Slice {
-                offset: buf.parse_i32()?,
-                size: buf.parse_u32()?,
+                offset: buf.parse()?,
+                size: buf.parse()?,
             },
         };
 
@@ -77,7 +77,7 @@ impl Header {
         buf.take((header.header_size - bytes_read) as usize)?;
 
         // do some final validations
-        if header.minimum_type_index < 4096 {
+        if header.minimum_type_index < TypeIndex(4096) {
             return Err(Error::InvalidTypeInformationHeader(
                 "minimum type index is < 4096",
             ));

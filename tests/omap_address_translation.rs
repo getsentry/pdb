@@ -30,16 +30,20 @@ fn test_omap_symbol() {
     // find the target symbol
     let target_symbol = {
         let target_name = pdb::RawString::from("NtWaitForSingleObject");
-        let iter = global_symbols.iter();
-        iter.filter(|sym| sym.name().expect("symbol name") == target_name)
-            .next()
-            .expect("iterate symbols")
-            .expect("find target symbol")
+        let mut iter = global_symbols.iter();
+        iter.find(|sym| {
+            sym.parse()
+                .ok()
+                .and_then(|d| d.name())
+                .map_or(false, |n| n == target_name)
+        })
+        .expect("iterate symbols")
+        .expect("find target symbol")
     };
 
     // extract the PublicSymbol data
     let pubsym = match target_symbol.parse().expect("parse symbol") {
-        pdb::SymbolData::PublicSymbol(pubsym) => pubsym,
+        pdb::SymbolData::Public(pubsym) => pubsym,
         _ => panic!("expected public symbol"),
     };
 
