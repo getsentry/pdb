@@ -71,7 +71,7 @@ struct DebugSubsectionIterator<'a> {
 
 impl<'a> DebugSubsectionIterator<'a> {
     fn new(data: &'a [u8]) -> Self {
-        DebugSubsectionIterator {
+        Self {
             buf: ParseBuffer::from(data),
         }
     }
@@ -179,7 +179,7 @@ impl<'a> DebugInlineeLinesSubsection<'a> {
         let mut buf = ParseBuffer::from(data);
         let header = buf.parse::<DebugInlineeLinesHeader>()?;
 
-        Ok(DebugInlineeLinesSubsection {
+        Ok(Self {
             header,
             data: &data[buf.pos()..],
         })
@@ -220,7 +220,7 @@ impl<'a> DebugLinesSubsection<'a> {
         let mut buf = ParseBuffer::from(data);
         let header = buf.parse()?;
         let data = &data[buf.pos()..];
-        Ok(DebugLinesSubsection { header, data })
+        Ok(Self { header, data })
     }
 
     fn blocks(&self) -> DebugLinesBlockIterator<'a> {
@@ -566,7 +566,7 @@ struct DebugFileChecksumsSubsection<'a> {
 impl<'a> DebugFileChecksumsSubsection<'a> {
     /// Creates a new file checksums subsection.
     fn parse(data: &'a [u8]) -> Result<Self> {
-        Ok(DebugFileChecksumsSubsection { data })
+        Ok(Self { data })
     }
 
     /// Returns an iterator over all file checksum entries.
@@ -584,7 +584,7 @@ impl<'a> DebugFileChecksumsSubsection<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct C13LineIterator<'a> {
+pub struct LineIterator<'a> {
     /// Iterator over all subsections in the current module.
     sections: DebugSubsectionIterator<'a>,
     /// Iterator over all blocks in the current lines subsection.
@@ -595,7 +595,7 @@ pub struct C13LineIterator<'a> {
     columns: DebugColumnsIterator<'a>,
 }
 
-impl<'a> FallibleIterator for C13LineIterator<'a> {
+impl<'a> FallibleIterator for LineIterator<'a> {
     type Item = LineInfo;
     type Error = Error;
 
@@ -652,7 +652,7 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
 
 /// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
-pub struct C13InlineeLineIterator<'a> {
+pub struct InlineeLineIterator<'a> {
     annotations: BinaryAnnotationsIter<'a>,
     file_index: FileIndex,
     code_offset_base: u32,
@@ -666,13 +666,13 @@ pub struct C13InlineeLineIterator<'a> {
     last_info: Option<LineInfo>,
 }
 
-impl<'a> C13InlineeLineIterator<'a> {
+impl<'a> InlineeLineIterator<'a> {
     fn new(
         parent_offset: PdbInternalSectionOffset,
         inline_site: &InlineSiteSymbol<'a>,
         inlinee_line: InlineeSourceLine<'a>,
     ) -> Self {
-        C13InlineeLineIterator {
+        Self {
             annotations: inline_site.annotations.iter(),
             file_index: inlinee_line.file_id,
             code_offset_base: 0,
@@ -688,7 +688,7 @@ impl<'a> C13InlineeLineIterator<'a> {
     }
 }
 
-impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
+impl<'a> FallibleIterator for InlineeLineIterator<'a> {
     type Item = LineInfo;
     type Error = Error;
 
@@ -793,9 +793,9 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
 
 /// An inlined function that can evaluate to line information.
 #[derive(Clone, Debug, Default)]
-pub struct C13Inlinee<'a>(InlineeSourceLine<'a>);
+pub struct Inlinee<'a>(InlineeSourceLine<'a>);
 
-impl<'a> C13Inlinee<'a> {
+impl<'a> Inlinee<'a> {
     /// The index of this inlinee in the `IdInformation` stream (IPI).
     pub fn index(&self) -> IdIndex {
         self.0.inlinee
@@ -810,18 +810,18 @@ impl<'a> C13Inlinee<'a> {
         &self,
         parent_offset: PdbInternalSectionOffset,
         inline_site: &InlineSiteSymbol<'a>,
-    ) -> C13InlineeLineIterator<'a> {
-        C13InlineeLineIterator::new(parent_offset, inline_site, self.0)
+    ) -> InlineeLineIterator<'a> {
+        InlineeLineIterator::new(parent_offset, inline_site, self.0)
     }
 }
 
 /// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
-pub struct C13InlineeIterator<'a> {
+pub struct InlineeIterator<'a> {
     inlinee_lines: DebugInlineeLinesIterator<'a>,
 }
 
-impl<'a> C13InlineeIterator<'a> {
+impl<'a> InlineeIterator<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
         let inlinee_data = DebugSubsectionIterator::new(data)
             .find(|sec| sec.kind == DebugSubsectionKind::InlineeLines)?
@@ -838,13 +838,13 @@ impl<'a> C13InlineeIterator<'a> {
     }
 }
 
-impl<'a> FallibleIterator for C13InlineeIterator<'a> {
-    type Item = C13Inlinee<'a>;
+impl<'a> FallibleIterator for InlineeIterator<'a> {
+    type Item = Inlinee<'a>;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inlinee_lines.next() {
-            Ok(Some(inlinee_line)) => Ok(Some(C13Inlinee(inlinee_line))),
+            Ok(Some(inlinee_line)) => Ok(Some(Inlinee(inlinee_line))),
             Ok(None) => Ok(None),
             Err(error) => Err(error),
         }
@@ -852,11 +852,11 @@ impl<'a> FallibleIterator for C13InlineeIterator<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct C13FileIterator<'a> {
+pub struct FileIterator<'a> {
     checksums: DebugFileChecksumsIterator<'a>,
 }
 
-impl<'a> FallibleIterator for C13FileIterator<'a> {
+impl<'a> FallibleIterator for FileIterator<'a> {
     type Item = FileInfo<'a>;
     type Error = Error;
 
@@ -872,12 +872,12 @@ impl<'a> FallibleIterator for C13FileIterator<'a> {
     }
 }
 
-pub struct C13LineProgram<'a> {
+pub struct LineProgram<'a> {
     data: &'a [u8],
     file_checksums: DebugFileChecksumsSubsection<'a>,
 }
 
-impl<'a> C13LineProgram<'a> {
+impl<'a> LineProgram<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
         let checksums_data = DebugSubsectionIterator::new(data)
             .find(|sec| sec.kind == DebugSubsectionKind::FileChecksums)?
@@ -888,14 +888,14 @@ impl<'a> C13LineProgram<'a> {
             None => DebugFileChecksumsSubsection::default(),
         };
 
-        Ok(C13LineProgram {
+        Ok(Self {
             data,
             file_checksums,
         })
     }
 
-    pub(crate) fn lines(&self) -> C13LineIterator<'a> {
-        C13LineIterator {
+    pub(crate) fn lines(&self) -> LineIterator<'a> {
+        LineIterator {
             sections: DebugSubsectionIterator::new(self.data),
             blocks: DebugLinesBlockIterator::default(),
             lines: DebugLinesIterator::default(),
@@ -903,7 +903,7 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> C13LineIterator<'a> {
+    pub(crate) fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> LineIterator<'a> {
         // Since we only care about the start offset of an entire debug lines subsection, we can
         // quickly advance to the first (and only) subsection that matches that offset. Since they
         // are non-overlapping and not empty, we can bail out at the first match.
@@ -913,7 +913,7 @@ impl<'a> C13LineProgram<'a> {
             .find(|lines_section| lines_section.header.offset == offset);
 
         match section {
-            Ok(Some(section)) => C13LineIterator {
+            Ok(Some(section)) => LineIterator {
                 sections: DebugSubsectionIterator::default(),
                 blocks: section.blocks(),
                 lines: DebugLinesIterator::default(),
@@ -923,8 +923,8 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn files(&self) -> C13FileIterator<'a> {
-        C13FileIterator {
+    pub(crate) fn files(&self) -> FileIterator<'a> {
+        FileIterator {
             checksums: self.file_checksums.entries().unwrap_or_default(),
         }
     }
@@ -1047,7 +1047,7 @@ mod tests {
             section: 0x1,
         };
 
-        let iter = C13InlineeLineIterator::new(parent_offset, &inline_site, inlinee_line);
+        let iter = InlineeLineIterator::new(parent_offset, &inline_site, inlinee_line);
         let lines: Vec<_> = iter.collect().expect("collect inlinee lines");
 
         let expected = [

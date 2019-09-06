@@ -7,10 +7,7 @@ use crate::FallibleIterator;
 mod c13;
 mod constants;
 
-pub use c13::{
-    C13Inlinee as Inlinee, C13InlineeIterator as InlineeIterator,
-    C13InlineeLineIterator as InlineeLineIterator,
-};
+pub use c13::{Inlinee, InlineeIterator, InlineeLineIterator};
 
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
@@ -78,7 +75,7 @@ impl<'s> ModuleInfo<'s> {
         let inner = match self.lines_size {
             LinesSize::C11(_size) => return Err(Error::UnimplementedFeature("C11 line programs")),
             LinesSize::C13(size) => {
-                LineProgramInner::C13(c13::C13LineProgram::parse(self.lines_data(size))?)
+                LineProgramInner::C13(c13::LineProgram::parse(self.lines_data(size))?)
             }
         };
 
@@ -93,7 +90,7 @@ impl<'s> ModuleInfo<'s> {
         Ok(match self.lines_size {
             // C11 does not contain inlinee information.
             LinesSize::C11(_size) => Default::default(),
-            LinesSize::C13(size) => c13::C13InlineeIterator::parse(self.lines_data(size))?,
+            LinesSize::C13(size) => InlineeIterator::parse(self.lines_data(size))?,
         })
     }
 }
@@ -175,7 +172,7 @@ pub struct LineInfo {
 }
 
 enum LineProgramInner<'a> {
-    C13(c13::C13LineProgram<'a>),
+    C13(c13::LineProgram<'a>),
 }
 
 /// The `LineProgram` provides access to source line information for a module and its procedures.
@@ -233,7 +230,7 @@ impl<'a> LineProgram<'a> {
 
 #[derive(Clone, Debug)]
 enum LineIteratorInner<'a> {
-    C13(c13::C13LineIterator<'a>),
+    C13(c13::LineIterator<'a>),
 }
 
 /// An iterator over line information records in a module.
@@ -263,7 +260,7 @@ impl<'a> FallibleIterator for LineIterator<'a> {
 
 #[derive(Clone, Debug)]
 enum FileIteratorInner<'a> {
-    C13(c13::C13FileIterator<'a>),
+    C13(c13::FileIterator<'a>),
 }
 
 /// An iterator over file records in a module.
