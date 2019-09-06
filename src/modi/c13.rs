@@ -650,6 +650,7 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
     }
 }
 
+/// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
 pub struct C13InlineeLineIterator<'a> {
     annotations: BinaryAnnotationsIter<'a>,
@@ -790,15 +791,22 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
     }
 }
 
+/// An inlined function that can evaluate to line information.
 #[derive(Clone, Debug, Default)]
 pub struct C13Inlinee<'a>(InlineeSourceLine<'a>);
 
 impl<'a> C13Inlinee<'a> {
-    pub(crate) fn index(&self) -> IdIndex {
+    /// The index of this inlinee in the `IdInformation` stream (IPI).
+    pub fn index(&self) -> IdIndex {
         self.0.inlinee
     }
 
-    pub(crate) fn lines(
+    /// Returns an iterator over line records for an inline site.
+    ///
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
+    pub fn lines(
         &self,
         parent_offset: PdbInternalSectionOffset,
         inline_site: &InlineSiteSymbol<'a>,
@@ -807,6 +815,7 @@ impl<'a> C13Inlinee<'a> {
     }
 }
 
+/// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
 pub struct C13InlineeIterator<'a> {
     inlinee_lines: DebugInlineeLinesIterator<'a>,

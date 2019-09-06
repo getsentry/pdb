@@ -1,11 +1,16 @@
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::{InlineSiteSymbol, SymbolIter};
+use crate::symbol::SymbolIter;
 use crate::FallibleIterator;
 
 mod c13;
 mod constants;
+
+pub use c13::{
+    C13Inlinee as Inlinee, C13InlineeIterator as InlineeIterator,
+    C13InlineeLineIterator as InlineeLineIterator,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
@@ -85,11 +90,11 @@ impl<'s> ModuleInfo<'s> {
     /// Inlinees are not guaranteed to be sorted. When requiring random access by `ItemId`, collect
     /// them into a mapping structure rather than reiterating multiple times.
     pub fn inlinees(&self) -> Result<InlineeIterator<'_>> {
-        Ok(InlineeIterator(match self.lines_size {
+        Ok(match self.lines_size {
             // C11 does not contain inlinee information.
             LinesSize::C11(_size) => Default::default(),
             LinesSize::C13(size) => c13::C13InlineeIterator::parse(self.lines_data(size))?,
-        }))
+        })
     }
 }
 
@@ -253,56 +258,6 @@ impl<'a> FallibleIterator for LineIterator<'a> {
         match self.inner {
             LineIteratorInner::C13(ref mut inner) => inner.next(),
         }
-    }
-}
-
-/// An inlined function that can evaluate to line information.
-#[derive(Clone, Debug)]
-pub struct Inlinee<'a>(c13::C13Inlinee<'a>);
-
-impl<'a> Inlinee<'a> {
-    /// The index of this inlinee in the `IdInformation` stream (IPI).
-    pub fn index(&self) -> IdIndex {
-        self.0.index()
-    }
-
-    /// Returns an iterator over line records for an inline site.
-    ///
-    /// Note that line records are not guaranteed to be ordered by source code offset. If a
-    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
-    /// sorted manually.
-    pub fn lines(
-        &self,
-        parent_offset: PdbInternalSectionOffset,
-        inline_site: &InlineSiteSymbol<'a>,
-    ) -> InlineeLineIterator<'a> {
-        InlineeLineIterator(self.0.lines(parent_offset, inline_site))
-    }
-}
-
-/// An iterator over line information records in a module.
-#[derive(Clone, Debug, Default)]
-pub struct InlineeIterator<'a>(c13::C13InlineeIterator<'a>);
-
-impl<'a> FallibleIterator for InlineeIterator<'a> {
-    type Item = Inlinee<'a>;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>> {
-        self.0.next().map(|opt| opt.map(Inlinee))
-    }
-}
-
-/// An iterator over line information records in a module.
-#[derive(Clone, Debug, Default)]
-pub struct InlineeLineIterator<'a>(c13::C13InlineeLineIterator<'a>);
-
-impl<'a> FallibleIterator for InlineeLineIterator<'a> {
-    type Item = LineInfo;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>> {
-        self.0.next()
     }
 }
 
