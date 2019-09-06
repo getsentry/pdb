@@ -34,12 +34,8 @@ pub fn type_name<'p>(
                 _ => format!("unhandled_primitive.kind /* {:?} */", data.kind),
             };
 
-            match data.indirection {
-                pdb::Indirection::None => {}
-                _ => {
-                    name.push(' ');
-                    name.push('*');
-                }
+            if data.indirection.is_some() {
+                name.push_str(" *");
             }
 
             name
