@@ -44,6 +44,8 @@
 //! # assert!(test().expect("test") > 2000);
 //! ```
 
+#![warn(missing_docs)]
+
 // modules
 mod common;
 mod dbi;

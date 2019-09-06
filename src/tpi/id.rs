@@ -23,11 +23,17 @@ fn parse_string<'t>(leaf: u16, buf: &mut ParseBuffer<'t>) -> Result<RawString<'t
 /// Encapsulates parsed data about an `Id`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdData<'t> {
+    /// Global function, usually inlined.
     Function(FunctionId<'t>),
+    /// Member function, usually inlined.
     MemberFunction(MemberFunctionId<'t>),
+    /// Tool, version and command line build information.
     BuildInfo(BuildInfoId),
+    /// A list of substrings.
     StringList(StringListId),
+    /// A string.
     String(StringId<'t>),
+    /// Source and line of the definition of a User Defined Type (UDT).
     UserDefinedTypeSource(UserDefinedTypeSourceId),
 }
 
@@ -93,6 +99,9 @@ impl<'t> TryFromCtx<'t, scroll::Endian> for IdData<'t> {
     }
 }
 
+/// Global function, usually inlined.
+///
+/// This Id is usually referenced by [`InlineSiteSymbol`](struct.InlineSiteSymbol.html).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionId<'t> {
     /// Parent scope of this id.
@@ -103,6 +112,9 @@ pub struct FunctionId<'t> {
     pub name: RawString<'t>,
 }
 
+/// Member function, usually inlined.
+///
+/// This Id is usually referenced by [`InlineSiteSymbol`](struct.InlineSiteSymbol.html).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MemberFunctionId<'t> {
     /// Index of the parent type.
@@ -113,18 +125,28 @@ pub struct MemberFunctionId<'t> {
     pub name: RawString<'t>,
 }
 
+/// Tool, version and command line build information.
+///
+/// This Id is usually referenced by [`BuildInfoSymbol`](struct.BuildInfoSymbol.html).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildInfoId {
     /// Indexes of build arguments.
     pub arguments: Vec<IdIndex>,
 }
 
+/// A list of substrings.
+///
+/// This Id is usually referenced by [`StringId`](struct.StringId.html).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringListId {
     /// The list of substrings.
     pub substrings: Vec<TypeIndex>,
 }
 
+/// A string.
+///
+/// This Id is usually referenced by [`FunctionId`](struct.FunctionId.html) and contains the
+/// full namespace of a function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringId<'t> {
     /// Index of the list of substrings.
@@ -133,6 +155,7 @@ pub struct StringId<'t> {
     pub name: RawString<'t>,
 }
 
+/// Source and line of the definition of a User Defined Type (UDT).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserDefinedTypeSourceId {
     /// Index of the UDT's type definition.

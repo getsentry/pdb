@@ -95,6 +95,7 @@ impl<'s> ModuleInfo<'s> {
 
 /// Checksum of a source file's contents.
 #[derive(Clone, Debug)]
+#[allow(missing_docs)]
 pub enum FileChecksum<'a> {
     None,
     Md5(&'a [u8]),

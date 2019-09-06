@@ -104,6 +104,7 @@ impl<'s> DebugInformation<'s> {
 ///
 /// This version type is used in multiple locations: the DBI header, and the PDBI header.
 #[derive(Debug, Copy, Clone)]
+#[allow(missing_docs)]
 pub enum HeaderVersion {
     V41,
     V50,
@@ -114,13 +115,14 @@ pub enum HeaderVersion {
 }
 
 impl From<u32> for HeaderVersion {
+    #[allow(clippy::inconsistent_digit_grouping)]
     fn from(v: u32) -> Self {
         match v {
-            930_803 => HeaderVersion::V41,
-            19_960_307 => HeaderVersion::V50,
-            19_970_606 => HeaderVersion::V60,
-            19_990_903 => HeaderVersion::V70,
-            20_091_201 => HeaderVersion::V110,
+            93_08_03 => HeaderVersion::V41,
+            1996_03_07 => HeaderVersion::V50,
+            1997_06_06 => HeaderVersion::V60,
+            1999_09_03 => HeaderVersion::V70,
+            2009_12_01 => HeaderVersion::V110,
             _ => HeaderVersion::OtherValue(v),
         }
     }

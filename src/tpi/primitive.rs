@@ -25,12 +25,14 @@ use crate::tpi::data::TypeData;
 /// Represents a primitive type like `void` or `char *`.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct PrimitiveType {
+    /// The kind of the primitive type.
     pub kind: PrimitiveKind,
 
-    /// What kind of indirection was applied to the underlying type
+    /// What kind of indirection was applied to the underlying type.
     pub indirection: Indirection,
 }
 
+/// A simple type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
     /// Void type
