@@ -26,15 +26,6 @@ pub use self::data::*;
 pub use self::id::*;
 pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 
-/// An index into either the [`TypeInformation`] or [`IdInformation`] stream.
-///
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
-pub trait ItemIndex:
-    Copy + Default + fmt::Debug + fmt::Display + PartialEq + PartialOrd + From<u32> + Into<u32>
-{
-}
-
 /// Zero-copy access to a PDB type or id stream.
 ///
 /// PDBs store two kinds of related streams with an identical internal structure:
@@ -530,8 +521,6 @@ where
     }
 }
 
-impl ItemIndex for TypeIndex {}
-
 /// Zero-copy access to the PDB type stream (TPI).
 ///
 /// This stream exposes types, the variants of which are enumerated by [`TypeData`]. See
@@ -578,8 +567,6 @@ impl<'t> Item<'t, TypeIndex> {
         }
     }
 }
-
-impl ItemIndex for IdIndex {}
 
 /// Zero-copy access to the PDB type stream (TPI).
 ///

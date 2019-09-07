@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
@@ -7,7 +9,10 @@ use crate::FallibleIterator;
 mod c13;
 mod constants;
 
-pub use c13::{Inlinee, InlineeIterator, InlineeLineIterator};
+pub use c13::{
+    CrossModuleExportIter, CrossModuleExports, CrossModuleImports, Inlinee, InlineeIterator,
+    InlineeLineIterator,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
@@ -91,6 +96,24 @@ impl<'s> ModuleInfo<'s> {
             // C11 does not contain inlinee information.
             LinesSize::C11(_size) => Default::default(),
             LinesSize::C13(size) => InlineeIterator::parse(self.lines_data(size))?,
+        })
+    }
+
+    /// Returns a table of exports declared by this module.
+    pub fn exports(&self) -> Result<CrossModuleExports<'_>> {
+        Ok(match self.lines_size {
+            // C11 does not have cross module exports.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => CrossModuleExports::parse(self.lines_data(size))?,
+        })
+    }
+
+    /// Returns a table of imports of this module.
+    pub fn imports(&self) -> Result<CrossModuleImports<'_>> {
+        Ok(match self.lines_size {
+            // C11 does not have cross module imports.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => CrossModuleImports::parse(self.lines_data(size))?,
         })
     }
 }
@@ -286,4 +309,41 @@ impl<'a> FallibleIterator for FileIterator<'a> {
             FileIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
+}
+
+/// Named reference to a [`Module`].
+///
+/// The name stored in the [`StringTable`] corresponds to the name of the module as returned by
+/// [`Module::module_name`].
+///
+/// [`Module`]: struct.Module.html
+/// [`Module::module_name`]: struct.Module.html#method.module_name
+/// [`StringTable`]: struct.StringTable.html
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct ModuleRef(pub StringRef);
+
+impl fmt::Display for ModuleRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Reference to a local type or id in another module.
+///
+/// See [`ItemIndex::is_cross_module`] for more information.
+///
+/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct CrossModuleRef<I: ItemIndex>(pub ModuleRef, pub Local<I>);
+
+/// A cross module export that can either be a `Type` or an `Id`.
+///
+/// Other modules may reference this item using its local ID by declaring it in the cross module
+/// imports subsection.
+#[derive(Clone, Copy, Debug)]
+pub enum CrossModuleExport {
+    /// A cross module export of a [`Type`](type.Type.html).
+    Type(Local<TypeIndex>, TypeIndex),
+    /// A cross module export of an [`Id`](type.Id.html).
+    Id(Local<IdIndex>, IdIndex),
 }

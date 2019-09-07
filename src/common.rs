@@ -73,6 +73,12 @@ pub enum Error {
     /// Support for types of this kind is not implemented.
     UnimplementedTypeKind(u16),
 
+    /// Type index is not a cross module reference.
+    NotACrossModuleRef(u32),
+
+    /// Cross module reference not found in imports.
+    CrossModuleRefNotFound(u32),
+
     /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
 
@@ -125,6 +131,8 @@ impl std::error::Error for Error {
             Error::TypeNotFound(_) => "Type not found",
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
+            Error::NotACrossModuleRef(_) => "Type index is not a cross module reference",
+            Error::CrossModuleRefNotFound(_) => "Cross module reference not found in imports",
             Error::UnexpectedNumericPrefix(_) => {
                 "Variable-length numeric parsing encountered an unexpected prefix"
             }
@@ -169,7 +177,7 @@ impl fmt::Display for Error {
             }
             Error::UnimplementedSymbolKind(kind) => write!(
                 f,
-                "Support for symbols of kind 0x{:04x} is not implemented",
+                "Support for symbols of kind {:#06x} is not implemented",
                 kind
             ),
             Error::InvalidTypeInformationHeader(reason) => {
@@ -183,17 +191,25 @@ impl fmt::Display for Error {
             ),
             Error::UnimplementedTypeKind(kind) => write!(
                 f,
-                "Support for types of kind 0x{:04x} is not implemented",
+                "Support for types of kind {:#06x} is not implemented",
                 kind
+            ),
+            Error::NotACrossModuleRef(index) => {
+                write!(f, "Type {:#06x} is not a cross module reference", index)
+            }
+            Error::CrossModuleRefNotFound(index) => write!(
+                f,
+                "Cross module reference {:#06x} not found in imports",
+                index
             ),
             Error::UnexpectedNumericPrefix(prefix) => write!(
                 f,
-                "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}",
+                "Variable-length numeric parsing encountered an unexpected prefix ({:#06x}",
                 prefix
             ),
             Error::UnimplementedDebugSubsection(kind) => write!(
                 f,
-                "Debug module subsection of kind 0x{:04x} is not implemented",
+                "Debug module subsection of kind {:#06x} is not implemented",
                 kind
             ),
             Error::UnimplementedFileChecksumKind(kind) => {
@@ -579,10 +595,46 @@ impl fmt::Debug for StreamIndex {
 impl_opt!(StreamIndex, 0xffff);
 impl_pread!(StreamIndex);
 
+/// An index into either the [`TypeInformation`] or [`IdInformation`] stream.
+///
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+pub trait ItemIndex:
+    Copy + Default + fmt::Debug + fmt::Display + PartialEq + PartialOrd + From<u32> + Into<u32>
+{
+    /// Returns `true` if this is a cross module reference.
+    ///
+    /// When compiling with LTO, the compiler may reference types and ids across modules. In such
+    /// cases, a lookup in the global streams will not succeed. Instead, the import must be resolved
+    /// using cross module references:
+    ///
+    ///  1. Look up the index in [`CrossModuleImports`] of the current module.
+    ///  2. Use [`StringTable`] to resolve the name of the referenced module.
+    ///  3. Find the [`Module`] with the same module name and load its [`ModuleInfo`].
+    ///  4. Resolve the [`Local`] index into a global one using [`CrossModuleExports`].
+    ///
+    /// Cross module references are specially formatted indexes with the most significant bit set to
+    /// `1`. The remaining bits are divided into a module and index offset into the
+    /// [`CrossModuleImports`] section.
+    ///
+    /// [`CrossModuleExports`]: struct.CrossModuleExports.html
+    /// [`CrossModuleImports`]: struct.CrossModuleImports.html
+    /// [`Local`]: struct.Local.html
+    /// [`Module`]: struct.Module.html
+    /// [`ModuleInfo`]: struct.ModuleInfo.html
+    /// [`StringTable`]: struct.StringTable.html
+    fn is_cross_module(self) -> bool {
+        (self.into() & 0x8000_0000) != 0
+    }
+}
+
 /// Index of a [`Type`] in the [`TypeInformation`] stream.
+///
+/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
 ///
 /// [`Type`]: type.Type.html
 /// [`TypeInformation`]: type.TypeInformation.html
+/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TypeIndex(pub u32);
 
@@ -590,16 +642,49 @@ impl_convert!(TypeIndex, u32);
 impl_hex_fmt!(TypeIndex);
 impl_pread!(TypeIndex);
 
+impl ItemIndex for TypeIndex {}
+
 /// Index of an [`Id`] in [`IdInformation`] stream.
+///
+/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
 ///
 /// [`Id`]: type.Id.html
 /// [`IdInformation`]: type.IdInformation.html
+/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdIndex(pub u32);
 
 impl_convert!(IdIndex, u32);
 impl_hex_fmt!(IdIndex);
 impl_pread!(IdIndex);
+
+impl ItemIndex for IdIndex {}
+
+/// An [`ItemIndex`] that is local to a module.
+///
+/// This index is usually part of a [`CrossModuleRef`]. It cannot be used to query the
+/// [`TypeInformation`] or [`IdInformation`] streams directly. Instead, it must be looked up in the
+/// [`CrossModuleImports`] of the module it belongs to in order to obtain the global index.
+///
+/// See [`ItemIndex::is_cross_module`] for more information.
+///
+/// [`ItemIndex`]: trait.ItemIndex.html
+/// [`CrossModuleImports`]: struct.CrossModuleImports.html
+/// [`CrossModuleRef`]: struct.CrossModuleRef.html
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Local<I: ItemIndex>(pub I);
+
+impl<I> fmt::Display for Local<I>
+where
+    I: ItemIndex + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// A reference to a string in the string table.
 ///

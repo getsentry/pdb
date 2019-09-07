@@ -1,7 +1,13 @@
+use std::mem;
+use std::slice;
+
 use scroll::{ctx::TryFromCtx, Pread};
 
 use crate::common::*;
-use crate::modi::{constants, FileChecksum, FileIndex, FileInfo, LineInfo, LineInfoKind};
+use crate::modi::{
+    constants, CrossModuleExport, CrossModuleRef, FileChecksum, FileIndex, FileInfo, LineInfo,
+    LineInfoKind, ModuleRef,
+};
 use crate::symbol::{BinaryAnnotation, BinaryAnnotationsIter, InlineSiteSymbol};
 use crate::FallibleIterator;
 
@@ -580,6 +586,268 @@ impl<'a> DebugFileChecksumsSubsection<'a> {
         let mut buf = ParseBuffer::from(self.data);
         buf.take(offset.0 as usize)?;
         Ok(DebugFileChecksumsIterator { buf })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct CrossScopeImportModule<'a> {
+    name: ModuleRef,
+    /// unparsed in LE byteorder
+    imports: &'a [u32],
+}
+
+impl CrossScopeImportModule<'_> {
+    /// Returns the local reference at the given offset.
+    ///
+    /// This function performs an "unsafe" conversion of the raw value into `Local<I>`. It is
+    /// assumed that this function is only called from contexts where `I` can be statically
+    /// inferred.
+    fn get<I>(self, import: usize) -> Option<Local<I>>
+    where
+        I: ItemIndex,
+    {
+        let value = self.imports.get(import)?;
+        let index = u32::from_le(*value).into();
+        Some(Local(index))
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+struct CrossScopeImportModuleIter<'a> {
+    buf: ParseBuffer<'a>,
+}
+
+impl<'a> FallibleIterator for CrossScopeImportModuleIter<'a> {
+    type Item = CrossScopeImportModule<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+
+        let name = ModuleRef(self.buf.parse()?);
+        let count = self.buf.parse::<u32>()? as usize;
+        let data = self.buf.take(count * 4)?;
+
+        #[allow(clippy::cast_ptr_alignment)]
+        let imports = unsafe { slice::from_raw_parts(data.as_ptr() as *const u32, count) };
+
+        Ok(Some(CrossScopeImportModule { name, imports }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DebugCrossScopeImportsSubsection<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> DebugCrossScopeImportsSubsection<'a> {
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        Ok(Self { data })
+    }
+
+    fn imports(self) -> CrossScopeImportModuleIter<'a> {
+        let buf = ParseBuffer::from(self.data);
+        CrossScopeImportModuleIter { buf }
+    }
+}
+
+/// Provides efficient access to imported types and IDs from other modules.
+///
+/// This can be used to resolve cross module references. See [`ItemIndex::is_cross_module`] for more
+/// information.
+#[derive(Clone, Debug, Default)]
+pub struct CrossModuleImports<'a> {
+    modules: Vec<CrossScopeImportModule<'a>>,
+}
+
+impl<'a> CrossModuleImports<'a> {
+    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+        let export_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::CrossScopeImports)?
+            .map(|sec| sec.data);
+
+        let section = match export_data {
+            Some(d) => DebugCrossScopeImportsSubsection::parse(d)?,
+            None => return Ok(Self::default()),
+        };
+
+        let modules = section.imports().collect()?;
+        Ok(Self { modules })
+    }
+
+    /// Resolves the referenced module and local index for the index.
+    ///
+    /// The given index **must** be a cross module reference. Use `ItemIndex::is_cross_module` to
+    /// check this before invoking this function. If successful, this function returns a reference
+    /// to the module that declares the type, as well as the local index of the type in that module.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotACrossModuleRef` if the given index is already a global index and not a cross
+    ///   module reference.
+    /// * `Error::CrossModuleRefNotFound` if the cross module reference points to a module or local
+    ///   index that is not indexed by this import table.
+    pub fn resolve_import<I>(&self, index: I) -> Result<CrossModuleRef<I>>
+    where
+        I: ItemIndex,
+    {
+        let raw_index = index.into();
+        if !index.is_cross_module() {
+            return Err(Error::NotACrossModuleRef(raw_index));
+        }
+
+        let module_index = (raw_index & 0x7ff0_0000) as usize;
+        let import_index = (raw_index & 0x000f_ffff) as usize;
+
+        let module = self
+            .modules
+            .get(module_index)
+            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+
+        let local_index = module
+            .get(import_index)
+            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+
+        Ok(CrossModuleRef(module.name, local_index))
+    }
+}
+
+/// Raw representation of `CrossModuleExport`.
+///
+/// This type can directly be mapped onto a slice of binary data and exposes the underlying `local`
+/// and `global` fields with correct endianness via getter methods. There are two ways to use this:
+///
+///  1. Binary search over a slice of exports to find the one matching a given local index
+///  2. Enumerate all for debugging purposes
+#[repr(C, packed)]
+#[derive(Clone, Copy, Debug)]
+struct RawCrossScopeExport {
+    local: u32,
+    global: u32,
+}
+
+impl RawCrossScopeExport {
+    /// The local index within the module.
+    ///
+    /// This maps to `Local<I: ItemIndex>` in the public type signature.
+    fn local(self) -> u32 {
+        u32::from_le(self.local)
+    }
+
+    /// The index in the global type or id stream.
+    ///
+    /// This maps to `I: ItemIndex` in the public type signature.
+    fn global(self) -> u32 {
+        u32::from_le(self.global)
+    }
+}
+
+impl From<RawCrossScopeExport> for CrossModuleExport {
+    fn from(raw: RawCrossScopeExport) -> Self {
+        if (raw.local() & 0x8000_0000) != 0 {
+            Self::Id(Local(IdIndex(raw.local())), IdIndex(raw.global()))
+        } else {
+            Self::Type(Local(TypeIndex(raw.local())), TypeIndex(raw.global()))
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DebugCrossScopeExportsSubsection<'a> {
+    raw_exports: &'a [RawCrossScopeExport],
+}
+
+impl<'a> DebugCrossScopeExportsSubsection<'a> {
+    /// Creates a new cross scope exports subsection.
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        if data.len() % mem::size_of::<RawCrossScopeExport>() != 0 {
+            return Err(Error::InvalidStreamLength(
+                "DebugCrossScopeExportsSubsection",
+            ));
+        }
+
+        let raw_exports = unsafe {
+            slice::from_raw_parts(
+                data.as_ptr() as *const RawCrossScopeExport,
+                data.len() / mem::size_of::<RawCrossScopeExport>(),
+            )
+        };
+
+        Ok(Self { raw_exports })
+    }
+}
+
+/// Iterator returned by
+/// [`CrossModuleExports::exports`](struct.CrossModuleExports.html#method.exports).
+#[derive(Clone, Debug)]
+pub struct CrossModuleExportIter<'a> {
+    exports: slice::Iter<'a, RawCrossScopeExport>,
+}
+
+impl Default for CrossModuleExportIter<'_> {
+    fn default() -> Self {
+        Self { exports: [].iter() }
+    }
+}
+
+impl<'a> FallibleIterator for CrossModuleExportIter<'a> {
+    type Item = CrossModuleExport;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        Ok(self.exports.next().map(|r| (*r).into()))
+    }
+}
+
+/// A table of exports declared by this module.
+///
+/// Other modules can import types and ids from this module by using [cross module references].
+///
+/// [cross module references]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Debug, Default)]
+pub struct CrossModuleExports<'a> {
+    section: DebugCrossScopeExportsSubsection<'a>,
+}
+
+impl<'a> CrossModuleExports<'a> {
+    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+        let export_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::CrossScopeExports)?
+            .map(|sec| sec.data);
+
+        let section = match export_data {
+            Some(d) => DebugCrossScopeExportsSubsection::parse(d)?,
+            None => DebugCrossScopeExportsSubsection::default(),
+        };
+
+        Ok(Self { section })
+    }
+
+    /// Returns an iterator over all cross scope exports.
+    pub fn exports(self) -> CrossModuleExportIter<'a> {
+        CrossModuleExportIter {
+            exports: self.section.raw_exports.iter(),
+        }
+    }
+
+    /// Resolves the global index of the given cross module import's local index.
+    ///
+    /// The global index can be used to retrieve items from the [`TypeInformation`] or
+    /// [`IdInformation`] streams. If the given local index is not listed in the export list, this
+    /// function returns `Ok(None)`.
+    pub fn resolve_global<I>(self, local_index: Local<I>) -> Result<Option<I>>
+    where
+        I: ItemIndex,
+    {
+        let local = local_index.0.into();
+        let exports = self.section.raw_exports;
+
+        Ok(match exports.binary_search_by_key(&local, |r| r.local()) {
+            Ok(i) => Some(I::from(exports[i].global())),
+            Err(_) => None,
+        })
     }
 }
 
