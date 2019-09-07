@@ -340,7 +340,7 @@ pub struct CrossModuleRef<I: ItemIndex>(pub ModuleRef, pub Local<I>);
 ///
 /// Other modules may reference this item using its local ID by declaring it in the cross module
 /// imports subsection.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CrossModuleExport {
     /// A cross module export of a [`Type`](type.Type.html).
     Type(Local<TypeIndex>, TypeIndex),

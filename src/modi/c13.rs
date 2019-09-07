@@ -663,18 +663,22 @@ pub struct CrossModuleImports<'a> {
 }
 
 impl<'a> CrossModuleImports<'a> {
+    /// Creates `CrossModuleImports` from the imports debug subsection.
+    fn from_section(section: DebugCrossScopeImportsSubsection<'a>) -> Result<Self> {
+        let modules = section.imports().collect()?;
+        Ok(Self { modules })
+    }
+
+    /// Loads `CrossModuleImports` from the debug subsections data.
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
-        let export_data = DebugSubsectionIterator::new(data)
+        let import_data = DebugSubsectionIterator::new(data)
             .find(|sec| sec.kind == DebugSubsectionKind::CrossScopeImports)?
             .map(|sec| sec.data);
 
-        let section = match export_data {
-            Some(d) => DebugCrossScopeImportsSubsection::parse(d)?,
-            None => return Ok(Self::default()),
-        };
-
-        let modules = section.imports().collect()?;
-        Ok(Self { modules })
+        match import_data {
+            Some(d) => Self::from_section(DebugCrossScopeImportsSubsection::parse(d)?),
+            None => Ok(Self::default()),
+        }
     }
 
     /// Resolves the referenced module and local index for the index.
@@ -826,7 +830,7 @@ impl<'a> CrossModuleExports<'a> {
     }
 
     /// Returns an iterator over all cross scope exports.
-    pub fn exports(self) -> CrossModuleExportIter<'a> {
+    pub fn exports(&self) -> CrossModuleExportIter<'a> {
         CrossModuleExportIter {
             exports: self.section.raw_exports.iter(),
         }
@@ -837,7 +841,7 @@ impl<'a> CrossModuleExports<'a> {
     /// The global index can be used to retrieve items from the [`TypeInformation`] or
     /// [`IdInformation`] streams. If the given local index is not listed in the export list, this
     /// function returns `Ok(None)`.
-    pub fn resolve_global<I>(self, local_index: Local<I>) -> Result<Option<I>>
+    pub fn resolve_global<I>(&self, local_index: Local<I>) -> Result<Option<I>>
     where
         I: ItemIndex,
     {
@@ -1348,5 +1352,105 @@ mod tests {
         ];
 
         assert_eq!(lines, expected);
+    }
+
+    const CROSS_MODULE_IMPORT_DATA: &[u8] = &[
+        189, 44, 0, 0, // module name 2CBD
+        14, 0, 0, 0, // 14 imports (all IDs, no Types)
+        171, 19, 0, 128, // 800013AB
+        37, 20, 0, 128, // 80001425
+        161, 19, 0, 128, // 800013A1
+        90, 20, 0, 128, // 8000145A
+        159, 19, 0, 128, // 8000139F
+        55, 20, 0, 128, // 80001437
+        109, 17, 0, 128, // 8000116D
+        238, 17, 0, 128, // 800011EE
+        246, 19, 0, 128, // 800013F6
+        69, 20, 0, 128, // 80001445
+        104, 19, 0, 128, // 80001368
+        148, 20, 0, 128, // 80001494
+        195, 20, 0, 128, // 800014C3
+        219, 20, 0, 128, // 800014DB
+    ];
+
+    #[test]
+    fn test_parse_cross_section_imports() {
+        let sec = DebugCrossScopeImportsSubsection::parse(CROSS_MODULE_IMPORT_DATA)
+            .expect("parse imports");
+
+        let modules: Vec<_> = sec.imports().collect().expect("collect imports");
+        assert_eq!(modules.len(), 1);
+
+        let module = modules[0];
+        assert_eq!(module.get(0), Some(Local(IdIndex(0x8000_13AB))));
+        assert_eq!(module.get(13), Some(Local(IdIndex(0x8000_14DB))));
+        assert_eq!(module.get::<IdIndex>(14), None);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_import() {
+        let sec = DebugCrossScopeImportsSubsection::parse(CROSS_MODULE_IMPORT_DATA)
+            .expect("parse imports");
+
+        let imports = CrossModuleImports::from_section(sec).expect("parse section");
+        let cross_ref = imports
+            .resolve_import(IdIndex(0x8000_000A))
+            .expect("resolve import");
+
+        let expected = CrossModuleRef(
+            // The module index is 0x000 = 1st module.
+            ModuleRef(StringRef(0x2CBD)),
+            // The import index is 0x0000A = 11th element.
+            Local(IdIndex(0x8000_1368)),
+        );
+
+        assert_eq!(cross_ref, expected);
+    }
+
+    const CROSS_MODULE_EXPORT_DATA: &[u8] = &[
+        31, 16, 0, 0, 12, 16, 0, 0, // 101F -> 100C
+        32, 16, 0, 0, 79, 34, 0, 0, // 1020 -> 224F
+        92, 17, 0, 128, 97, 17, 0, 0, // 8000115C -> 1161
+        109, 17, 0, 128, 98, 17, 0, 0, // 8000116D -> 1162
+    ];
+
+    #[test]
+    fn test_iter_cross_module_exports() {
+        let section = DebugCrossScopeExportsSubsection::parse(CROSS_MODULE_EXPORT_DATA)
+            .expect("parse exports");
+        let exports = CrossModuleExports { section };
+
+        let exports: Vec<_> = exports.exports().collect().expect("collect exports");
+
+        let expected = [
+            CrossModuleExport::Type(Local(TypeIndex(0x101F)), TypeIndex(0x100C)),
+            CrossModuleExport::Type(Local(TypeIndex(0x1020)), TypeIndex(0x224F)),
+            CrossModuleExport::Id(Local(IdIndex(0x8000_115C)), IdIndex(0x1161)),
+            CrossModuleExport::Id(Local(IdIndex(0x8000_116D)), IdIndex(0x1162)),
+        ];
+
+        assert_eq!(exports, expected);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_ref() {
+        let section = DebugCrossScopeExportsSubsection::parse(CROSS_MODULE_EXPORT_DATA)
+            .expect("parse exports");
+        let exports = CrossModuleExports { section };
+
+        let type_index = exports
+            .resolve_global(Local(TypeIndex(0x101F)))
+            .expect("resolve type");
+        assert_eq!(type_index, Some(TypeIndex(0x100C)));
+
+        let id_index = exports
+            .resolve_global(Local(IdIndex(0x8000_115C)))
+            .expect("resolve id");
+        assert_eq!(id_index, Some(IdIndex(0x1161)));
+
+        let missing_index = exports
+            .resolve_global(Local(TypeIndex(0xFEED)))
+            .expect("resolve missing");
+        assert_eq!(missing_index, None);
     }
 }
