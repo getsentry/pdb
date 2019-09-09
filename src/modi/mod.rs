@@ -100,7 +100,7 @@ impl<'s> ModuleInfo<'s> {
     }
 
     /// Returns a table of exports declared by this module.
-    pub fn exports(&self) -> Result<CrossModuleExports<'_>> {
+    pub fn exports(&self) -> Result<CrossModuleExports> {
         Ok(match self.lines_size {
             // C11 does not have cross module exports.
             LinesSize::C11(_size) => Default::default(),
@@ -319,7 +319,7 @@ impl<'a> FallibleIterator for FileIterator<'a> {
 /// [`Module`]: struct.Module.html
 /// [`Module::module_name`]: struct.Module.html#method.module_name
 /// [`StringTable`]: struct.StringTable.html
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ModuleRef(pub StringRef);
 
 impl fmt::Display for ModuleRef {
