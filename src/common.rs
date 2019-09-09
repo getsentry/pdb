@@ -8,8 +8,10 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
+use std::mem;
 use std::ops::{Add, AddAssign, Sub};
 use std::result;
+use std::slice;
 
 use scroll::ctx::TryFromCtx;
 use scroll::{self, Endian, Pread, LE};
@@ -36,7 +38,7 @@ pub enum Error {
     /// A stream requested by name was not found.
     StreamNameNotFound,
 
-    /// Invalid length of a stream.
+    /// Invalid length or alignment of a stream.
     InvalidStreamLength(&'static str),
 
     /// An IO error occurred while reading from the data source.
@@ -117,7 +119,7 @@ impl std::error::Error for Error {
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
             Error::StreamNameNotFound => "The requested stream is not stored in this file",
-            Error::InvalidStreamLength(_) => "Stream has an invalid length",
+            Error::InvalidStreamLength(_) => "Stream has an invalid length or alignment",
             Error::IoError(ref e) => e.description(),
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
@@ -168,7 +170,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidStreamLength(s) => write!(
                 f,
-                "{} stream has a length that is not a multiple of its records",
+                "{} stream has an invalid length or alignment for its records",
                 s
             ),
             Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
@@ -1017,6 +1019,29 @@ impl<'b> From<&'b [u8]> for RawString<'b> {
     }
 }
 
+/// Cast a binary slice to a slice of types.
+///
+/// This function performs a cast of a binary slice to a slice of some type, returning `Some` if the
+/// following two conditions are met:
+///
+///  1. The size of the slize must be a multiple of the type's size.
+///  2. The slice must be aligned to the alignment of the type.
+///
+/// Note that this function will not convert any endianness. The types must be capable of reading
+/// endianness correclty in case data from other hosts is read.
+pub(crate) fn cast_aligned<T>(data: &[u8]) -> Option<&[T]> {
+    let alignment = mem::align_of::<T>();
+    let size = mem::size_of::<T>();
+
+    let ptr = data.as_ptr();
+    let bytes = data.len();
+
+    match (bytes % size, ptr.align_offset(alignment)) {
+        (0, 0) => Some(unsafe { slice::from_raw_parts(ptr as *const T, bytes / size) }),
+        (_, _) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod parse_buffer {
@@ -1280,6 +1305,51 @@ mod tests {
             let val = buf.parse::<SymbolIndex>().expect("parse");
             assert_eq!(val, SymbolIndex(0x42));
             assert!(buf.is_empty());
+        }
+    }
+
+    mod cast_aligned {
+        use crate::common::cast_aligned;
+        use std::slice;
+
+        #[test]
+        fn test_cast_aligned() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 12) };
+
+            assert_eq!(cast_aligned(bin), Some(data));
+        }
+
+        #[test]
+        fn test_cast_empty() {
+            let data: &[u32] = &[];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 0) };
+
+            assert_eq!(cast_aligned(bin), Some(data));
+        }
+
+        #[test]
+        fn test_cast_unaligned() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr.offset(2), 8) };
+
+            assert_eq!(cast_aligned::<u32>(bin), None);
+        }
+
+        #[test]
+        fn test_cast_wrong_size() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 11) };
+
+            assert_eq!(cast_aligned::<u32>(bin), None);
         }
     }
 }

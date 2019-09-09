@@ -247,7 +247,7 @@ enum LineMarkerKind {
 }
 
 /// The raw line number entry in a PDB.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Pread)]
 struct LineNumberHeader {
     /// Offset to start of code bytes for line number.
@@ -365,7 +365,7 @@ impl FallibleIterator for DebugLinesIterator<'_> {
 }
 
 #[derive(Clone, Copy, Debug, Default, Pread)]
-#[repr(C, packed)]
+#[repr(C)]
 struct ColumnNumberEntry {
     start_column: u16,
     end_column: u16,
@@ -390,7 +390,7 @@ impl FallibleIterator for DebugColumnsIterator<'_> {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default, Pread)]
 struct DebugLinesBlockHeader {
     /// Offset of the file checksum in the file checksums debug subsection.
@@ -628,10 +628,10 @@ impl<'a> FallibleIterator for CrossScopeImportModuleIter<'a> {
 
         let name = ModuleRef(self.buf.parse()?);
         let count = self.buf.parse::<u32>()? as usize;
-        let data = self.buf.take(count * 4)?;
 
-        #[allow(clippy::cast_ptr_alignment)]
-        let imports = unsafe { slice::from_raw_parts(data.as_ptr() as *const u32, count) };
+        let data = self.buf.take(count * mem::size_of::<u32>())?;
+        let imports =
+            cast_aligned(data).ok_or_else(|| Error::InvalidStreamLength("CrossScopeImports"))?;
 
         Ok(Some(CrossScopeImportModule { name, imports }))
     }
@@ -725,8 +725,8 @@ impl<'a> CrossModuleImports<'a> {
 ///
 ///  1. Binary search over a slice of exports to find the one matching a given local index
 ///  2. Enumerate all for debugging purposes
-#[repr(C, packed)]
-#[derive(Clone, Copy, Debug)]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Pread)]
 struct RawCrossScopeExport {
     local: u32,
     global: u32,
@@ -1220,7 +1220,33 @@ impl<'a> LineProgram<'a> {
 mod tests {
     use super::*;
 
+    use std::mem;
+
     use crate::symbol::BinaryAnnotations;
+
+    #[test]
+    fn test_line_number_header() {
+        assert_eq!(mem::size_of::<LineNumberHeader>(), 8);
+        assert_eq!(mem::align_of::<LineNumberHeader>(), 4);
+    }
+
+    #[test]
+    fn test_column_number_header() {
+        assert_eq!(mem::size_of::<ColumnNumberEntry>(), 4);
+        assert_eq!(mem::align_of::<ColumnNumberEntry>(), 2);
+    }
+
+    #[test]
+    fn test_debug_lines_block_header() {
+        assert_eq!(mem::size_of::<DebugLinesBlockHeader>(), 12);
+        assert_eq!(mem::align_of::<DebugLinesBlockHeader>(), 4);
+    }
+
+    #[test]
+    fn test_raw_cross_scope_export() {
+        assert_eq!(mem::size_of::<RawCrossScopeExport>(), 8);
+        assert_eq!(mem::align_of::<RawCrossScopeExport>(), 4);
+    }
 
     #[test]
     fn test_parse_inlinee_lines() {
@@ -1354,7 +1380,14 @@ mod tests {
         assert_eq!(lines, expected);
     }
 
-    const CROSS_MODULE_IMPORT_DATA: &[u8] = &[
+    #[repr(align(4))]
+    struct Align4<T>(T);
+
+    /// Aligned data for parsing cross module imports.
+    ///
+    /// When parsing them from the file, alignment is validated during ruintime using
+    /// `cast_aligned`. If alignment is validated, it throws an error.
+    const CROSS_MODULE_IMPORT_DATA: Align4<[u8; 64]> = Align4([
         189, 44, 0, 0, // module name 2CBD
         14, 0, 0, 0, // 14 imports (all IDs, no Types)
         171, 19, 0, 128, // 800013AB
@@ -1371,14 +1404,14 @@ mod tests {
         148, 20, 0, 128, // 80001494
         195, 20, 0, 128, // 800014C3
         219, 20, 0, 128, // 800014DB
-    ];
+    ]);
 
     #[test]
     fn test_parse_cross_section_imports() {
-        let sec = DebugCrossScopeImportsSubsection::parse(CROSS_MODULE_IMPORT_DATA)
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
             .expect("parse imports");
 
-        let modules: Vec<_> = sec.imports().collect().expect("collect imports");
+        let modules: Vec<_> = sec.modules().collect().expect("collect imports");
         assert_eq!(modules.len(), 1);
 
         let module = modules[0];
@@ -1389,7 +1422,7 @@ mod tests {
 
     #[test]
     fn test_resolve_cross_module_import() {
-        let sec = DebugCrossScopeImportsSubsection::parse(CROSS_MODULE_IMPORT_DATA)
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
             .expect("parse imports");
 
         let imports = CrossModuleImports::from_section(sec).expect("parse section");

@@ -12,7 +12,6 @@ use std::fmt;
 use std::iter::FusedIterator;
 use std::mem;
 use std::ops::Range;
-use std::slice;
 
 use crate::common::*;
 use crate::msf::Stream;
@@ -22,7 +21,7 @@ use crate::pe::ImageSectionHeader;
 ///
 /// This record applies to the half-open interval [ `record.source_address`,
 /// `next_record.source_address` ).
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(crate) struct OMAPRecord {
     source_address: u32,
@@ -126,23 +125,17 @@ pub(crate) struct OMAPTable<'s> {
 
 impl<'s> OMAPTable<'s> {
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
-        if stream.as_slice().len() % 8 != 0 {
-            Err(Error::InvalidStreamLength("OMAP"))
-        } else {
-            Ok(OMAPTable { stream })
+        match cast_aligned::<OMAPRecord>(stream.as_slice()) {
+            Some(_) => Ok(OMAPTable { stream }),
+            None => Err(Error::InvalidStreamLength("OMAP")),
         }
     }
 
     /// Returns a direct view onto the records stored in this OMAP table.
     #[inline]
-    pub fn records(&self) -> &'s [OMAPRecord] {
-        let bytes = self.stream.as_slice();
-        unsafe {
-            slice::from_raw_parts(
-                bytes.as_ptr() as *const OMAPRecord,
-                bytes.len() / mem::size_of::<OMAPRecord>(),
-            )
-        }
+    pub fn records(&self) -> &[OMAPRecord] {
+        // alignment is checked during parsing, unwrap is safe.
+        cast_aligned(self.stream.as_slice()).unwrap()
     }
 
     /// Look up `source_address` to yield a target address.
@@ -594,5 +587,18 @@ impl PdbInternalSectionOffset {
         }
 
         self.to_rva(translator)?.to_section_offset(translator)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::mem;
+
+    #[test]
+    fn test_omap_record() {
+        assert_eq!(mem::size_of::<OMAPRecord>(), 8);
+        assert_eq!(mem::align_of::<OMAPRecord>(), 4);
     }
 }
