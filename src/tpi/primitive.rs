@@ -35,6 +35,9 @@ pub struct PrimitiveType {
 /// A simple type.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
+    /// Uncharacterized type (no type)
+    NoType,
+
     /// Void type
     Void,
 
@@ -184,6 +187,8 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
     // primitive types are stored in the lowest octet
     // this groups "short" and "16-bit integer" together, but... right? *scratches head*
     let kind = match index.0 & 0xff {
+        0x00 => PrimitiveKind::NoType,
+
         0x03 => PrimitiveKind::Void,
         0x08 => PrimitiveKind::HRESULT,
 
