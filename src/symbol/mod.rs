@@ -184,6 +184,8 @@ pub enum SymbolData<'t> {
     InlineSiteEnd,
     /// End of a procedure.
     ProcedureEnd,
+    /// A label
+    Label(LabelSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -211,6 +213,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::BuildInfo(_) => None,
             SymbolData::InlineSiteEnd => None,
             SymbolData::ProcedureEnd => None,
+            SymbolData::Label(data) => Some(data.name),
         }
     }
 }
@@ -259,6 +262,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
             S_PROC_ID_END => SymbolData::ProcedureEnd,
+            S_LABEL16 | S_LABEL32_ST | S_LABEL32 => SymbolData::Label(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1176,6 +1180,36 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ExportSymbol<'t> {
     }
 }
 
+/// A label symbol.
+///
+/// Symbol kind `S_LABEL32`, `S_LABEL16`, or `S_LABEL32_ST`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LabelSymbol<'t> {
+    /// Code offset of the start of this label.
+    pub offset: PdbInternalSectionOffset,
+    /// Detailed flags of this label.
+    pub flags: ProcedureFlags,
+    /// Name of the symbol.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for LabelSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = LabelSymbol {
+            offset: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
@@ -1332,6 +1366,37 @@ mod tests {
                 SymbolData::ObjName(ObjNameSymbol {
                     signature: 0,
                     name: "* CIL *".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_1105() {
+            let data = &[5, 17, 224, 95, 151, 0, 1, 0, 0, 100, 97, 118, 49, 100, 95, 119, 95, 97, 118, 103, 95, 115, 115, 115, 101, 51, 0, 0, 0, 0];
+
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
+            assert_eq!(symbol.raw_kind(), 0x1105);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::Label(LabelSymbol {
+                    offset: PdbInternalSectionOffset {
+                        offset: 0x975fe0,
+                        section: 1
+                    },
+                    flags: ProcedureFlags {
+                        nofpo: false,
+                        int: false,
+                        far: false,
+                        never: false,
+                        notreached: false,
+                        cust_call: false,
+                        noinline: false,
+                        optdbginfo: false
+                    },
+                    name: "dav1d_w_avg_ssse3".into(),
                 })
             );
         }
