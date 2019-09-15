@@ -50,6 +50,12 @@ impl<'t> Symbol<'t> {
         self.data.pread_with(0, LE).unwrap_or_default()
     }
 
+    /// Returns the type of symbol identified by this Symbol.
+    #[inline]
+    pub fn raw_type(&self) -> SymbolType {
+        SymbolType::from(self.raw_kind())
+    }
+
     /// Returns the raw bytes of this symbol record, including the symbol type and extra data, but
     /// not including the preceding symbol length indicator.
     #[inline]
@@ -186,6 +192,93 @@ pub enum SymbolData<'t> {
     ProcedureEnd,
 }
 
+/// Information parsed from a [`Symbol`] record.
+///
+/// [`Symbol`]: struct.Symbol.html
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum SymbolType {
+    /// Unimplemented
+    Unimplemented,
+    /// End of a scope, such as a procedure.
+    ScopeEnd,
+    /// Name of the object file of this module.
+    ObjName,
+    /// A Register variable.
+    RegisterVariable,
+    /// A constant value.
+    Constant,
+    /// A user defined type.
+    UserDefinedType,
+    /// A Register variable spanning multiple registers.
+    MultiRegisterVariable,
+    /// Static data, such as a global variable.
+    Data,
+    /// A public symbol with a mangled name.
+    Public,
+    /// A procedure, such as a function or method.
+    Procedure,
+    /// A thread local variable.
+    ThreadStorage,
+    /// Flags used to compile a module.
+    CompileFlags,
+    /// A using namespace directive.
+    UsingNamespace,
+    /// Reference to a [`ProcedureSymbol`](struct.ProcedureSymbol.html).
+    ProcedureReference,
+    /// Reference to an imported variable.
+    DataReference,
+    /// Reference to an annotation.
+    AnnotationReference,
+    /// An exported symbol.
+    Export,
+    /// A local symbol in optimized code.
+    Local,
+    /// Reference to build information.
+    BuildInfo,
+    /// The callsite of an inlined function.
+    InlineSite,
+    /// End of an inline callsite.
+    InlineSiteEnd,
+    /// End of a procedure.
+    ProcedureEnd,
+}
+
+impl From<SymbolKind> for SymbolType {
+    #[inline(always)]
+    fn from(k: SymbolKind) -> Self {
+        match k {
+            S_END => SymbolType::ScopeEnd,
+            S_OBJNAME | S_OBJNAME_ST => SymbolType::ObjName,
+            S_REGISTER | S_REGISTER_ST => SymbolType::RegisterVariable,
+            S_CONSTANT | S_CONSTANT_ST | S_MANCONSTANT => SymbolType::Constant,
+            S_UDT | S_UDT_ST | S_COBOLUDT | S_COBOLUDT_ST => SymbolType::UserDefinedType,
+            S_MANYREG | S_MANYREG_ST | S_MANYREG2 | S_MANYREG2_ST => {
+                SymbolType::MultiRegisterVariable
+            }
+            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
+            | S_GMANDATA | S_GMANDATA_ST => SymbolType::Data,
+            S_PUB32 | S_PUB32_ST => SymbolType::Public,
+            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
+            | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolType::Procedure,
+            S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
+                SymbolType::ThreadStorage
+            }
+            S_COMPILE2 | S_COMPILE2_ST | S_COMPILE3 => SymbolType::CompileFlags,
+            S_UNAMESPACE | S_UNAMESPACE_ST => SymbolType::UsingNamespace,
+            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => SymbolType::ProcedureReference,
+            S_DATAREF | S_DATAREF_ST => SymbolType::DataReference,
+            S_ANNOTATIONREF => SymbolType::AnnotationReference,
+            S_EXPORT => SymbolType::Export,
+            S_LOCAL => SymbolType::Local,
+            S_BUILDINFO => SymbolType::BuildInfo,
+            S_INLINESITE | S_INLINESITE2 => SymbolType::InlineSite,
+            S_INLINESITE_END => SymbolType::InlineSiteEnd,
+            S_PROC_ID_END => SymbolType::ProcedureEnd,
+            _ => SymbolType::Unimplemented,
+        }
+    }
+}
+
 impl<'t> SymbolData<'t> {
     /// Returns the name of this symbol if it has one.
     pub fn name(&self) -> Option<RawString<'t>> {
@@ -222,44 +315,35 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
     fn try_from_ctx(this: &'t [u8], _ctx: ()) -> Result<(Self, Self::Size)> {
         let mut buf = ParseBuffer::from(this);
         let kind = buf.parse()?;
+        let typ = SymbolType::from(kind);
 
-        let symbol = match kind {
-            S_END => SymbolData::ScopeEnd,
-            S_OBJNAME | S_OBJNAME_ST => SymbolData::ObjName(buf.parse_with(kind)?),
-            S_REGISTER | S_REGISTER_ST => SymbolData::RegisterVariable(buf.parse_with(kind)?),
-            S_CONSTANT | S_CONSTANT_ST | S_MANCONSTANT => {
-                SymbolData::Constant(buf.parse_with(kind)?)
-            }
-            S_UDT | S_UDT_ST | S_COBOLUDT | S_COBOLUDT_ST => {
-                SymbolData::UserDefinedType(buf.parse_with(kind)?)
-            }
-            S_MANYREG | S_MANYREG_ST | S_MANYREG2 | S_MANYREG2_ST => {
+        let symbol = match typ {
+            SymbolType::ScopeEnd => SymbolData::ScopeEnd,
+            SymbolType::ObjName => SymbolData::ObjName(buf.parse_with(kind)?),
+            SymbolType::RegisterVariable => SymbolData::RegisterVariable(buf.parse_with(kind)?),
+            SymbolType::Constant => SymbolData::Constant(buf.parse_with(kind)?),
+            SymbolType::UserDefinedType => SymbolData::UserDefinedType(buf.parse_with(kind)?),
+            SymbolType::MultiRegisterVariable => {
                 SymbolData::MultiRegisterVariable(buf.parse_with(kind)?)
             }
-            S_LDATA32 | S_LDATA32_ST | S_GDATA32 | S_GDATA32_ST | S_LMANDATA | S_LMANDATA_ST
-            | S_GMANDATA | S_GMANDATA_ST => SymbolData::Data(buf.parse_with(kind)?),
-            S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
-            S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
-            | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
-            S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
-                SymbolData::ThreadStorage(buf.parse_with(kind)?)
+            SymbolType::Data => SymbolData::Data(buf.parse_with(kind)?),
+            SymbolType::Public => SymbolData::Public(buf.parse_with(kind)?),
+            SymbolType::Procedure => SymbolData::Procedure(buf.parse_with(kind)?),
+            SymbolType::ThreadStorage => SymbolData::ThreadStorage(buf.parse_with(kind)?),
+            SymbolType::CompileFlags => SymbolData::CompileFlags(buf.parse_with(kind)?),
+            SymbolType::UsingNamespace => SymbolData::UsingNamespace(buf.parse_with(kind)?),
+            SymbolType::ProcedureReference => SymbolData::ProcedureReference(buf.parse_with(kind)?),
+            SymbolType::DataReference => SymbolData::DataReference(buf.parse_with(kind)?),
+            SymbolType::AnnotationReference => {
+                SymbolData::AnnotationReference(buf.parse_with(kind)?)
             }
-            S_COMPILE2 | S_COMPILE2_ST | S_COMPILE3 => {
-                SymbolData::CompileFlags(buf.parse_with(kind)?)
-            }
-            S_UNAMESPACE | S_UNAMESPACE_ST => SymbolData::UsingNamespace(buf.parse_with(kind)?),
-            S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
-                SymbolData::ProcedureReference(buf.parse_with(kind)?)
-            }
-            S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
-            S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
-            S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
-            S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
-            S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
-            S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
-            S_INLINESITE_END => SymbolData::InlineSiteEnd,
-            S_PROC_ID_END => SymbolData::ProcedureEnd,
-            other => return Err(Error::UnimplementedSymbolKind(other)),
+            SymbolType::Export => SymbolData::Export(buf.parse_with(kind)?),
+            SymbolType::Local => SymbolData::Local(buf.parse_with(kind)?),
+            SymbolType::BuildInfo => SymbolData::BuildInfo(buf.parse_with(kind)?),
+            SymbolType::InlineSite => SymbolData::InlineSite(buf.parse_with(kind)?),
+            SymbolType::InlineSiteEnd => SymbolData::InlineSiteEnd,
+            SymbolType::ProcedureEnd => SymbolData::ProcedureEnd,
+            SymbolType::Unimplemented => return Err(Error::UnimplementedSymbolKind(kind)),
         };
 
         Ok((symbol, buf.pos()))
@@ -1315,6 +1399,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x0006);
+            assert_eq!(symbol.raw_type(), SymbolType::ScopeEnd);
             assert_eq!(symbol.parse().expect("parse"), SymbolData::ScopeEnd);
         }
 
@@ -1327,6 +1412,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1101);
+            assert_eq!(symbol.raw_type(), SymbolType::ObjName);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::ObjName(ObjNameSymbol {
@@ -1345,6 +1431,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1106);
+            assert_eq!(symbol.raw_type(), SymbolType::RegisterVariable);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::RegisterVariable(RegisterVariableSymbol {
@@ -1368,6 +1455,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x110e);
+            assert_eq!(symbol.raw_type(), SymbolType::Public);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Public(PublicSymbol {
@@ -1393,6 +1481,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1124);
+            assert_eq!(symbol.raw_type(), SymbolType::UsingNamespace);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::UsingNamespace(UsingNamespaceSymbol { name: "std".into() })
@@ -1410,6 +1499,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1125);
+            assert_eq!(symbol.raw_type(), SymbolType::ProcedureReference);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
@@ -1430,6 +1520,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1108);
+            assert_eq!(symbol.raw_type(), SymbolType::UserDefinedType);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::UserDefinedType(UserDefinedTypeSymbol {
@@ -1450,6 +1541,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1107);
+            assert_eq!(symbol.raw_type(), SymbolType::Constant);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Constant(ConstantSymbol {
@@ -1472,6 +1564,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x110d);
+            assert_eq!(symbol.raw_type(), SymbolType::Data);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Data(DataSymbol {
@@ -1498,6 +1591,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x110c);
+            assert_eq!(symbol.raw_type(), SymbolType::Data);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Data(DataSymbol {
@@ -1524,6 +1618,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1127);
+            assert_eq!(symbol.raw_type(), SymbolType::ProcedureReference);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::ProcedureReference(ProcedureReferenceSymbol {
@@ -1548,6 +1643,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1110);
+            assert_eq!(symbol.raw_type(), SymbolType::Procedure);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
@@ -1591,6 +1687,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x110f);
+            assert_eq!(symbol.raw_type(), SymbolType::Procedure);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Procedure(ProcedureSymbol {
@@ -1634,6 +1731,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x1116);
+            assert_eq!(symbol.raw_type(), SymbolType::CompileFlags);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::CompileFlags(CompileFlagsSymbol {
@@ -1683,6 +1781,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x113c);
+            assert_eq!(symbol.raw_type(), SymbolType::CompileFlags);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::CompileFlags(CompileFlagsSymbol {
@@ -1728,6 +1827,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x113e);
+            assert_eq!(symbol.raw_type(), SymbolType::Local);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::Local(LocalSymbol {
@@ -1758,6 +1858,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x114c);
+            assert_eq!(symbol.raw_type(), SymbolType::BuildInfo);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::BuildInfo(BuildInfoSymbol {
@@ -1777,6 +1878,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x114d);
+            assert_eq!(symbol.raw_type(), SymbolType::InlineSite);
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::InlineSite(InlineSiteSymbol {
@@ -1798,6 +1900,7 @@ mod tests {
                 index: SymbolIndex(0),
             };
             assert_eq!(symbol.raw_kind(), 0x114e);
+            assert_eq!(symbol.raw_type(), SymbolType::InlineSiteEnd);
             assert_eq!(symbol.parse().expect("parse"), SymbolData::InlineSiteEnd);
         }
     }
