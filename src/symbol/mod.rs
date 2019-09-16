@@ -1386,7 +1386,7 @@ mod tests {
                 symbol.parse().expect("parse"),
                 SymbolData::Label(LabelSymbol {
                     offset: PdbInternalSectionOffset {
-                        offset: 0x975fe0,
+                        offset: 0x0097_5fe0,
                         section: 1
                     },
                     flags: ProcedureFlags {
