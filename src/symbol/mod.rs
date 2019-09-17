@@ -186,6 +186,8 @@ pub enum SymbolData<'t> {
     ProcedureEnd,
     /// A label
     Label(LabelSymbol<'t>),
+    /// A block
+    Block(BlockSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -214,6 +216,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::InlineSiteEnd => None,
             SymbolData::ProcedureEnd => None,
             SymbolData::Label(data) => Some(data.name),
+            SymbolData::Block(data) => Some(data.name),
         }
     }
 }
@@ -263,6 +266,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
             S_PROC_ID_END => SymbolData::ProcedureEnd,
             S_LABEL16 | S_LABEL32_ST | S_LABEL32 => SymbolData::Label(buf.parse_with(kind)?),
+            S_BLOCK16 | S_BLOCK32 | S_BLOCK32_ST => SymbolData::Block(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1210,6 +1214,42 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LabelSymbol<'t> {
     }
 }
 
+/// A block symbol.
+///
+/// Symbol kind `S_BLOCK32`, `S_BLOCK16` or `S_BLOCK32_ST`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BlockSymbol<'t> {
+    /// The parent scope that this block is nested in.
+    pub parent: SymbolIndex,
+    /// The end symbol of this block.
+    pub end: SymbolIndex,
+    /// The length of the block.
+    pub len: u32,
+    /// Code offset of the start of this label.
+    pub offset: PdbInternalSectionOffset,
+    /// The block name.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for BlockSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = BlockSymbol {
+            parent: buf.parse()?,
+            end: buf.parse()?,
+            len: buf.parse()?,
+            offset: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
@@ -1643,6 +1683,32 @@ mod tests {
                         optdbginfo: false
                     },
                     name: "Baz::f_protected".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_1103() {
+            let data = &[
+                3, 17, 244, 149, 9, 0, 40, 151, 9, 0, 135, 1, 0, 0, 108, 191, 184, 2, 1, 0, 0, 0,
+            ];
+
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
+            assert_eq!(symbol.raw_kind(), 0x1103);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::Block(BlockSymbol {
+                    parent: SymbolIndex(0x0009_95f4),
+                    end: SymbolIndex(0x0009_9728),
+                    len: 391,
+                    offset: PdbInternalSectionOffset {
+                        section: 0x1,
+                        offset: 0x02b8_bf6c
+                    },
+                    name: "".into(),
                 })
             );
         }
