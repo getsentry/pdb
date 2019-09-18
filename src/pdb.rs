@@ -107,9 +107,13 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::InvalidTypeInformationHeader` if the id information stream header was not
     ///   understood
-    pub fn id_information(&mut self) -> Result<IdInformation<'s>> {
+    pub fn id_information(&mut self) -> Result<Option<IdInformation<'s>>> {
         let stream = self.msf.get(IPI_STREAM, None)?;
-        IdInformation::parse(stream)
+        if stream.is_empty() {
+            Ok(None)
+        } else {
+            IdInformation::parse(stream).map(Some)
+        }
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
