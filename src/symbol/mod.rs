@@ -265,8 +265,8 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
             S_PROC_ID_END => SymbolData::ProcedureEnd,
-            S_LABEL16 | S_LABEL32_ST | S_LABEL32 => SymbolData::Label(buf.parse_with(kind)?),
-            S_BLOCK16 | S_BLOCK32 | S_BLOCK32_ST => SymbolData::Block(buf.parse_with(kind)?),
+            S_LABEL32 | S_LABEL32_ST => SymbolData::Label(buf.parse_with(kind)?),
+            S_BLOCK32 | S_BLOCK32_ST => SymbolData::Block(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1216,7 +1216,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LabelSymbol<'t> {
 
 /// A block symbol.
 ///
-/// Symbol kind `S_BLOCK32`, `S_BLOCK16` or `S_BLOCK32_ST`.
+/// Symbol kind `S_BLOCK32`, or `S_BLOCK32_ST`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct BlockSymbol<'t> {
     /// The parent scope that this block is nested in.
