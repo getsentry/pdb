@@ -702,7 +702,7 @@ impl<'a> CrossModuleImports<'a> {
             return Err(Error::NotACrossModuleRef(raw_index));
         }
 
-        let module_index = (raw_index & 0x7ff0_0000) as usize;
+        let module_index = ((raw_index >> 20) & 0x7ff) as usize;
         let import_index = (raw_index & 0x000f_ffff) as usize;
 
         let module = self
@@ -1408,7 +1408,8 @@ mod tests {
     ///
     /// When parsing them from the file, alignment is validated during ruintime using
     /// `cast_aligned`. If alignment is validated, it throws an error.
-    const CROSS_MODULE_IMPORT_DATA: Align4<[u8; 64]> = Align4([
+    const CROSS_MODULE_IMPORT_DATA: Align4<[u8; 76]> = Align4([
+        // module 0
         189, 44, 0, 0, // module name 2CBD
         14, 0, 0, 0, // 14 imports (all IDs, no Types)
         171, 19, 0, 128, // 800013AB
@@ -1425,6 +1426,10 @@ mod tests {
         148, 20, 0, 128, // 80001494
         195, 20, 0, 128, // 800014C3
         219, 20, 0, 128, // 800014DB
+        // module 1
+        21, 222, 0, 0, // module name DE15
+        1, 0, 0, 0, // 1 import (id)
+        96, 22, 0, 128, // 80001660
     ]);
 
     #[test]
@@ -1433,7 +1438,7 @@ mod tests {
             .expect("parse imports");
 
         let modules: Vec<_> = sec.modules().collect().expect("collect imports");
-        assert_eq!(modules.len(), 1);
+        assert_eq!(modules.len(), 2);
 
         let module = modules[0];
         assert_eq!(module.get(0), Some(Local(IdIndex(0x8000_13AB))));
@@ -1456,6 +1461,26 @@ mod tests {
             ModuleRef(StringRef(0x2CBD)),
             // The import index is 0x0000A = 11th element.
             Local(IdIndex(0x8000_1368)),
+        );
+
+        assert_eq!(cross_ref, expected);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_import2() {
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
+            .expect("parse imports");
+
+        let imports = CrossModuleImports::from_section(sec).expect("parse section");
+        let cross_ref = imports
+            .resolve_import(IdIndex(0x8010_0000))
+            .expect("resolve import");
+
+        let expected = CrossModuleRef(
+            // The module index is 0x001 = 2nd module.
+            ModuleRef(StringRef(0xDE15)),
+            // The import index is 0x00001 = 1st element.
+            Local(IdIndex(0x8000_1660)),
         );
 
         assert_eq!(cross_ref, expected);
