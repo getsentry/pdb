@@ -1260,7 +1260,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BlockSymbol<'t> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RegisterRelativeSymbol<'t> {
     /// The variable offset.
-    pub offset: u32,
+    pub offset: i32,
     /// The type of the variable.
     pub type_index: TypeIndex,
     /// The register this variable is relative to.
