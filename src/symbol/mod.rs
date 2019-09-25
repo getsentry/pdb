@@ -230,12 +230,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
 
     fn try_from_ctx(this: &'t [u8], _ctx: ()) -> Result<(Self, Self::Size)> {
         let mut buf = ParseBuffer::from(this);
-        let x = buf.clone();
         let kind = buf.parse()?;
-
-        if kind == S_REGREL32 {
-            eprintln!("{:?}", x);
-        }
 
         let symbol = match kind {
             S_END => SymbolData::ScopeEnd,
@@ -278,10 +273,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_REGREL32 => SymbolData::RegisterRelative(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
-        if kind == S_REGREL32 {
-            eprintln!("{:?}", x);
-            eprintln!("{:?}", symbol);
-        }
+
         Ok((symbol, buf.pos()))
     }
 }
