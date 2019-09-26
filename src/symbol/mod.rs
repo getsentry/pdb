@@ -1256,6 +1256,8 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BlockSymbol<'t> {
 
 /// A register relative symbol.
 ///
+/// The address of the variable is the value in the register + offset (e.g. %EBP + 8).
+///
 /// Symbol kind `S_REGREL32`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RegisterRelativeSymbol<'t> {
@@ -1263,7 +1265,7 @@ pub struct RegisterRelativeSymbol<'t> {
     pub offset: i32,
     /// The type of the variable.
     pub type_index: TypeIndex,
-    /// The register this variable is relative to.
+    /// The register this variable address is relative to.
     pub register: Register,
     /// The variable name.
     pub name: RawString<'t>,
