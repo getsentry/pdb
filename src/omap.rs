@@ -405,7 +405,7 @@ impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 /// [`PdbInternalRva`]: struct.PdbInternalRva.html
 /// [`SectionOffset`]: struct.SectionOffset.html
 /// [`PdbInternalSectionOffset`]: struct.PdbInternalSectionOffset.html
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AddressMap<'s> {
     pub(crate) original_sections: Vec<ImageSectionHeader>,
     pub(crate) transformed_sections: Option<Vec<ImageSectionHeader>>,
