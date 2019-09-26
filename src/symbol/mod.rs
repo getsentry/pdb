@@ -1378,7 +1378,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ThunkSymbol<'t> {
         Ok((symbol, buf.pos()))
     }
 }
-      
+
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
