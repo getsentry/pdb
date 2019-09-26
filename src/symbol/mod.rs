@@ -188,6 +188,8 @@ pub enum SymbolData<'t> {
     Label(LabelSymbol<'t>),
     /// A block
     Block(BlockSymbol<'t>),
+    /// Data allocated relative to a register
+    RegisterRelative(RegisterRelativeSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -217,6 +219,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::ProcedureEnd => None,
             SymbolData::Label(data) => Some(data.name),
             SymbolData::Block(data) => Some(data.name),
+            SymbolData::RegisterRelative(data) => Some(data.name),
         }
     }
 }
@@ -267,6 +270,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_PROC_ID_END => SymbolData::ProcedureEnd,
             S_LABEL32 | S_LABEL32_ST => SymbolData::Label(buf.parse_with(kind)?),
             S_BLOCK32 | S_BLOCK32_ST => SymbolData::Block(buf.parse_with(kind)?),
+            S_REGREL32 => SymbolData::RegisterRelative(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1250,6 +1254,41 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BlockSymbol<'t> {
     }
 }
 
+/// A register relative symbol.
+///
+/// The address of the variable is the value in the register + offset (e.g. %EBP + 8).
+///
+/// Symbol kind `S_REGREL32`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RegisterRelativeSymbol<'t> {
+    /// The variable offset.
+    pub offset: i32,
+    /// The type of the variable.
+    pub type_index: TypeIndex,
+    /// The register this variable address is relative to.
+    pub register: Register,
+    /// The variable name.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for RegisterRelativeSymbol<'t> {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = RegisterRelativeSymbol {
+            offset: buf.parse()?,
+            type_index: buf.parse()?,
+            register: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
@@ -1488,6 +1527,29 @@ mod tests {
                         section: 1
                     },
                     name: "__local_stdio_printf_options".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_1111() {
+            let data = &[
+                17, 17, 12, 0, 0, 0, 48, 16, 0, 0, 22, 0, 109, 97, 120, 105, 109, 117, 109, 95, 99,
+                111, 117, 110, 116, 0,
+            ];
+
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
+            assert_eq!(symbol.raw_kind(), 0x1111);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::RegisterRelative(RegisterRelativeSymbol {
+                    offset: 12,
+                    type_index: TypeIndex(0x1030),
+                    register: Register(22),
+                    name: "maximum_count".into(),
                 })
             );
         }
