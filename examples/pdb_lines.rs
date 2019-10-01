@@ -35,7 +35,7 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
                 let sign = if proc.global { "+" } else { "-" };
                 println!("{} {}", sign, proc.name);
 
-                let mut lines = program.lines_at_offset(proc.offset);
+                let mut lines = program.lines_for_symbol(proc.offset);
                 while let Some(line_info) = lines.next()? {
                     let rva = line_info.offset.to_rva(&address_map).expect("invalid rva");
                     let file_info = program.get_file_info(line_info.file_index)?;
