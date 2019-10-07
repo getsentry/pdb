@@ -8,7 +8,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-use scroll::Pread;
+use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
 use crate::source::*;
@@ -79,7 +79,7 @@ mod big {
 
     /// The PDB header as stored on disk.
     /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
-    #[derive(Debug, Copy, Clone, Pread)]
+    #[derive(Debug, Copy, Clone)]
     #[repr(C, packed)]
     struct RawHeader {
         magic: [u8; 32],
@@ -88,6 +88,28 @@ mod big {
         pages_used: u32,
         directory_size: u32,
         _reserved: u32,
+    }
+
+    impl<'t> TryFromCtx<'t, Endian> for RawHeader {
+        type Error = scroll::Error;
+        type Size = usize;
+
+        fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+            let mut offset = 0;
+            let data = RawHeader {
+                magic: {
+                    let mut tmp = [0; 32 as usize];
+                    this.gread_inout_with(&mut offset, &mut tmp, le)?;
+                    tmp
+                },
+                page_size: this.gread_with(&mut offset, le)?,
+                free_page_map: this.gread_with(&mut offset, le)?,
+                pages_used: this.gread_with(&mut offset, le)?,
+                directory_size: this.gread_with(&mut offset, le)?,
+                _reserved: this.gread_with(&mut offset, le)?,
+            };
+            Ok((data, offset))
+        }
     }
 
     #[derive(Debug)]

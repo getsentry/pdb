@@ -13,7 +13,7 @@ exclude = [
 
 [dependencies]
 fallible-iterator = "0.1.6"
-scroll = { version = "0.9.2", features = ["derive"] }
+scroll = "0.9.2"
 uuid = "0.7.2"
 
 [dev-dependencies]
