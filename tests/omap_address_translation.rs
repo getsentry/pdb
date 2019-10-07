@@ -1,22 +1,14 @@
 use pdb::{FallibleIterator, PdbInternalRva, PdbInternalSectionOffset, Rva};
-use std::path::Path;
-use std::sync::{Once, ONCE_INIT};
 
 // This test is intended to cover OMAP address translation:
 //   https://github.com/willglynn/pdb/issues/17
 
-static DOWNLOADED: Once = ONCE_INIT;
 fn open_file() -> std::fs::File {
-    let path = "fixtures/symbol_server/3844dbb920174967be7aa4a2c20430fa2-ntkrnlmp.pdb";
-    let url = "https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/3844dbb920174967be7aa4a2c20430fa2/ntkrnlmp.pdb";
+    let path = "fixtures/symbol_server/ntkrnlmp.pdb";
 
-    DOWNLOADED.call_once(|| {
-        if !Path::new(path).exists() {
-            let mut response = reqwest::get(url).expect("GET request");
-            let mut destination = std::fs::File::create(path).expect("create PDB");
-            response.copy_to(&mut destination).expect("download");
-        }
-    });
+    if !std::path::Path::new(path).exists() {
+        panic!("read fixtures/symbol_server/README.md");
+    }
 
     std::fs::File::open(path).expect("open PDB")
 }

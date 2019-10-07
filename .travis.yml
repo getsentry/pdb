@@ -16,3 +16,7 @@ matrix:
       script: cargo clippy --all-features --tests --all --examples -- -D clippy::all
   allow_failures:
     - rust: nightly
+script:
+  - wget https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/3844dbb920174967be7aa4a2c20430fa2/ntkrnlmp.pdb -O fixtures/symbol_server/ntkrnlmp.pdb
+  - cargo build --verbose --all
+  - cargo test --verbose --all
