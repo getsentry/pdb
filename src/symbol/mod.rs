@@ -192,6 +192,8 @@ pub enum SymbolData<'t> {
     RegisterRelative(RegisterRelativeSymbol<'t>),
     /// A thunk
     Thunk(ThunkSymbol<'t>),
+    /// A block of separated code
+    SeparatedCode(SeparatedCodeSymbol),
 }
 
 impl<'t> SymbolData<'t> {
@@ -223,6 +225,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::Block(data) => Some(data.name),
             SymbolData::RegisterRelative(data) => Some(data.name),
             SymbolData::Thunk(data) => Some(data.name),
+            SymbolData::SeparatedCode(_) => None,
         }
     }
 }
@@ -275,6 +278,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_BLOCK32 | S_BLOCK32_ST => SymbolData::Block(buf.parse_with(kind)?),
             S_REGREL32 => SymbolData::RegisterRelative(buf.parse_with(kind)?),
             S_THUNK32 | S_THUNK32_ST => SymbolData::Thunk(buf.parse_with(kind)?),
+            S_SEPCODE => SymbolData::SeparatedCode(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1379,6 +1383,86 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ThunkSymbol<'t> {
     }
 }
 
+// CV_SEPCODEFLAGS:
+const CV_SEPCODEFLAG_IS_LEXICAL_SCOPE: u32 = 0x01;
+const CV_SEPCODEFLAG_RETURNS_TO_PARENT: u32 = 0x02;
+
+/// Flags for a [`SeparatedCodeSymbol`](struct.SeparatedCodeSymbol.html).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SeparatedCodeFlags {
+    /// S_SEPCODE doubles as lexical scope.
+    pub islexicalscope: bool,
+    /// code frag returns to parent.
+    pub returnstoparent: bool,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for SeparatedCodeFlags {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let (value, size) = u32::try_from_ctx(this, le)?;
+
+        let flags = SeparatedCodeFlags {
+            islexicalscope: value & CV_SEPCODEFLAG_IS_LEXICAL_SCOPE != 0,
+            returnstoparent: value & CV_SEPCODEFLAG_RETURNS_TO_PARENT != 0,
+        };
+
+        Ok((flags, size))
+    }
+}
+
+/// A separated code symbol.
+///
+/// Symbol kind `S_SEPCODE`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SeparatedCodeSymbol {
+    /// The parent scope that this block is nested in.
+    pub parent: SymbolIndex,
+    /// The end symbol of this block.
+    pub end: SymbolIndex,
+    /// The length of the block.
+    pub len: u32,
+    /// Flags for this symbol
+    pub flags: SeparatedCodeFlags,
+    /// Code offset of the start of the separated code.
+    pub offset: PdbInternalSectionOffset,
+    /// Parent offset.
+    pub parent_offset: PdbInternalSectionOffset,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for SeparatedCodeSymbol {
+    type Error = Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], _: SymbolKind) -> Result<(Self, Self::Size)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let parent = buf.parse()?;
+        let end = buf.parse()?;
+        let len = buf.parse()?;
+        let flags = buf.parse()?;
+        let offset = buf.parse()?;
+        let parent_offset = buf.parse()?;
+        let section = buf.parse()?;
+        let parent_section = buf.parse()?;
+
+        let symbol = SeparatedCodeSymbol {
+            parent,
+            end,
+            len,
+            flags,
+            offset: PdbInternalSectionOffset { offset, section },
+            parent_offset: PdbInternalSectionOffset {
+                offset: parent_offset,
+                section: parent_section,
+            },
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 /// PDB symbol tables contain names, locations, and metadata about functions, global/static data,
 /// constants, data types, and more.
 ///
@@ -1983,6 +2067,40 @@ mod tests {
                         qfe: None,
                     },
                     version_string: "Microsoft (R) LINK".into(),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_1132() {
+            let data = &[
+                50, 17, 0, 0, 0, 0, 108, 0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 196, 252, 10, 0, 56, 67,
+                0, 0, 1, 0, 1, 0,
+            ];
+
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
+            assert_eq!(symbol.raw_kind(), 0x1132);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::SeparatedCode(SeparatedCodeSymbol {
+                    parent: SymbolIndex(0x0),
+                    end: SymbolIndex(0x6c),
+                    len: 88,
+                    flags: SeparatedCodeFlags {
+                        islexicalscope: false,
+                        returnstoparent: false
+                    },
+                    offset: PdbInternalSectionOffset {
+                        section: 0x1,
+                        offset: 0xafcc4
+                    },
+                    parent_offset: PdbInternalSectionOffset {
+                        section: 0x1,
+                        offset: 0x4338
+                    }
                 })
             );
         }
