@@ -375,23 +375,23 @@ impl From<u16> for MachineType {
 #[derive(Debug, Copy, Clone)]
 pub struct DBISectionContribution {
     /// The index of the section.
-    section: u16,
+    pub section: u16,
     _padding1: u16,
     /// The offset within the section.
-    offset: u32,
+    pub offset: u32,
     /// The size of the contribution, in bytes.
-    size: u32,
+    pub size: u32,
     /// The characteristics, which map to the `Characteristics` field of
     /// the [`IMAGE_SECTION_HEADER`][1] field in binaries.
     /// [1]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
-    characteristics: u32,
+    pub characteristics: u32,
     /// The index of the module.
-    module: u16,
+    pub module: u16,
     _padding2: u16,
     /// CRC of the contribution(?)
-    data_crc: u32,
+    pub data_crc: u32,
     /// CRC of relocations(?)
-    reloc_crc: u32,
+    pub reloc_crc: u32,
 }
 
 impl DBISectionContribution {
