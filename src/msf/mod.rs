@@ -389,12 +389,12 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
     header_location.push(0);
     let header_view = match view(&mut source, &header_location) {
         Ok(view) => view,
-        Err(e) => {
-            match e {
-                Error::IoError(x) if x.kind() == std::io::ErrorKind::UnexpectedEof => return Err(Error::UnrecognizedFileFormat),
-                _ => return Err(e)
+        Err(e) => match e {
+            Error::IoError(x) if x.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Err(Error::UnrecognizedFileFormat)
             }
-        }
+            _ => return Err(e),
+        },
     };
 
     // see if it's a BigMSF
@@ -417,8 +417,8 @@ mod tests {
 
     mod header {
         use crate::common::Error;
-        use crate::msf::Header;
         use crate::msf::open_msf;
+        use crate::msf::Header;
 
         #[test]
         fn test_pages_needed_to_store() {
@@ -479,8 +479,8 @@ mod tests {
                 Ok(_) => panic!("4 byte file should not parse as msf"),
                 Err(e) => match e {
                     Error::UnrecognizedFileFormat => (),
-                    _ => panic!("4 byte file should parse as unrecognized file format")
-                }
+                    _ => panic!("4 byte file should parse as unrecognized file format"),
+                },
             };
         }
     }
