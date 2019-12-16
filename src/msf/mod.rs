@@ -387,7 +387,15 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
     // map the header
     let mut header_location = PageList::new(4096);
     header_location.push(0);
-    let header_view = view(&mut source, &header_location)?;
+    let header_view = match view(&mut source, &header_location) {
+        Ok(view) => view,
+        Err(e) => {
+            match e {
+                Error::IoError(x) if x.kind() == std::io::ErrorKind::UnexpectedEof => return Err(Error::UnrecognizedFileFormat),
+                _ => return Err(e)
+            }
+        }
+    };
 
     // see if it's a BigMSF
     if header_matches(header_view.as_slice(), big::MAGIC) {
@@ -410,6 +418,7 @@ mod tests {
     mod header {
         use crate::common::Error;
         use crate::msf::Header;
+        use crate::msf::open_msf;
 
         #[test]
         fn test_pages_needed_to_store() {
@@ -460,6 +469,19 @@ mod tests {
                 Err(Error::PageReferenceOutOfRange(17)) => true,
                 _ => false,
             });
+        }
+
+        #[test]
+        fn test_small_file_unrecognized_file_format() {
+            let small_file = std::io::Cursor::new(b"\x7FELF");
+
+            match open_msf(small_file) {
+                Ok(_) => panic!("4 byte file should not parse as msf"),
+                Err(e) => match e {
+                    Error::UnrecognizedFileFormat => (),
+                    _ => panic!("4 byte file should parse as unrecognized file format")
+                }
+            };
         }
     }
 }
