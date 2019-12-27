@@ -390,8 +390,12 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
     let header_view = match view(&mut source, &header_location) {
         Ok(view) => view,
         Err(e) => match e {
-            Error::IoError(x) if x.kind() == std::io::ErrorKind::UnexpectedEof => {
-                return Err(Error::UnrecognizedFileFormat)
+            Error::IoError(x) => {
+                if x.kind() == std::io::ErrorKind::UnexpectedEof {
+                    return Err(Error::UnrecognizedFileFormat)
+                } else {
+                    return Err(Error::IoError(x))
+                }
             }
             _ => return Err(e),
         },
