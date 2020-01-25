@@ -34,12 +34,8 @@ pub fn type_name<'p>(
                 _ => format!("unhandled_primitive.kind /* {:?} */", data.kind),
             };
 
-            match data.indirection {
-                pdb::Indirection::None => {}
-                _ => {
-                    name.push(' ');
-                    name.push('*');
-                }
+            if data.indirection.is_some() {
+                name.push_str(" *");
             }
 
             name
@@ -162,14 +158,14 @@ impl<'p> Class<'p> {
                 // TODO: attributes (static, virtual, etc.)
                 self.fields.push(Field {
                     type_name: type_name(type_finder, data.field_type, needed_types)?,
-                    name: data.name.clone(),
+                    name: data.name,
                     offset: data.offset,
                 });
             }
 
             pdb::TypeData::Method(ref data) => {
                 let method = Method::find(
-                    data.name.clone(),
+                    data.name,
                     data.attributes,
                     type_finder,
                     data.method_type,
@@ -195,7 +191,7 @@ impl<'p> Class<'p> {
                         {
                             // hooray
                             let method = Method::find(
-                                data.name.clone(),
+                                data.name,
                                 attributes,
                                 type_finder,
                                 method_type,
@@ -425,7 +421,7 @@ impl<'p> Enum<'p> {
         // ignore everything else even though that's sad
         if let pdb::TypeData::Enumerate(ref data) = field {
             self.values.push(EnumValue {
-                name: data.name.clone(),
+                name: data.name,
                 value: data.value,
             });
         }
@@ -600,7 +596,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
     let mut pdb = pdb::PDB::open(file)?;
 
     let type_information = pdb.type_information()?;
-    let mut type_finder = type_information.type_finder();
+    let mut type_finder = type_information.finder();
 
     let mut needed_types = TypeSet::new();
     let mut data = Data::new();
@@ -614,7 +610,7 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
             if class.name.as_bytes() == class_name.as_bytes()
                 && !class.properties.forward_reference()
             {
-                data.add(&type_finder, typ.type_index(), &mut needed_types)?;
+                data.add(&type_finder, typ.index(), &mut needed_types)?;
                 break;
             }
         }

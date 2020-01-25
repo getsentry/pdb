@@ -16,7 +16,7 @@ use crate::pe::ImageSectionHeader;
 use crate::source::Source;
 use crate::strings::StringTable;
 use crate::symbol::SymbolTable;
-use crate::tpi::TypeInformation;
+use crate::tpi::{IdInformation, TypeInformation};
 
 /// Some streams have a fixed stream index.
 /// http://llvm.org/docs/PDB/index.html
@@ -24,7 +24,6 @@ use crate::tpi::TypeInformation;
 const PDB_STREAM: u32 = 1;
 const TPI_STREAM: u32 = 2;
 const DBI_STREAM: u32 = 3;
-#[allow(unused)]
 const IPI_STREAM: u32 = 4;
 
 /// `PDB` provides access to the data within a PDB file.
@@ -87,7 +86,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// # Errors
     ///
-    /// * `Error::StreamNotFound` if the PDB somehow does not contain the type information stream
+    /// * `Error::StreamNotFound` if the PDB does not contain the type information stream
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
@@ -95,6 +94,22 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
         let stream = self.msf.get(TPI_STREAM, None)?;
         TypeInformation::parse(stream)
+    }
+
+    /// Retrieve the `IdInformation` for this PDB.
+    ///
+    /// The `IdInformation` object owns a `SourceView` for the type information ("IPI") stream.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain the id information stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    /// * `Error::InvalidTypeInformationHeader` if the id information stream header was not
+    ///   understood
+    pub fn id_information(&mut self) -> Result<IdInformation<'s>> {
+        let stream = self.msf.get(IPI_STREAM, None)?;
+        IdInformation::parse(stream)
     }
 
     /// Retrieve the `DebugInformation` for this PDB.
@@ -356,7 +371,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     ///
     /// # let symbol_table = pdb.global_symbols()?;
     /// # let symbol = symbol_table.iter().next()?.unwrap();
-    /// # match symbol.parse() { Ok(pdb::SymbolData::PublicSymbol(pubsym)) => {
+    /// # match symbol.parse() { Ok(pdb::SymbolData::Public(pubsym)) => {
     /// // Obtain some section offset, eg from a symbol, and convert it
     /// match pubsym.offset.to_rva(&address_map) {
     ///     Some(rva) => {
@@ -374,7 +389,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// # test().unwrap()
     /// ```
     pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
-        let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
+        let sections = self.sections()?.unwrap_or_default();
         Ok(match self.original_sections()? {
             Some(original_sections) => {
                 let omap_from_src = self

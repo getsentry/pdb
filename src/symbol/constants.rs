@@ -13,6 +13,8 @@
 
 use std::fmt;
 
+use scroll::{ctx::TryFromCtx, Endian};
+
 pub const S_COMPILE: u16 = 0x0001; // Compile flags symbol
 pub const S_REGISTER_16t: u16 = 0x0002; // Register variable
 pub const S_CONSTANT_16t: u16 = 0x0003; // constant symbol
@@ -467,6 +469,15 @@ impl From<u16> for CPUType {
     }
 }
 
+impl<'a> TryFromCtx<'a, Endian> for CPUType {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u16::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
+    }
+}
+
 /// These values correspond to the CV_CFL_LANG enumeration, and are documented
 /// here: https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -542,5 +553,14 @@ impl From<u8> for SourceLanguage {
             0x44 => SourceLanguage::D,
             _ => SourceLanguage::Masm, // There is no unknown, so we just force to Masm as the default.
         }
+    }
+}
+
+impl<'a> TryFromCtx<'a, Endian> for SourceLanguage {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        u8::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
     }
 }

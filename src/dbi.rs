@@ -71,6 +71,23 @@ impl<'s> DebugInformation<'s> {
         Ok(self.header.machine_type.into())
     }
 
+    /// Returns this PDB's original `age`.
+    ///
+    /// This number is written by the linker and should be equal to the image's `age` value.
+    /// In contrast, [`PDBInformation::age`] may be bumped by other tools and should be greater or
+    /// equal to the image's `age` value.
+    ///
+    /// Old PDB files may not specify an age, in which case only [`PDBInformation::age`] should be
+    /// checked for matching the image.
+    ///
+    /// [`PDBInformation::age`]: struct.PDBInformation.html#structfield.age
+    pub fn age(&self) -> Option<u32> {
+        match self.header.age {
+            0 => None,
+            age => Some(age),
+        }
+    }
+
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter<'_>> {
         let mut buf = self.stream.parse_buffer();
@@ -87,6 +104,7 @@ impl<'s> DebugInformation<'s> {
 ///
 /// This version type is used in multiple locations: the DBI header, and the PDBI header.
 #[derive(Debug, Copy, Clone)]
+#[allow(missing_docs)]
 pub enum HeaderVersion {
     V41,
     V50,
@@ -97,13 +115,14 @@ pub enum HeaderVersion {
 }
 
 impl From<u32> for HeaderVersion {
+    #[allow(clippy::inconsistent_digit_grouping)]
     fn from(v: u32) -> Self {
         match v {
-            930_803 => HeaderVersion::V41,
-            19_960_307 => HeaderVersion::V50,
-            19_970_606 => HeaderVersion::V60,
-            19_990_903 => HeaderVersion::V70,
-            20_091_201 => HeaderVersion::V110,
+            93_08_03 => HeaderVersion::V41,
+            1996_03_07 => HeaderVersion::V50,
+            1997_06_06 => HeaderVersion::V60,
+            1999_09_03 => HeaderVersion::V70,
+            2009_12_01 => HeaderVersion::V110,
             _ => HeaderVersion::OtherValue(v),
         }
     }

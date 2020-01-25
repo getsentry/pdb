@@ -276,7 +276,7 @@ mod tests {
         let mut list = PageList::new(4096);
         list.push(5);
         list.truncate(2000);
-        assert!(true); // so far so good
+        // so far so good
 
         // bam!
         list.push(6);

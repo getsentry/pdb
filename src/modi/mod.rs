@@ -1,9 +1,7 @@
-use std::mem;
-
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::SymbolIter;
+use crate::symbol::{InlineSiteSymbol, SymbolIter};
 use crate::FallibleIterator;
 
 mod c13;
@@ -50,31 +48,54 @@ impl<'s> ModuleInfo<'s> {
         })
     }
 
+    fn lines_data(&self, size: usize) -> &[u8] {
+        let start = self.symbols_size as usize;
+        &self.stream[start..start + size]
+    }
+
     /// Get an iterator over the all symbols in this module.
     pub fn symbols(&self) -> Result<SymbolIter<'_>> {
         let mut buf = self.stream.parse_buffer();
+        buf.truncate(self.symbols_size)?;
         buf.parse_u32()?;
-        let symbols = buf.take(self.symbols_size - mem::size_of::<u32>())?;
-        Ok(SymbolIter::new(symbols.into()))
+        Ok(SymbolIter::new(buf))
+    }
+
+    /// Get an iterator over symbols starting at the given index.
+    pub fn symbols_at(&self, index: SymbolIndex) -> Result<SymbolIter<'_>> {
+        let mut iter = self.symbols()?;
+        iter.seek(index);
+        Ok(iter)
     }
 
     /// Returns a line program that gives access to file and line information in this module.
     pub fn line_program(&self) -> Result<LineProgram<'_>> {
-        let start = self.symbols_size as usize;
         let inner = match self.lines_size {
             LinesSize::C11(_size) => return Err(Error::UnimplementedFeature("C11 line programs")),
             LinesSize::C13(size) => {
-                let data = &self.stream[start..start + size];
-                LineProgramInner::C13(c13::C13LineProgram::parse(data)?)
+                LineProgramInner::C13(c13::C13LineProgram::parse(self.lines_data(size))?)
             }
         };
 
         Ok(LineProgram { inner })
     }
+
+    /// Returns an iterator over all inlinees in this module.
+    ///
+    /// Inlinees are not guaranteed to be sorted. When requiring random access by `ItemId`, collect
+    /// them into a mapping structure rather than reiterating multiple times.
+    pub fn inlinees(&self) -> Result<InlineeIterator<'_>> {
+        Ok(InlineeIterator(match self.lines_size {
+            // C11 does not contain inlinee information.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => c13::C13InlineeIterator::parse(self.lines_data(size))?,
+        }))
+    }
 }
 
 /// Checksum of a source file's contents.
 #[derive(Clone, Debug)]
+#[allow(missing_docs)]
 pub enum FileChecksum<'a> {
     None,
     Md5(&'a [u8]),
@@ -104,12 +125,6 @@ pub struct FileInfo<'a> {
     pub checksum: FileChecksum<'a>,
 }
 
-/// Index of a file entry in the module.
-///
-/// Use the [`LineProgram`] to resolve information on the file from this offset.
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
-pub struct FileIndex(pub u32);
-
 /// The kind of source construct a line info is referring to.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LineInfoKind {
@@ -119,13 +134,21 @@ pub enum LineInfoKind {
     Statement,
 }
 
+impl Default for LineInfoKind {
+    fn default() -> Self {
+        LineInfoKind::Statement
+    }
+}
+
 /// Mapping of a source code offset to a source file location.
 ///
 /// A line entry is always valid up to the subsequent entry.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct LineInfo {
     /// Source code offset.
     pub offset: PdbInternalSectionOffset,
+    /// The optional length of the code.
+    pub length: Option<u32>,
     /// Index of the source file in this module.
     pub file_index: FileIndex,
     /// Line number of the start of the covered range.
@@ -136,12 +159,12 @@ pub struct LineInfo {
     ///
     /// This value is only present if column information is provided by the PDB. Even then, it is
     /// often zero.
-    pub column_start: Option<u16>,
+    pub column_start: Option<u32>,
     /// Column number of the end of the covered range.
     ///
     /// This value is only present if column information is provided by the PDB. Even then, it is
     /// often zero.
-    pub column_end: Option<u16>,
+    pub column_end: Option<u32>,
     /// Kind of this line information.
     pub kind: LineInfoKind,
 }
@@ -161,10 +184,19 @@ impl<'a> LineProgram<'a> {
     /// Note that line records are not guaranteed to be ordered by source code offset. If a
     /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
     /// sorted manually.
-    pub fn lines(&self) -> LineIterator {
+    pub fn lines(&self) -> LineIterator<'a> {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines()),
+            },
+        }
+    }
+
+    /// Returns an iterator over all file records of this module.
+    pub fn files(&self) -> FileIterator<'a> {
+        match self.inner {
+            LineProgramInner::C13(ref inner) => FileIterator {
+                inner: FileIteratorInner::C13(inner.files()),
             },
         }
     }
@@ -194,13 +226,23 @@ impl<'a> LineProgram<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 enum LineIteratorInner<'a> {
     C13(c13::C13LineIterator<'a>),
 }
 
 /// An iterator over line information records in a module.
+#[derive(Clone, Debug)]
 pub struct LineIterator<'a> {
     inner: LineIteratorInner<'a>,
+}
+
+impl Default for LineIterator<'_> {
+    fn default() -> Self {
+        LineIterator {
+            inner: LineIteratorInner::C13(Default::default()),
+        }
+    }
 }
 
 impl<'a> FallibleIterator for LineIterator<'a> {
@@ -210,6 +252,86 @@ impl<'a> FallibleIterator for LineIterator<'a> {
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inner {
             LineIteratorInner::C13(ref mut inner) => inner.next(),
+        }
+    }
+}
+
+/// An inlined function that can evaluate to line information.
+#[derive(Clone, Debug)]
+pub struct Inlinee<'a>(c13::C13Inlinee<'a>);
+
+impl<'a> Inlinee<'a> {
+    /// The index of this inlinee in the `IdInformation` stream (IPI).
+    pub fn index(&self) -> IdIndex {
+        self.0.index()
+    }
+
+    /// Returns an iterator over line records for an inline site.
+    ///
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
+    pub fn lines(
+        &self,
+        parent_offset: PdbInternalSectionOffset,
+        inline_site: &InlineSiteSymbol<'a>,
+    ) -> InlineeLineIterator<'a> {
+        InlineeLineIterator(self.0.lines(parent_offset, inline_site))
+    }
+}
+
+/// An iterator over line information records in a module.
+#[derive(Clone, Debug, Default)]
+pub struct InlineeIterator<'a>(c13::C13InlineeIterator<'a>);
+
+impl<'a> FallibleIterator for InlineeIterator<'a> {
+    type Item = Inlinee<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        self.0.next().map(|opt| opt.map(Inlinee))
+    }
+}
+
+/// An iterator over line information records in a module.
+#[derive(Clone, Debug, Default)]
+pub struct InlineeLineIterator<'a>(c13::C13InlineeLineIterator<'a>);
+
+impl<'a> FallibleIterator for InlineeLineIterator<'a> {
+    type Item = LineInfo;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        self.0.next()
+    }
+}
+
+#[derive(Clone, Debug)]
+enum FileIteratorInner<'a> {
+    C13(c13::C13FileIterator<'a>),
+}
+
+/// An iterator over file records in a module.
+#[derive(Clone, Debug)]
+pub struct FileIterator<'a> {
+    inner: FileIteratorInner<'a>,
+}
+
+impl Default for FileIterator<'_> {
+    fn default() -> Self {
+        FileIterator {
+            inner: FileIteratorInner::C13(Default::default()),
+        }
+    }
+}
+
+impl<'a> FallibleIterator for FileIterator<'a> {
+    type Item = FileInfo<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        match self.inner {
+            FileIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
 }

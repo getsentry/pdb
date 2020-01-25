@@ -47,7 +47,6 @@ fn count_symbols() {
                     "    assert_eq!(data, SymbolData::{:?});",
                     sym.parse().expect("parse")
                 );
-                println!("    assert_eq!(name, {:?});", sym.name().expect("name"));
                 println!("}}");
                 println!();
             }
@@ -97,11 +96,11 @@ fn find_symbols() {
         // walk the symbol table
         let mut iter = global_symbols.iter();
         while let Some(sym) = iter.next().expect("next symbol") {
-            // get symbol name
-            let name = sym.name().expect("symbol name");
-
             // ensure we can parse all the symbols, even though we only want a few
             let data = sym.parse().expect("symbol parsing");
+
+            // get symbol name
+            let name = data.name().unwrap_or_default();
 
             if let Entry::Occupied(mut e) = map.entry(name.as_bytes()) {
                 // this is a symbol we wanted to find
@@ -116,8 +115,7 @@ fn find_symbols() {
                     println!("found {} => {:?}", String::from_utf8_lossy(key), data);
                 }
                 None => {
-                    println!("couldn't find {}", String::from_utf8_lossy(key));
-                    assert!(false);
+                    panic!("couldn't find {}", String::from_utf8_lossy(key));
                 }
             }
         }

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use scroll::Pread;
+use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
 use crate::msf::Stream;
@@ -37,7 +37,7 @@ impl StringTableHashVersion {
 
 /// Raw header of the string table stream.
 #[repr(C, packed)]
-#[derive(Clone, Copy, Debug, Pread)]
+#[derive(Clone, Copy, Debug)]
 struct StringTableHeader {
     /// Magic bytes of the string table.
     magic: u32,
@@ -45,6 +45,21 @@ struct StringTableHeader {
     hash_version: u32,
     /// The size of all names in bytes.
     names_size: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for StringTableHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = StringTableHeader {
+            magic: this.gread_with(&mut offset, le)?,
+            hash_version: this.gread_with(&mut offset, le)?,
+            names_size: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl StringTableHeader {

@@ -29,10 +29,10 @@
 //! let mut symbols = symbol_table.iter();
 //! while let Some(symbol) = symbols.next()? {
 //!     match symbol.parse() {
-//!         Ok(pdb::SymbolData::PublicSymbol(data)) if data.function => {
+//!         Ok(pdb::SymbolData::Public(data)) if data.function => {
 //!             // we found the location of a function!
 //!             let rva = data.offset.to_rva(&address_map).unwrap_or_default();
-//!             println!("{} is {}", rva, symbol.name()?);
+//!             println!("{} is {}", rva, data.name);
 //!             # count += 1;
 //!         }
 //!         _ => {}
@@ -43,6 +43,8 @@
 //! # }
 //! # assert!(test().expect("test") > 2000);
 //! ```
+
+#![warn(missing_docs)]
 
 // modules
 mod common;

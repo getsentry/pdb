@@ -11,23 +11,20 @@ fn print_usage(program: &str, opts: Options) {
 fn print_row(offset: PdbInternalSectionOffset, kind: &str, name: pdb::RawString<'_>) {
     println!(
         "{:x}\t{:x}\t{}\t{}",
-        offset.section,
-        offset.offset,
-        kind,
-        name.to_string()
+        offset.section, offset.offset, kind, name
     );
 }
 
 fn print_symbol(symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
     match symbol.parse()? {
-        pdb::SymbolData::PublicSymbol(data) => {
-            print_row(data.offset, "function", symbol.name()?);
+        pdb::SymbolData::Public(data) => {
+            print_row(data.offset, "function", data.name);
         }
-        pdb::SymbolData::DataSymbol(data) => {
-            print_row(data.offset, "data", symbol.name()?);
+        pdb::SymbolData::Data(data) => {
+            print_row(data.offset, "data", data.name);
         }
         pdb::SymbolData::Procedure(data) => {
-            print_row(data.offset, "function", symbol.name()?);
+            print_row(data.offset, "function", data.name);
         }
         _ => {
             // ignore everything else

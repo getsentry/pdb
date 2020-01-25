@@ -5,6 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#![allow(missing_docs)]
+
 use crate::common::*;
 use crate::tpi::constants::*;
 use crate::tpi::primitive::*;
@@ -51,7 +53,7 @@ impl<'t> TypeData<'t> {
             _ => return None,
         };
 
-        Some(name.clone())
+        Some(*name)
     }
 }
 
@@ -65,7 +67,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1631-L1642
         LF_CLASS | LF_CLASS_ST | LF_STRUCTURE | LF_STRUCTURE_ST | LF_INTERFACE => {
-            Ok(TypeData::Class(ClassType {
+            let mut class = ClassType {
                 kind: match leaf {
                     LF_CLASS | LF_CLASS_ST => ClassKind::Class,
                     LF_STRUCTURE | LF_STRUCTURE_ST => ClassKind::Struct,
@@ -79,13 +81,20 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 vtable_shape: parse_optional_type_index(&mut buf)?,
                 size: parse_unsigned(&mut buf)? as u16,
                 name: parse_string(leaf, buf)?,
-            }))
+                unique_name: None,
+            };
+
+            if class.properties.has_unique_name() {
+                class.unique_name = Some(parse_string(leaf, buf)?);
+            }
+
+            Ok(TypeData::Class(class))
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2580-L2586
         LF_MEMBER | LF_MEMBER_ST => Ok(TypeData::Member(MemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            field_type: buf.parse_u32()? as TypeIndex,
+            field_type: buf.parse()?,
             offset: parse_unsigned(&mut buf)? as u16,
             name: parse_string(leaf, &mut buf)?,
         })),
@@ -105,26 +114,26 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
             Ok(TypeData::Nested(NestedType {
                 attributes: FieldAttributes(raw_attr),
-                nested_type: buf.parse_u32()? as TypeIndex,
+                nested_type: buf.parse()?,
                 name: parse_string(leaf, &mut buf)?,
             }))
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1801-L1811
         LF_MFUNCTION => Ok(TypeData::MemberFunction(MemberFunctionType {
-            return_type: buf.parse_u32()? as TypeIndex,
-            class_type: buf.parse_u32()? as TypeIndex,
+            return_type: buf.parse()?,
+            class_type: buf.parse()?,
             this_pointer_type: parse_optional_type_index(&mut buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
-            argument_list: buf.parse_u32()? as TypeIndex,
+            argument_list: buf.parse()?,
             this_adjustment: buf.parse_u32()?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2650-L2655
         LF_METHOD | LF_METHOD_ST => Ok(TypeData::OverloadedMethod(OverloadedMethodType {
             count: buf.parse_u16()?,
-            method_list: buf.parse_u32()? as TypeIndex,
+            method_list: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
@@ -133,7 +142,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let attr = FieldAttributes(buf.parse_u16()?);
             Ok(TypeData::Method(MethodType {
                 attributes: attr,
-                method_type: buf.parse_u32()? as TypeIndex,
+                method_type: buf.parse()?,
                 vtable_offset: if attr.is_intro_virtual() {
                     Some(buf.parse_u32()? as u32)
                 } else {
@@ -152,7 +161,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 _ => unreachable!(),
             },
             attributes: FieldAttributes(buf.parse_u16()?),
-            base_class: buf.parse_u32()? as TypeIndex,
+            base_class: buf.parse()?,
             offset: parse_unsigned(&mut buf)? as u32,
         })),
 
@@ -162,7 +171,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             buf.parse_u16()?;
             Ok(TypeData::VirtualFunctionTablePointer(
                 VirtualFunctionTablePointerType {
-                    table: buf.parse_u32()? as TypeIndex,
+                    table: buf.parse()?,
                 },
             ))
         }
@@ -170,27 +179,39 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2599-L2604
         LF_STMEMBER | LF_STMEMBER_ST => Ok(TypeData::StaticMember(StaticMemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            field_type: buf.parse_u32()? as TypeIndex,
+            field_type: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1469-L1506
-        LF_POINTER => Ok(TypeData::Pointer(PointerType {
-            underlying_type: buf.parse_u32()? as TypeIndex,
-            attributes: PointerAttributes(buf.parse_u32()?),
-        })),
+        LF_POINTER => {
+            let underlying_type = buf.parse()?;
+            let attributes = PointerAttributes(buf.parse()?);
+
+            let containing_class = if attributes.pointer_to_member() {
+                Some(buf.parse()?)
+            } else {
+                None
+            };
+
+            Ok(TypeData::Pointer(PointerType {
+                underlying_type,
+                attributes,
+                containing_class,
+            }))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1775-L1782
         LF_PROCEDURE => Ok(TypeData::Procedure(ProcedureType {
             return_type: parse_optional_type_index(&mut buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
-            argument_list: buf.parse_u32()? as TypeIndex,
+            argument_list: buf.parse()?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1460-L1464
         LF_MODIFIER => {
-            let type_index = buf.parse_u32()? as TypeIndex;
+            let type_index = buf.parse()?;
 
             // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1090-L1095
             let flags = buf.parse_u16()?;
@@ -204,25 +225,34 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1752-L1759
-        LF_ENUM | LF_ENUM_ST => Ok(TypeData::Enumeration(EnumerationType {
-            count: buf.parse_u16()?,
-            properties: TypeProperties(buf.parse_u16()?),
-            underlying_type: buf.parse_u32()? as TypeIndex,
-            fields: buf.parse_u32()? as TypeIndex,
-            name: parse_string(leaf, &mut buf)?,
-        })),
+        LF_ENUM | LF_ENUM_ST => {
+            let mut enumeration = EnumerationType {
+                count: buf.parse_u16()?,
+                properties: TypeProperties(buf.parse_u16()?),
+                underlying_type: buf.parse()?,
+                fields: buf.parse()?,
+                name: parse_string(leaf, &mut buf)?,
+                unique_name: None,
+            };
+
+            if enumeration.properties.has_unique_name() {
+                enumeration.unique_name = Some(parse_string(leaf, &mut buf)?);
+            }
+
+            Ok(TypeData::Enumeration(enumeration))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2683-L2688
         LF_ENUMERATE | LF_ENUMERATE_ST => Ok(TypeData::Enumerate(EnumerateType {
             attributes: FieldAttributes(buf.parse_u16()?),
-            value: buf.parse_variant()?,
+            value: buf.parse()?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1564-L1579
         LF_ARRAY | LF_ARRAY_ST | LF_STRIDED_ARRAY => {
-            let element_type = buf.parse_u32()? as TypeIndex;
-            let indexing_type = buf.parse_u32()? as TypeIndex;
+            let element_type = buf.parse()?;
+            let indexing_type = buf.parse()?;
             let stride: Option<u32> = if leaf == LF_STRIDED_ARRAY {
                 Some(buf.parse_u32()?)
             } else {
@@ -267,17 +297,26 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1657-L1664
-        LF_UNION | LF_UNION_ST => Ok(TypeData::Union(UnionType {
-            count: buf.parse_u16()?,
-            properties: TypeProperties(buf.parse_u16()?),
-            fields: buf.parse_u32()? as TypeIndex,
-            size: parse_unsigned(&mut buf)? as u32,
-            name: parse_string(leaf, &mut buf)?,
-        })),
+        LF_UNION | LF_UNION_ST => {
+            let mut union = UnionType {
+                count: buf.parse_u16()?,
+                properties: TypeProperties(buf.parse_u16()?),
+                fields: buf.parse()?,
+                size: parse_unsigned(&mut buf)? as u32,
+                name: parse_string(leaf, &mut buf)?,
+                unique_name: None,
+            };
+
+            if union.properties.has_unique_name() {
+                union.unique_name = Some(parse_string(leaf, &mut buf)?);
+            }
+
+            Ok(TypeData::Union(union))
+        }
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2164-L2170
         LF_BITFIELD => Ok(TypeData::Bitfield(BitfieldType {
-            underlying_type: buf.parse_u32()? as TypeIndex,
+            underlying_type: buf.parse()?,
             length: buf.parse_u8()?,
             position: buf.parse_u8()?,
         })),
@@ -298,8 +337,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_VBCLASS | LF_IVBCLASS => Ok(TypeData::VirtualBaseClass(VirtualBaseClassType {
             direct: leaf == LF_VBCLASS,
             attributes: FieldAttributes(buf.parse_u16()?),
-            base_class: buf.parse_u32()? as TypeIndex,
-            base_pointer: buf.parse_u32()? as TypeIndex,
+            base_class: buf.parse()?,
+            base_pointer: buf.parse()?,
             base_pointer_offset: parse_unsigned(&mut buf)? as u32,
             virtual_base_offset: parse_unsigned(&mut buf)? as u32,
         })),
@@ -320,7 +359,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                         buf.parse_u16()?;
 
                         // parse the TypeIndex where we continue
-                        continuation = Some(buf.parse_u32()? as TypeIndex);
+                        continuation = Some(buf.parse()?);
                     }
                     _ => {
                         // other type
@@ -343,7 +382,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let count = buf.parse_u32()?;
             let mut arglist: Vec<TypeIndex> = Vec::with_capacity(count as usize);
             for _ in 0..count {
-                arglist.push(buf.parse_u32()? as TypeIndex);
+                arglist.push(buf.parse()?);
             }
             Ok(TypeData::ArgumentList(ArgumentList { arguments: arglist }))
         }
@@ -358,7 +397,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
                 methods.push(MethodListEntry {
                     attributes: attr,
-                    method_type: buf.parse_u32()?,
+                    method_type: buf.parse()?,
                     vtable_offset: if attr.is_intro_virtual() {
                         Some(buf.parse_u32()?)
                     } else {
@@ -376,8 +415,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
 #[inline]
 fn parse_optional_type_index<'t>(buf: &mut ParseBuffer<'t>) -> Result<Option<TypeIndex>> {
-    let index = buf.parse_u32()? as TypeIndex;
-    if index == 0 || index == u32::from(u16::max_value()) {
+    let index = buf.parse()?;
+    if index == TypeIndex(0) || index == TypeIndex(0xffff) {
         Ok(None)
     } else {
         Ok(Some(index))
@@ -420,8 +459,11 @@ fn parse_unsigned<'t>(buf: &mut ParseBuffer<'t>) -> Result<u64> {
         LF_ULONG => Ok(u64::from(buf.parse_u32()?)),
         LF_UQUADWORD => Ok(buf.parse_u64()?),
         _ => {
-            debug_assert!(false);
-            Err(Error::UnexpectedNumericPrefix(leaf))
+            if cfg!(debug_assertions) {
+                unreachable!();
+            } else {
+                Err(Error::UnexpectedNumericPrefix(leaf))
+            }
         }
     }
 }
@@ -605,6 +647,52 @@ impl FunctionAttributes {
     }
 }
 
+/// The kind of a `PointerType`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerKind {
+    /// 16 bit pointer.
+    Near16,
+    /// 16:16 far pointer.
+    Far16,
+    /// 16:16 huge pointer.
+    Huge16,
+    /// Based on segment.
+    BaseSeg,
+    /// Based on value of base.
+    BaseVal,
+    /// Based on segment value of base.
+    BaseSegVal,
+    /// Based on address of base.
+    BaseAddr,
+    /// Based on segment address of base.
+    BaseSegAddr,
+    /// Based on type.
+    BaseType,
+    /// Based on self.
+    BaseSelf,
+    /// 32-bit pointer.
+    Near32,
+    /// 48-bit 16:32 pointer.
+    Far32,
+    /// 64-bit pointer.
+    Ptr64,
+}
+
+/// The mode of a `PointerType`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PointerMode {
+    /// A regular pointer.
+    Pointer,
+    /// L-Value reference.
+    LValueReference,
+    /// Pointer to data member.
+    Member,
+    /// Pointer to member function.
+    MemberFunction,
+    /// R-Value reference.
+    RValueReference,
+}
+
 /*
 struct lfPointerAttr {
     unsigned long   ptrtype     :5; // ordinal specifying pointer type (CV_ptrtype_e)
@@ -620,54 +708,81 @@ struct lfPointerAttr {
     unsigned long   isrref      :1; // TRUE if it is this pointer of member function with && ref-qualifier
     unsigned long   unused      :10;// pad out to 32-bits for following cv_typ_t's
 } attr;
-
-typedef enum CV_ptrtype_e {
-    CV_PTR_NEAR         = 0x00, // 16 bit pointer
-    CV_PTR_FAR          = 0x01, // 16:16 far pointer
-    CV_PTR_HUGE         = 0x02, // 16:16 huge pointer
-    CV_PTR_BASE_SEG     = 0x03, // based on segment
-    CV_PTR_BASE_VAL     = 0x04, // based on value of base
-    CV_PTR_BASE_SEGVAL  = 0x05, // based on segment value of base
-    CV_PTR_BASE_ADDR    = 0x06, // based on address of base
-    CV_PTR_BASE_SEGADDR = 0x07, // based on segment address of base
-    CV_PTR_BASE_TYPE    = 0x08, // based on type
-    CV_PTR_BASE_SELF    = 0x09, // based on self
-    CV_PTR_NEAR32       = 0x0a, // 32 bit pointer
-    CV_PTR_FAR32        = 0x0b, // 16:32 pointer
-    CV_PTR_64           = 0x0c, // 64 bit pointer
-    CV_PTR_UNUSEDPTR    = 0x0d  // first unused pointer type
-} CV_ptrtype_e;
-
-typedef enum CV_ptrmode_e {
-    CV_PTR_MODE_PTR     = 0x00, // "normal" pointer
-    CV_PTR_MODE_REF     = 0x01, // "old" reference
-    CV_PTR_MODE_LVREF   = 0x01, // l-value reference
-    CV_PTR_MODE_PMEM    = 0x02, // pointer to data member
-    CV_PTR_MODE_PMFUNC  = 0x03, // pointer to member function
-    CV_PTR_MODE_RVREF   = 0x04, // r-value reference
-    CV_PTR_MODE_RESERVED= 0x05  // first unused pointer mode
-} CV_ptrmode_e;
-
 */
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct PointerAttributes(u32);
-impl PointerAttributes {
-    // TODO
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PointerAttributes(u32);
+
+impl PointerAttributes {
     /// Indicates the type of pointer.
-    pub fn pointer_type(self) -> u8 {
-        (self.0 & 0x1f) as u8
+    pub fn pointer_kind(self) -> PointerKind {
+        match self.0 & 0x1f {
+            0x00 => PointerKind::Near16,
+            0x01 => PointerKind::Far16,
+            0x02 => PointerKind::Huge16,
+            0x03 => PointerKind::BaseSeg,
+            0x04 => PointerKind::BaseVal,
+            0x05 => PointerKind::BaseSegVal,
+            0x06 => PointerKind::BaseAddr,
+            0x07 => PointerKind::BaseSegAddr,
+            0x08 => PointerKind::BaseType,
+            0x09 => PointerKind::BaseSelf,
+            0x0a => PointerKind::Near32,
+            0x0b => PointerKind::Far32,
+            0x0c => PointerKind::Ptr64,
+            _ => unreachable!(),
+        }
     }
 
-    /// Indicates if this pointer is `const`.
+    /// Returns the mode of this pointer.
+    pub fn pointer_mode(self) -> PointerMode {
+        match (self.0 >> 5) & 0x7 {
+            0x00 => PointerMode::Pointer,
+            0x01 => PointerMode::LValueReference,
+            0x02 => PointerMode::Member,
+            0x03 => PointerMode::MemberFunction,
+            0x04 => PointerMode::RValueReference,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns `true` if this points to a member (either data or function).
+    pub fn pointer_to_member(self) -> bool {
+        match self.pointer_mode() {
+            PointerMode::Member | PointerMode::MemberFunction => true,
+            _ => false,
+        }
+    }
+
+    /// Returns `true` if this is a flat `0:32` pointer.
+    pub fn is_flat_32(self) -> bool {
+        (self.0 & 0x100) != 0
+    }
+
+    /// Returns `true` if this pointer is `volatile`.
+    pub fn is_volatile(self) -> bool {
+        (self.0 & 0x200) != 0
+    }
+
+    /// Returns `true` if this pointer is `const`.
     pub fn is_const(self) -> bool {
-        (self.0 & 0x40) != 0
+        (self.0 & 0x400) != 0
+    }
+
+    /// Returns `true` if this pointer is unaligned.
+    pub fn is_unaligned(self) -> bool {
+        (self.0 & 0x800) != 0
+    }
+
+    /// Returns `true` if this pointer is restricted (allow aggressive opts).
+    pub fn is_restrict(self) -> bool {
+        (self.0 & 0x1000) != 0
     }
 
     /// Is this a C++ reference, as opposed to a C pointer?
     pub fn is_reference(self) -> bool {
-        match (self.0 >> 5) & 0x07 {
-            0x01 | 0x04 => true,
+        match self.pointer_mode() {
+            PointerMode::LValueReference | PointerMode::RValueReference => true,
             _ => false,
         }
     }
@@ -678,11 +793,17 @@ impl PointerAttributes {
         if size != 0 {
             return size;
         }
-        match self.pointer_type() {
-            0x0a => 4,
-            0x0c => 8,
+
+        match self.pointer_kind() {
+            PointerKind::Near32 | PointerKind::Far32 => 4,
+            PointerKind::Ptr64 => 8,
             _ => 0,
         }
+    }
+
+    /// Returns `true` if this is a MoCOM pointer (`^` or `%`).
+    pub fn is_mocom(self) -> bool {
+        (self.0 & 0x40000) != 0
     }
 }
 
@@ -708,7 +829,11 @@ pub struct ClassType<'t> {
 
     pub size: u16,
 
+    /// Display name of the class including type parameters.
     pub name: RawString<'t>,
+
+    /// Mangled name, if present.
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// Used by `ClassType` to distinguish class-like concepts.
@@ -817,6 +942,7 @@ pub struct ProcedureType {
 pub struct PointerType {
     pub underlying_type: TypeIndex,
     pub attributes: PointerAttributes,
+    pub containing_class: Option<TypeIndex>,
 }
 
 /// The information parsed from a type record with kind `LF_MODIFIER`.
@@ -836,6 +962,7 @@ pub struct EnumerationType<'t> {
     pub underlying_type: TypeIndex,
     pub fields: TypeIndex,
     pub name: RawString<'t>,
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// The information parsed from a type record with kind `LF_ENUMERATE` or `LF_ENUMERATE_ST`.
@@ -874,6 +1001,7 @@ pub struct UnionType<'t> {
     pub fields: TypeIndex,
     pub size: u32,
     pub name: RawString<'t>,
+    pub unique_name: Option<RawString<'t>>,
 }
 
 /// The information parsed from a type record with kind `LF_BITFIELD`.

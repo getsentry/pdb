@@ -33,7 +33,7 @@ fn dump_pdb(filename: &str) -> pdb::Result<()> {
         while let Some(symbol) = symbols.next()? {
             if let Ok(SymbolData::Procedure(proc)) = symbol.parse() {
                 let sign = if proc.global { "+" } else { "-" };
-                println!("{} {}", sign, symbol.name()?.to_string());
+                println!("{} {}", sign, proc.name);
 
                 let mut lines = program.lines_at_offset(proc.offset);
                 while let Some(line_info) = lines.next()? {

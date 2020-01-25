@@ -331,9 +331,9 @@ impl From<&'_ OldFrameData> for FrameData {
             code_start: data.code_start(),
             code_size: data.code_size(),
             prolog_size: data.prolog_size(),
-            locals_size: data.locals_size(),
-            params_size: u32::from(data.params_size()),
-            saved_regs_size: data.saved_regs_size(),
+            locals_size: data.locals_size() * 4,
+            params_size: u32::from(data.params_size()) * 4,
+            saved_regs_size: data.saved_regs_size() * 4,
             max_stack_size: None,
             has_structured_eh: data.has_seh(),
             has_cpp_eh: false,
@@ -364,6 +364,7 @@ impl From<&'_ NewFrameData> for FrameData {
     }
 }
 
+/// Iterator over entries in a [`FrameTable`](struct.FrameTable.html).
 #[derive(Debug, Default)]
 pub struct FrameDataIter<'t> {
     old_frames: &'t [OldFrameData],

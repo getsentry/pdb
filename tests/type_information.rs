@@ -25,11 +25,11 @@ fn iteration() {
         let len = type_information.len();
 
         let mut count: usize = 0;
-        let mut last_index: pdb::TypeIndex = 4095;
+        let mut last_index = pdb::TypeIndex(4095);
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(typ.type_index(), last_index + 1);
-            last_index = typ.type_index();
+            assert_eq!(typ.index().0, last_index.0 + 1);
+            last_index = typ.index();
             count += 1;
         }
 
@@ -40,26 +40,26 @@ fn iteration() {
 #[test]
 fn type_finder() {
     setup(|type_information| {
-        let mut type_finder = type_information.type_finder();
+        let mut type_finder = type_information.finder();
         let mut map: HashMap<pdb::TypeIndex, pdb::Type<'_>> = HashMap::new();
 
-        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+        assert_eq!(type_finder.max_index().0 >> 3, 4096 >> 3);
 
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type() >> 3, typ.type_index() >> 3);
+            assert_eq!(type_finder.max_index().0 >> 3, typ.index().0 >> 3);
 
             // update the type finder
             type_finder.update(&iter);
 
             // record this type in our map
-            map.insert(typ.type_index(), typ);
+            map.insert(typ.index(), typ);
         }
 
         // iterate over the map -- which is randomized -- making sure the type finder finds identical types
-        for (type_index, typ) in map.iter() {
-            let found = type_finder.find(*type_index).expect("find");
+        for (index, typ) in map.iter() {
+            let found = type_finder.find(*index).expect("find");
             assert_eq!(*typ, found);
         }
     })
@@ -68,7 +68,7 @@ fn type_finder() {
 #[test]
 fn find_classes() {
     setup(|type_information| {
-        let mut type_finder = type_information.type_finder();
+        let mut type_finder = type_information.finder();
 
         // iterate over all the types
         let mut iter = type_information.iter();
@@ -84,7 +84,7 @@ fn find_classes() {
                     ..
                 })) => {
                     // this Type describes a class-like type with fields
-                    println!("class {} (type {}):", name, typ.type_index());
+                    println!("class {} (type {}):", name, typ.index());
 
                     // fields is presently a TypeIndex
                     // find and parse the list of fields
@@ -99,8 +99,7 @@ fn find_classes() {
                             }
                         }
                         Ok(value) => {
-                            println!("expected a field list, got {:?}", value);
-                            assert!(false);
+                            panic!("expected a field list, got {:?}", value);
                         }
                         Err(e) => {
                             println!("field parse error: {}", e);
@@ -122,8 +121,7 @@ fn find_classes() {
                             }
                         }
                         Ok(value) => {
-                            println!("expected a field list, got {:?}", value);
-                            assert!(false);
+                            panic!("expected a field list, got {:?}", value);
                         }
                         Err(e) => {
                             println!("field parse error: {}", e);
@@ -145,7 +143,7 @@ fn find_classes() {
                     // other parse error
                     println!(
                         "other parse error on type {} (raw type {:04x}): {}",
-                        typ.type_index(),
+                        typ.index(),
                         typ.raw_kind(),
                         e
                     );
@@ -162,14 +160,14 @@ fn find_classes() {
 #[bench]
 fn bench_type_finder(b: &mut test::Bencher) {
     setup(|type_information| {
-        let mut type_finder = type_information.new_type_finder();
+        let mut type_finder = type_information.finder();
 
-        assert_eq!(type_finder.max_indexed_type() >> 3, 4096 >> 3);
+        assert_eq!(type_finder.max_index() >> 3, 4096 >> 3);
 
         // iterate over all the types
         let mut iter = type_information.iter();
         while let Some(typ) = iter.next().expect("next type") {
-            assert_eq!(type_finder.max_indexed_type() >> 3, typ.type_index() >> 3);
+            assert_eq!(type_finder.max_index() >> 3, typ.index() >> 3);
             type_finder.update(&iter);
         }
 
@@ -208,7 +206,7 @@ fn type_length_histogram() {
             println!("{}\t{}", len, count);
         }
 
-        assert!(false);
+        panic!();
     })
 }
 */
