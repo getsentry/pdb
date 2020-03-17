@@ -1211,7 +1211,7 @@ mod tests {
 
         #[test]
         fn test_parse_cstring() {
-            let mut buf = ParseBuffer::from("hello\x00world\x00\x00\x01".as_bytes());
+            let mut buf = ParseBuffer::from(&b"hello\x00world\x00\x00\x01"[..]);
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 8);
@@ -1236,7 +1236,7 @@ mod tests {
 
         #[test]
         fn test_parse_u8_pascal_string() {
-            let mut buf = ParseBuffer::from("\x05hello\x05world\x00\x01".as_bytes());
+            let mut buf = ParseBuffer::from(&b"\x05hello\x05world\x00\x01"[..]);
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 8);
