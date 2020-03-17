@@ -33,10 +33,12 @@ fn test_omap_symbol() {
         let target_name = pdb::RawString::from("NtWaitForSingleObject");
         let mut iter = global_symbols.iter();
         iter.find(|sym| {
-            sym.parse()
+            let matches = sym
+                .parse()
                 .ok()
                 .and_then(|d| d.name())
-                .map_or(false, |n| n == target_name)
+                .map_or(false, |n| n == target_name);
+            Ok(matches)
         })
         .expect("iterate symbols")
         .expect("find target symbol")

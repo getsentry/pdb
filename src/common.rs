@@ -250,9 +250,8 @@ macro_rules! impl_pread {
     ($type:ty) => {
         impl<'a> TryFromCtx<'a, Endian> for $type {
             type Error = scroll::Error;
-            type Size = usize;
 
-            fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+            fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, usize)> {
                 TryFromCtx::try_from_ctx(this, le).map(|(i, s)| (Self(i), s))
             }
         }
@@ -556,9 +555,8 @@ pub struct PdbInternalSectionOffset {
 
 impl<'t> TryFromCtx<'t, Endian> for PdbInternalSectionOffset {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
         let data = PdbInternalSectionOffset {
             offset: this.gread_with(&mut offset, le)?,
@@ -827,7 +825,7 @@ impl<'b> ParseBuffer<'b> {
     /// Parse an object that implements `Pread`.
     pub fn parse<T>(&mut self) -> Result<T>
     where
-        T: TryFromCtx<'b, Endian, [u8], Size = usize>,
+        T: TryFromCtx<'b, Endian, [u8]>,
         T::Error: From<scroll::Error>,
         Error: From<T::Error>,
     {
@@ -837,7 +835,7 @@ impl<'b> ParseBuffer<'b> {
     /// Parse an object that implements `Pread` with the given context.
     pub fn parse_with<T, C>(&mut self, ctx: C) -> Result<T>
     where
-        T: TryFromCtx<'b, C, [u8], Size = usize>,
+        T: TryFromCtx<'b, C, [u8]>,
         T::Error: From<scroll::Error>,
         Error: From<T::Error>,
         C: Copy,
@@ -944,9 +942,8 @@ impl fmt::Display for Variant {
 
 impl<'a> TryFromCtx<'a, Endian> for Variant {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> Result<(Self, usize)> {
         let mut offset = 0;
 
         let variant = match this.gread_with(&mut offset, le)? {
