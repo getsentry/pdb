@@ -110,46 +110,10 @@ pub enum Error {
 }
 
 impl std::error::Error for Error {
-    fn description(&self) -> &str {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match *self {
-            Error::UnrecognizedFileFormat => {
-                "The input data was not recognized as a MSF (PDB) file"
-            }
-            Error::InvalidPageSize(_) => "The MSF header specifies an invalid page size",
-            Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
-            Error::StreamNotFound(_) => "The requested stream is not stored in this file",
-            Error::StreamNameNotFound => "The requested stream is not stored in this file",
-            Error::InvalidStreamLength(_) => "Stream has an invalid length or alignment",
-            Error::IoError(ref e) => e.description(),
-            Error::UnexpectedEof => "Unexpectedly reached end of input",
-            Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
-            Error::GlobalSymbolsNotFound => "The global symbol stream is missing",
-            Error::SymbolTooShort => "A symbol record's length value was impossibly small",
-            Error::UnimplementedSymbolKind(_) => {
-                "Support for symbols of this kind is not implemented"
-            }
-            Error::InvalidTypeInformationHeader(_) => "The type information header was invalid",
-            Error::TypeTooShort => "A type record's length value was impossibly small",
-            Error::TypeNotFound(_) => "Type not found",
-            Error::TypeNotIndexed(_, _) => "Type not indexed",
-            Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
-            Error::NotACrossModuleRef(_) => "Type index is not a cross module reference",
-            Error::CrossModuleRefNotFound(_) => "Cross module reference not found in imports",
-            Error::UnexpectedNumericPrefix(_) => {
-                "Variable-length numeric parsing encountered an unexpected prefix"
-            }
-            Error::AddressMapNotFound => {
-                "Required mapping for virtual addresses (OMAP) was not found"
-            }
-            Error::ScrollError(ref e) => e.description(),
-            Error::UnimplementedDebugSubsection(_) => {
-                "Debug module subsection of this kind is not implemented"
-            }
-            Error::UnimplementedFileChecksumKind(_) => "Unknown source file checksum kind",
-            Error::InvalidFileChecksumOffset(_) => "Invalid source file checksum offset",
-            Error::LinesNotFound => "Line information not found for a module",
-            Error::InvalidCompressedAnnotation => "Invalid compressed annoation",
-            Error::UnknownBinaryAnnotation(_) => "Unknown binary annotation",
+            Self::IoError(ref error) => Some(error),
+            _ => None,
         }
     }
 }
