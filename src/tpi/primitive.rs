@@ -66,10 +66,22 @@ pub enum PrimitiveKind {
     U8,
 
     /// Signed 16-bit integer
+    Short,
+
+    /// Unsigned 16-bit integer
+    UShort,
+
+    /// Signed 16-bit integer
     I16,
 
     /// Unsigned 16-bit integer
     U16,
+
+    /// Signed 32-bit integer
+    Long,
+
+    /// Unsigned 32-bit inteer
+    ULong,
 
     /// Signed 32-bit integer
     I32,
@@ -78,10 +90,22 @@ pub enum PrimitiveKind {
     U32,
 
     /// Signed 64-bit integer
+    Quad,
+
+    /// Unsigned 64-bit integer
+    UQuad,
+
+    /// Signed 64-bit integer
     I64,
 
     /// Unsigned 64-bit integer
     U64,
+
+    /// Signed 128-bit integer
+    Octa,
+
+    /// Unsigned 128-bit integer
+    UOcta,
 
     /// Signed 128-bit integer
     I128,
@@ -185,7 +209,6 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
     };
 
     // primitive types are stored in the lowest octet
-    // this groups "short" and "16-bit integer" together, but... right? *scratches head*
     let kind = match index.0 & 0xff {
         0x00 => PrimitiveKind::NoType,
 
@@ -202,23 +225,23 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x7a => PrimitiveKind::RChar16,
         0x7b => PrimitiveKind::RChar32,
 
-        0x11 => PrimitiveKind::I16,
-        0x21 => PrimitiveKind::U16,
+        0x11 => PrimitiveKind::Short,
+        0x21 => PrimitiveKind::UShort,
         0x72 => PrimitiveKind::I16,
         0x73 => PrimitiveKind::U16,
 
-        0x12 => PrimitiveKind::I32,
-        0x22 => PrimitiveKind::U32,
+        0x12 => PrimitiveKind::Long,
+        0x22 => PrimitiveKind::ULong,
         0x74 => PrimitiveKind::I32,
         0x75 => PrimitiveKind::U32,
 
-        0x13 => PrimitiveKind::I64,
-        0x23 => PrimitiveKind::U64,
+        0x13 => PrimitiveKind::Quad,
+        0x23 => PrimitiveKind::UQuad,
         0x76 => PrimitiveKind::I64,
         0x77 => PrimitiveKind::U64,
 
-        0x14 => PrimitiveKind::I128,
-        0x24 => PrimitiveKind::U128,
+        0x14 => PrimitiveKind::Octa,
+        0x24 => PrimitiveKind::UOcta,
         0x78 => PrimitiveKind::I128,
         0x79 => PrimitiveKind::U128,
 
