@@ -79,8 +79,8 @@ mod big {
 
     /// The PDB header as stored on disk.
     /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
+    #[repr(C)]
     #[derive(Debug, Copy, Clone)]
-    #[repr(C, packed)]
     struct RawHeader {
         magic: [u8; 32],
         page_size: u32,
@@ -418,7 +418,6 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
 
 #[cfg(test)]
 mod tests {
-
     mod header {
         use crate::common::Error;
         use crate::msf::open_msf;

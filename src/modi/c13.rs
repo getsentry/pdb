@@ -1,7 +1,13 @@
+use std::mem;
+use std::slice;
+
 use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
-use crate::modi::{constants, FileChecksum, FileIndex, FileInfo, LineInfo, LineInfoKind};
+use crate::modi::{
+    constants, CrossModuleExport, CrossModuleRef, FileChecksum, FileIndex, FileInfo, LineInfo,
+    LineInfoKind, ModuleRef,
+};
 use crate::symbol::{BinaryAnnotation, BinaryAnnotationsIter, InlineSiteSymbol};
 use crate::FallibleIterator;
 
@@ -85,7 +91,7 @@ struct DebugSubsectionIterator<'a> {
 
 impl<'a> DebugSubsectionIterator<'a> {
     fn new(data: &'a [u8]) -> Self {
-        DebugSubsectionIterator {
+        Self {
             buf: ParseBuffer::from(data),
         }
     }
@@ -206,7 +212,7 @@ impl<'a> DebugInlineeLinesSubsection<'a> {
         let mut buf = ParseBuffer::from(data);
         let header = buf.parse::<DebugInlineeLinesHeader>()?;
 
-        Ok(DebugInlineeLinesSubsection {
+        Ok(Self {
             header,
             data: &data[buf.pos()..],
         })
@@ -262,7 +268,7 @@ impl<'a> DebugLinesSubsection<'a> {
         let mut buf = ParseBuffer::from(data);
         let header = buf.parse()?;
         let data = &data[buf.pos()..];
-        Ok(DebugLinesSubsection { header, data })
+        Ok(Self { header, data })
     }
 
     fn blocks(&self) -> DebugLinesBlockIterator<'a> {
@@ -283,7 +289,7 @@ enum LineMarkerKind {
 }
 
 /// The raw line number entry in a PDB.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct LineNumberHeader {
     /// Offset to start of code bytes for line number.
@@ -414,8 +420,8 @@ impl FallibleIterator for DebugLinesIterator<'_> {
     }
 }
 
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
-#[repr(C, packed)]
 struct ColumnNumberEntry {
     start_column: u16,
     end_column: u16,
@@ -454,7 +460,7 @@ impl FallibleIterator for DebugColumnsIterator<'_> {
     }
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
 struct DebugLinesBlockHeader {
     /// Offset of the file checksum in the file checksums debug subsection.
@@ -666,7 +672,7 @@ struct DebugFileChecksumsSubsection<'a> {
 impl<'a> DebugFileChecksumsSubsection<'a> {
     /// Creates a new file checksums subsection.
     fn parse(data: &'a [u8]) -> Result<Self> {
-        Ok(DebugFileChecksumsSubsection { data })
+        Ok(Self { data })
     }
 
     /// Returns an iterator over all file checksum entries.
@@ -683,8 +689,309 @@ impl<'a> DebugFileChecksumsSubsection<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct CrossScopeImportModule<'a> {
+    name: ModuleRef,
+    /// unparsed in LE byteorder
+    imports: &'a [u32],
+}
+
+impl CrossScopeImportModule<'_> {
+    /// Returns the local reference at the given offset.
+    ///
+    /// This function performs an "unsafe" conversion of the raw value into `Local<I>`. It is
+    /// assumed that this function is only called from contexts where `I` can be statically
+    /// inferred.
+    fn get<I>(self, import: usize) -> Option<Local<I>>
+    where
+        I: ItemIndex,
+    {
+        let value = self.imports.get(import)?;
+        let index = u32::from_le(*value).into();
+        Some(Local(index))
+    }
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct C13LineIterator<'a> {
+struct CrossScopeImportModuleIter<'a> {
+    buf: ParseBuffer<'a>,
+}
+
+impl<'a> FallibleIterator for CrossScopeImportModuleIter<'a> {
+    type Item = CrossScopeImportModule<'a>;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+
+        let name = ModuleRef(self.buf.parse()?);
+        let count = self.buf.parse::<u32>()? as usize;
+
+        let data = self.buf.take(count * mem::size_of::<u32>())?;
+        let imports =
+            cast_aligned(data).ok_or_else(|| Error::InvalidStreamLength("CrossScopeImports"))?;
+
+        Ok(Some(CrossScopeImportModule { name, imports }))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DebugCrossScopeImportsSubsection<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> DebugCrossScopeImportsSubsection<'a> {
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        Ok(Self { data })
+    }
+
+    fn modules(self) -> CrossScopeImportModuleIter<'a> {
+        let buf = ParseBuffer::from(self.data);
+        CrossScopeImportModuleIter { buf }
+    }
+}
+
+/// Provides efficient access to imported types and IDs from other modules.
+///
+/// This can be used to resolve cross module references. See [`ItemIndex::is_cross_module`] for more
+/// information.
+#[derive(Clone, Debug, Default)]
+pub struct CrossModuleImports<'a> {
+    modules: Vec<CrossScopeImportModule<'a>>,
+}
+
+impl<'a> CrossModuleImports<'a> {
+    /// Creates `CrossModuleImports` from the imports debug subsection.
+    fn from_section(section: DebugCrossScopeImportsSubsection<'a>) -> Result<Self> {
+        let modules = section.modules().collect()?;
+        Ok(Self { modules })
+    }
+
+    /// Loads `CrossModuleImports` from the debug subsections data.
+    pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
+        let import_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::CrossScopeImports)?
+            .map(|sec| sec.data);
+
+        match import_data {
+            Some(d) => Self::from_section(DebugCrossScopeImportsSubsection::parse(d)?),
+            None => Ok(Self::default()),
+        }
+    }
+
+    /// Resolves the referenced module and local index for the index.
+    ///
+    /// The given index **must** be a cross module reference. Use `ItemIndex::is_cross_module` to
+    /// check this before invoking this function. If successful, this function returns a reference
+    /// to the module that declares the type, as well as the local index of the type in that module.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::NotACrossModuleRef` if the given index is already a global index and not a cross
+    ///   module reference.
+    /// * `Error::CrossModuleRefNotFound` if the cross module reference points to a module or local
+    ///   index that is not indexed by this import table.
+    pub fn resolve_import<I>(&self, index: I) -> Result<CrossModuleRef<I>>
+    where
+        I: ItemIndex,
+    {
+        let raw_index = index.into();
+        if !index.is_cross_module() {
+            return Err(Error::NotACrossModuleRef(raw_index));
+        }
+
+        let module_index = ((raw_index >> 20) & 0x7ff) as usize;
+        let import_index = (raw_index & 0x000f_ffff) as usize;
+
+        let module = self
+            .modules
+            .get(module_index)
+            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+
+        let local_index = module
+            .get(import_index)
+            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+
+        Ok(CrossModuleRef(module.name, local_index))
+    }
+}
+
+/// Raw representation of `CrossModuleExport`.
+///
+/// This type can directly be mapped onto a slice of binary data and exposes the underlying `local`
+/// and `global` fields with correct endianness via getter methods. There are two ways to use this:
+///
+///  1. Binary search over a slice of exports to find the one matching a given local index
+///  2. Enumerate all for debugging purposes
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+struct RawCrossScopeExport {
+    /// The local index within the module.
+    ///
+    /// This maps to `Local<I: ItemIndex>` in the public type signature.
+    local: u32,
+
+    /// The index in the global type or id stream.
+    ///
+    /// This maps to `I: ItemIndex` in the public type signature.
+    global: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for RawCrossScopeExport {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = RawCrossScopeExport {
+            local: this.gread_with(&mut offset, le)?,
+            global: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
+}
+
+impl From<RawCrossScopeExport> for CrossModuleExport {
+    fn from(raw: RawCrossScopeExport) -> Self {
+        if (raw.local & 0x8000_0000) != 0 {
+            Self::Id(Local(IdIndex(raw.local)), IdIndex(raw.global))
+        } else {
+            Self::Type(Local(TypeIndex(raw.local)), TypeIndex(raw.global))
+        }
+    }
+}
+
+struct RawCrossScopeExportsIter<'a> {
+    buf: ParseBuffer<'a>,
+}
+
+impl FallibleIterator for RawCrossScopeExportsIter<'_> {
+    type Item = RawCrossScopeExport;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+
+        self.buf.parse().map(Some)
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct DebugCrossScopeExportsSubsection<'a> {
+    data: &'a [u8],
+}
+
+impl<'a> DebugCrossScopeExportsSubsection<'a> {
+    /// Creates a new cross scope exports subsection.
+    fn parse(data: &'a [u8]) -> Result<Self> {
+        if cast_aligned::<RawCrossScopeExport>(data).is_none() {
+            return Err(Error::InvalidStreamLength(
+                "DebugCrossScopeExportsSubsection",
+            ));
+        }
+
+        Ok(Self { data })
+    }
+
+    fn exports(self) -> RawCrossScopeExportsIter<'a> {
+        let buf = ParseBuffer::from(self.data);
+        RawCrossScopeExportsIter { buf }
+    }
+}
+
+/// Iterator returned by
+/// [`CrossModuleExports::exports`](struct.CrossModuleExports.html#method.exports).
+#[derive(Clone, Debug)]
+pub struct CrossModuleExportIter<'a> {
+    exports: slice::Iter<'a, RawCrossScopeExport>,
+}
+
+impl Default for CrossModuleExportIter<'_> {
+    fn default() -> Self {
+        Self { exports: [].iter() }
+    }
+}
+
+impl<'a> FallibleIterator for CrossModuleExportIter<'a> {
+    type Item = CrossModuleExport;
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        Ok(self.exports.next().map(|r| (*r).into()))
+    }
+}
+
+/// A table of exports declared by this module.
+///
+/// Other modules can import types and ids from this module by using [cross module references].
+///
+/// [cross module references]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Debug, Default)]
+pub struct CrossModuleExports {
+    raw_exports: Vec<RawCrossScopeExport>,
+}
+
+impl CrossModuleExports {
+    fn from_section(section: DebugCrossScopeExportsSubsection<'_>) -> Result<Self> {
+        let raw_exports = section.exports().collect()?;
+        Ok(Self { raw_exports })
+    }
+
+    pub(crate) fn parse(data: &[u8]) -> Result<Self> {
+        let export_data = DebugSubsectionIterator::new(data)
+            .find(|sec| sec.kind == DebugSubsectionKind::CrossScopeExports)?
+            .map(|sec| sec.data);
+
+        match export_data {
+            Some(d) => Self::from_section(DebugCrossScopeExportsSubsection::parse(d)?),
+            None => Ok(Self::default()),
+        }
+    }
+
+    /// Returns the number of exported types or ids from this module.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.raw_exports.len()
+    }
+
+    /// Returns `true` if this module does not export types or ids.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.raw_exports.is_empty()
+    }
+
+    /// Returns an iterator over all cross scope exports.
+    pub fn exports(&self) -> CrossModuleExportIter<'_> {
+        CrossModuleExportIter {
+            exports: self.raw_exports.iter(),
+        }
+    }
+
+    /// Resolves the global index of the given cross module import's local index.
+    ///
+    /// The global index can be used to retrieve items from the [`TypeInformation`] or
+    /// [`IdInformation`] streams. If the given local index is not listed in the export list, this
+    /// function returns `Ok(None)`.
+    pub fn resolve_import<I>(&self, local_index: Local<I>) -> Result<Option<I>>
+    where
+        I: ItemIndex,
+    {
+        let local = local_index.0.into();
+        let exports = &self.raw_exports;
+
+        Ok(match exports.binary_search_by_key(&local, |r| r.local) {
+            Ok(i) => Some(I::from(exports[i].global)),
+            Err(_) => None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LineIterator<'a> {
     /// Iterator over all subsections in the current module.
     sections: DebugSubsectionIterator<'a>,
     /// Iterator over all blocks in the current lines subsection.
@@ -695,7 +1002,7 @@ pub struct C13LineIterator<'a> {
     columns: DebugColumnsIterator<'a>,
 }
 
-impl<'a> FallibleIterator for C13LineIterator<'a> {
+impl<'a> FallibleIterator for LineIterator<'a> {
     type Item = LineInfo;
     type Error = Error;
 
@@ -750,8 +1057,9 @@ impl<'a> FallibleIterator for C13LineIterator<'a> {
     }
 }
 
+/// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
-pub struct C13InlineeLineIterator<'a> {
+pub struct InlineeLineIterator<'a> {
     annotations: BinaryAnnotationsIter<'a>,
     file_index: FileIndex,
     code_offset_base: u32,
@@ -765,13 +1073,13 @@ pub struct C13InlineeLineIterator<'a> {
     last_info: Option<LineInfo>,
 }
 
-impl<'a> C13InlineeLineIterator<'a> {
+impl<'a> InlineeLineIterator<'a> {
     fn new(
         parent_offset: PdbInternalSectionOffset,
         inline_site: &InlineSiteSymbol<'a>,
         inlinee_line: InlineeSourceLine<'a>,
     ) -> Self {
-        C13InlineeLineIterator {
+        Self {
             annotations: inline_site.annotations.iter(),
             file_index: inlinee_line.file_id,
             code_offset_base: 0,
@@ -787,7 +1095,7 @@ impl<'a> C13InlineeLineIterator<'a> {
     }
 }
 
-impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
+impl<'a> FallibleIterator for InlineeLineIterator<'a> {
     type Item = LineInfo;
     type Error = Error;
 
@@ -890,29 +1198,37 @@ impl<'a> FallibleIterator for C13InlineeLineIterator<'a> {
     }
 }
 
+/// An inlined function that can evaluate to line information.
 #[derive(Clone, Debug, Default)]
-pub struct C13Inlinee<'a>(InlineeSourceLine<'a>);
+pub struct Inlinee<'a>(InlineeSourceLine<'a>);
 
-impl<'a> C13Inlinee<'a> {
-    pub(crate) fn index(&self) -> IdIndex {
+impl<'a> Inlinee<'a> {
+    /// The index of this inlinee in the `IdInformation` stream (IPI).
+    pub fn index(&self) -> IdIndex {
         self.0.inlinee
     }
 
-    pub(crate) fn lines(
+    /// Returns an iterator over line records for an inline site.
+    ///
+    /// Note that line records are not guaranteed to be ordered by source code offset. If a
+    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
+    /// sorted manually.
+    pub fn lines(
         &self,
         parent_offset: PdbInternalSectionOffset,
         inline_site: &InlineSiteSymbol<'a>,
-    ) -> C13InlineeLineIterator<'a> {
-        C13InlineeLineIterator::new(parent_offset, inline_site, self.0)
+    ) -> InlineeLineIterator<'a> {
+        InlineeLineIterator::new(parent_offset, inline_site, self.0)
     }
 }
 
+/// An iterator over line information records in a module.
 #[derive(Clone, Debug, Default)]
-pub struct C13InlineeIterator<'a> {
+pub struct InlineeIterator<'a> {
     inlinee_lines: DebugInlineeLinesIterator<'a>,
 }
 
-impl<'a> C13InlineeIterator<'a> {
+impl<'a> InlineeIterator<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
         let inlinee_data = DebugSubsectionIterator::new(data)
             .find(|sec| sec.kind == DebugSubsectionKind::InlineeLines)?
@@ -929,13 +1245,13 @@ impl<'a> C13InlineeIterator<'a> {
     }
 }
 
-impl<'a> FallibleIterator for C13InlineeIterator<'a> {
-    type Item = C13Inlinee<'a>;
+impl<'a> FallibleIterator for InlineeIterator<'a> {
+    type Item = Inlinee<'a>;
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
         match self.inlinee_lines.next() {
-            Ok(Some(inlinee_line)) => Ok(Some(C13Inlinee(inlinee_line))),
+            Ok(Some(inlinee_line)) => Ok(Some(Inlinee(inlinee_line))),
             Ok(None) => Ok(None),
             Err(error) => Err(error),
         }
@@ -943,11 +1259,11 @@ impl<'a> FallibleIterator for C13InlineeIterator<'a> {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct C13FileIterator<'a> {
+pub struct FileIterator<'a> {
     checksums: DebugFileChecksumsIterator<'a>,
 }
 
-impl<'a> FallibleIterator for C13FileIterator<'a> {
+impl<'a> FallibleIterator for FileIterator<'a> {
     type Item = FileInfo<'a>;
     type Error = Error;
 
@@ -963,12 +1279,12 @@ impl<'a> FallibleIterator for C13FileIterator<'a> {
     }
 }
 
-pub struct C13LineProgram<'a> {
+pub struct LineProgram<'a> {
     data: &'a [u8],
     file_checksums: DebugFileChecksumsSubsection<'a>,
 }
 
-impl<'a> C13LineProgram<'a> {
+impl<'a> LineProgram<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
         let checksums_data = DebugSubsectionIterator::new(data)
             .find(|sec| sec.kind == DebugSubsectionKind::FileChecksums)?
@@ -979,14 +1295,14 @@ impl<'a> C13LineProgram<'a> {
             None => DebugFileChecksumsSubsection::default(),
         };
 
-        Ok(C13LineProgram {
+        Ok(Self {
             data,
             file_checksums,
         })
     }
 
-    pub(crate) fn lines(&self) -> C13LineIterator<'a> {
-        C13LineIterator {
+    pub(crate) fn lines(&self) -> LineIterator<'a> {
+        LineIterator {
             sections: DebugSubsectionIterator::new(self.data),
             blocks: DebugLinesBlockIterator::default(),
             lines: DebugLinesIterator::default(),
@@ -994,7 +1310,7 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> C13LineIterator<'a> {
+    pub(crate) fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> LineIterator<'a> {
         // Since we only care about the start offset of an entire debug lines subsection, we can
         // quickly advance to the first (and only) subsection that matches that offset. Since they
         // are non-overlapping and not empty, we can bail out at the first match.
@@ -1004,7 +1320,7 @@ impl<'a> C13LineProgram<'a> {
             .find(|lines_section| lines_section.header.offset == offset);
 
         match section {
-            Ok(Some(section)) => C13LineIterator {
+            Ok(Some(section)) => LineIterator {
                 sections: DebugSubsectionIterator::default(),
                 blocks: section.blocks(),
                 lines: DebugLinesIterator::default(),
@@ -1014,8 +1330,8 @@ impl<'a> C13LineProgram<'a> {
         }
     }
 
-    pub(crate) fn files(&self) -> C13FileIterator<'a> {
-        C13FileIterator {
+    pub(crate) fn files(&self) -> FileIterator<'a> {
+        FileIterator {
             checksums: self.file_checksums.entries().unwrap_or_default(),
         }
     }
@@ -1039,7 +1355,33 @@ impl<'a> C13LineProgram<'a> {
 mod tests {
     use super::*;
 
+    use std::mem;
+
     use crate::symbol::BinaryAnnotations;
+
+    #[test]
+    fn test_line_number_header() {
+        assert_eq!(mem::size_of::<LineNumberHeader>(), 8);
+        assert_eq!(mem::align_of::<LineNumberHeader>(), 4);
+    }
+
+    #[test]
+    fn test_column_number_header() {
+        assert_eq!(mem::size_of::<ColumnNumberEntry>(), 4);
+        assert_eq!(mem::align_of::<ColumnNumberEntry>(), 2);
+    }
+
+    #[test]
+    fn test_debug_lines_block_header() {
+        assert_eq!(mem::size_of::<DebugLinesBlockHeader>(), 12);
+        assert_eq!(mem::align_of::<DebugLinesBlockHeader>(), 4);
+    }
+
+    #[test]
+    fn test_raw_cross_scope_export() {
+        assert_eq!(mem::size_of::<RawCrossScopeExport>(), 8);
+        assert_eq!(mem::align_of::<RawCrossScopeExport>(), 4);
+    }
 
     #[test]
     fn test_parse_inlinee_lines() {
@@ -1138,7 +1480,7 @@ mod tests {
             section: 0x1,
         };
 
-        let iter = C13InlineeLineIterator::new(parent_offset, &inline_site, inlinee_line);
+        let iter = InlineeLineIterator::new(parent_offset, &inline_site, inlinee_line);
         let lines: Vec<_> = iter.collect().expect("collect inlinee lines");
 
         let expected = [
@@ -1171,5 +1513,137 @@ mod tests {
         ];
 
         assert_eq!(lines, expected);
+    }
+
+    #[repr(align(4))]
+    struct Align4<T>(T);
+
+    /// Aligned data for parsing cross module imports.
+    ///
+    /// When parsing them from the file, alignment is validated during ruintime using
+    /// `cast_aligned`. If alignment is validated, it throws an error.
+    const CROSS_MODULE_IMPORT_DATA: Align4<[u8; 76]> = Align4([
+        // module 0
+        189, 44, 0, 0, // module name 2CBD
+        14, 0, 0, 0, // 14 imports (all IDs, no Types)
+        171, 19, 0, 128, // 800013AB
+        37, 20, 0, 128, // 80001425
+        161, 19, 0, 128, // 800013A1
+        90, 20, 0, 128, // 8000145A
+        159, 19, 0, 128, // 8000139F
+        55, 20, 0, 128, // 80001437
+        109, 17, 0, 128, // 8000116D
+        238, 17, 0, 128, // 800011EE
+        246, 19, 0, 128, // 800013F6
+        69, 20, 0, 128, // 80001445
+        104, 19, 0, 128, // 80001368
+        148, 20, 0, 128, // 80001494
+        195, 20, 0, 128, // 800014C3
+        219, 20, 0, 128, // 800014DB
+        // module 1
+        21, 222, 0, 0, // module name DE15
+        1, 0, 0, 0, // 1 import (id)
+        96, 22, 0, 128, // 80001660
+    ]);
+
+    #[test]
+    fn test_parse_cross_section_imports() {
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
+            .expect("parse imports");
+
+        let modules: Vec<_> = sec.modules().collect().expect("collect imports");
+        assert_eq!(modules.len(), 2);
+
+        let module = modules[0];
+        assert_eq!(module.get(0), Some(Local(IdIndex(0x8000_13AB))));
+        assert_eq!(module.get(13), Some(Local(IdIndex(0x8000_14DB))));
+        assert_eq!(module.get::<IdIndex>(14), None);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_import() {
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
+            .expect("parse imports");
+
+        let imports = CrossModuleImports::from_section(sec).expect("parse section");
+        let cross_ref = imports
+            .resolve_import(IdIndex(0x8000_000A))
+            .expect("resolve import");
+
+        let expected = CrossModuleRef(
+            // The module index is 0x000 = 1st module.
+            ModuleRef(StringRef(0x2CBD)),
+            // The import index is 0x0000A = 11th element.
+            Local(IdIndex(0x8000_1368)),
+        );
+
+        assert_eq!(cross_ref, expected);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_import2() {
+        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
+            .expect("parse imports");
+
+        let imports = CrossModuleImports::from_section(sec).expect("parse section");
+        let cross_ref = imports
+            .resolve_import(IdIndex(0x8010_0000))
+            .expect("resolve import");
+
+        let expected = CrossModuleRef(
+            // The module index is 0x001 = 2nd module.
+            ModuleRef(StringRef(0xDE15)),
+            // The import index is 0x00001 = 1st element.
+            Local(IdIndex(0x8000_1660)),
+        );
+
+        assert_eq!(cross_ref, expected);
+    }
+
+    const CROSS_MODULE_EXPORT_DATA: Align4<[u8; 32]> = Align4([
+        31, 16, 0, 0, 12, 16, 0, 0, // 101F -> 100C
+        32, 16, 0, 0, 79, 34, 0, 0, // 1020 -> 224F
+        92, 17, 0, 128, 97, 17, 0, 0, // 8000115C -> 1161
+        109, 17, 0, 128, 98, 17, 0, 0, // 8000116D -> 1162
+    ]);
+
+    #[test]
+    fn test_iter_cross_module_exports() {
+        let section = DebugCrossScopeExportsSubsection::parse(&CROSS_MODULE_EXPORT_DATA.0)
+            .expect("parse exports");
+        let exports = CrossModuleExports::from_section(section).expect("parse section");
+
+        let exports: Vec<_> = exports.exports().collect().expect("collect exports");
+
+        let expected = [
+            CrossModuleExport::Type(Local(TypeIndex(0x101F)), TypeIndex(0x100C)),
+            CrossModuleExport::Type(Local(TypeIndex(0x1020)), TypeIndex(0x224F)),
+            CrossModuleExport::Id(Local(IdIndex(0x8000_115C)), IdIndex(0x1161)),
+            CrossModuleExport::Id(Local(IdIndex(0x8000_116D)), IdIndex(0x1162)),
+        ];
+
+        assert_eq!(exports, expected);
+    }
+
+    #[test]
+    fn test_resolve_cross_module_ref() {
+        let section = DebugCrossScopeExportsSubsection::parse(&CROSS_MODULE_EXPORT_DATA.0)
+            .expect("parse exports");
+        let exports = CrossModuleExports::from_section(section).expect("parse section");
+
+        let type_index = exports
+            .resolve_import(Local(TypeIndex(0x101F)))
+            .expect("resolve type");
+        assert_eq!(type_index, Some(TypeIndex(0x100C)));
+
+        let id_index = exports
+            .resolve_import(Local(IdIndex(0x8000_115C)))
+            .expect("resolve id");
+        assert_eq!(id_index, Some(IdIndex(0x1161)));
+
+        let missing_index = exports
+            .resolve_import(Local(TypeIndex(0xFEED)))
+            .expect("resolve missing");
+        assert_eq!(missing_index, None);
     }
 }

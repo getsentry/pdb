@@ -36,7 +36,7 @@ impl StringTableHashVersion {
 }
 
 /// Raw header of the string table stream.
-#[repr(C, packed)]
+#[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct StringTableHeader {
     /// Magic bytes of the string table.
@@ -159,5 +159,18 @@ impl StringRef {
     /// [`PDB::string_table`]: struct.PDB.html#method.string_table
     pub fn to_string_lossy<'s>(self, strings: &'s StringTable<'_>) -> Result<Cow<'s, str>> {
         strings.get(self).map(|r| r.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::mem;
+
+    #[test]
+    fn test_string_table_header() {
+        assert_eq!(mem::size_of::<StringTableHeader>(), 12);
+        assert_eq!(mem::align_of::<StringTableHeader>(), 4);
     }
 }

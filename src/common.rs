@@ -8,8 +8,10 @@
 use std::borrow::Cow;
 use std::fmt;
 use std::io;
+use std::mem;
 use std::ops::{Add, AddAssign, Sub};
 use std::result;
+use std::slice;
 
 use scroll::ctx::TryFromCtx;
 use scroll::{self, Endian, Pread, LE};
@@ -36,7 +38,7 @@ pub enum Error {
     /// A stream requested by name was not found.
     StreamNameNotFound,
 
-    /// Invalid length of a stream.
+    /// Invalid length or alignment of a stream.
     InvalidStreamLength(&'static str),
 
     /// An IO error occurred while reading from the data source.
@@ -72,6 +74,12 @@ pub enum Error {
 
     /// Support for types of this kind is not implemented.
     UnimplementedTypeKind(u16),
+
+    /// Type index is not a cross module reference.
+    NotACrossModuleRef(u32),
+
+    /// Cross module reference not found in imports.
+    CrossModuleRefNotFound(u32),
 
     /// Variable-length numeric parsing encountered an unexpected prefix.
     UnexpectedNumericPrefix(u16),
@@ -111,7 +119,7 @@ impl std::error::Error for Error {
             Error::PageReferenceOutOfRange(_) => "MSF referred to page number out of range",
             Error::StreamNotFound(_) => "The requested stream is not stored in this file",
             Error::StreamNameNotFound => "The requested stream is not stored in this file",
-            Error::InvalidStreamLength(_) => "Stream has an invalid length",
+            Error::InvalidStreamLength(_) => "Stream has an invalid length or alignment",
             Error::IoError(ref e) => e.description(),
             Error::UnexpectedEof => "Unexpectedly reached end of input",
             Error::UnimplementedFeature(_) => "Unimplemented PDB feature",
@@ -125,6 +133,8 @@ impl std::error::Error for Error {
             Error::TypeNotFound(_) => "Type not found",
             Error::TypeNotIndexed(_, _) => "Type not indexed",
             Error::UnimplementedTypeKind(_) => "Support for types of this kind is not implemented",
+            Error::NotACrossModuleRef(_) => "Type index is not a cross module reference",
+            Error::CrossModuleRefNotFound(_) => "Cross module reference not found in imports",
             Error::UnexpectedNumericPrefix(_) => {
                 "Variable-length numeric parsing encountered an unexpected prefix"
             }
@@ -160,7 +170,7 @@ impl fmt::Display for Error {
             }
             Error::InvalidStreamLength(s) => write!(
                 f,
-                "{} stream has a length that is not a multiple of its records",
+                "{} stream has an invalid length or alignment for its records",
                 s
             ),
             Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
@@ -169,7 +179,7 @@ impl fmt::Display for Error {
             }
             Error::UnimplementedSymbolKind(kind) => write!(
                 f,
-                "Support for symbols of kind 0x{:04x} is not implemented",
+                "Support for symbols of kind {:#06x} is not implemented",
                 kind
             ),
             Error::InvalidTypeInformationHeader(reason) => {
@@ -183,17 +193,25 @@ impl fmt::Display for Error {
             ),
             Error::UnimplementedTypeKind(kind) => write!(
                 f,
-                "Support for types of kind 0x{:04x} is not implemented",
+                "Support for types of kind {:#06x} is not implemented",
                 kind
+            ),
+            Error::NotACrossModuleRef(index) => {
+                write!(f, "Type {:#06x} is not a cross module reference", index)
+            }
+            Error::CrossModuleRefNotFound(index) => write!(
+                f,
+                "Cross module reference {:#06x} not found in imports",
+                index
             ),
             Error::UnexpectedNumericPrefix(prefix) => write!(
                 f,
-                "Variable-length numeric parsing encountered an unexpected prefix (0x{:04x}",
+                "Variable-length numeric parsing encountered an unexpected prefix ({:#06x}",
                 prefix
             ),
             Error::UnimplementedDebugSubsection(kind) => write!(
                 f,
-                "Debug module subsection of kind 0x{:04x} is not implemented",
+                "Debug module subsection of kind {:#06x} is not implemented",
                 kind
             ),
             Error::UnimplementedFileChecksumKind(kind) => {
@@ -593,10 +611,46 @@ impl fmt::Debug for StreamIndex {
 impl_opt!(StreamIndex, 0xffff);
 impl_pread!(StreamIndex);
 
+/// An index into either the [`TypeInformation`] or [`IdInformation`] stream.
+///
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+pub trait ItemIndex:
+    Copy + Default + fmt::Debug + fmt::Display + PartialEq + PartialOrd + From<u32> + Into<u32>
+{
+    /// Returns `true` if this is a cross module reference.
+    ///
+    /// When compiling with LTO, the compiler may reference types and ids across modules. In such
+    /// cases, a lookup in the global streams will not succeed. Instead, the import must be resolved
+    /// using cross module references:
+    ///
+    ///  1. Look up the index in [`CrossModuleImports`] of the current module.
+    ///  2. Use [`StringTable`] to resolve the name of the referenced module.
+    ///  3. Find the [`Module`] with the same module name and load its [`ModuleInfo`].
+    ///  4. Resolve the [`Local`] index into a global one using [`CrossModuleExports`].
+    ///
+    /// Cross module references are specially formatted indexes with the most significant bit set to
+    /// `1`. The remaining bits are divided into a module and index offset into the
+    /// [`CrossModuleImports`] section.
+    ///
+    /// [`CrossModuleExports`]: struct.CrossModuleExports.html
+    /// [`CrossModuleImports`]: struct.CrossModuleImports.html
+    /// [`Local`]: struct.Local.html
+    /// [`Module`]: struct.Module.html
+    /// [`ModuleInfo`]: struct.ModuleInfo.html
+    /// [`StringTable`]: struct.StringTable.html
+    fn is_cross_module(self) -> bool {
+        (self.into() & 0x8000_0000) != 0
+    }
+}
+
 /// Index of a [`Type`] in the [`TypeInformation`] stream.
+///
+/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
 ///
 /// [`Type`]: type.Type.html
 /// [`TypeInformation`]: type.TypeInformation.html
+/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TypeIndex(pub u32);
 
@@ -604,16 +658,49 @@ impl_convert!(TypeIndex, u32);
 impl_hex_fmt!(TypeIndex);
 impl_pread!(TypeIndex);
 
+impl ItemIndex for TypeIndex {}
+
 /// Index of an [`Id`] in [`IdInformation`] stream.
+///
+/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
 ///
 /// [`Id`]: type.Id.html
 /// [`IdInformation`]: type.IdInformation.html
+/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdIndex(pub u32);
 
 impl_convert!(IdIndex, u32);
 impl_hex_fmt!(IdIndex);
 impl_pread!(IdIndex);
+
+impl ItemIndex for IdIndex {}
+
+/// An [`ItemIndex`] that is local to a module.
+///
+/// This index is usually part of a [`CrossModuleRef`]. It cannot be used to query the
+/// [`TypeInformation`] or [`IdInformation`] streams directly. Instead, it must be looked up in the
+/// [`CrossModuleImports`] of the module it belongs to in order to obtain the global index.
+///
+/// See [`ItemIndex::is_cross_module`] for more information.
+///
+/// [`ItemIndex`]: trait.ItemIndex.html
+/// [`CrossModuleImports`]: struct.CrossModuleImports.html
+/// [`CrossModuleRef`]: struct.CrossModuleRef.html
+/// [`TypeInformation`]: type.TypeInformation.html
+/// [`IdInformation`]: type.IdInformation.html
+/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct Local<I: ItemIndex>(pub I);
+
+impl<I> fmt::Display for Local<I>
+where
+    I: ItemIndex + fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// A reference to a string in the string table.
 ///
@@ -946,6 +1033,29 @@ impl<'b> From<&'b [u8]> for RawString<'b> {
     }
 }
 
+/// Cast a binary slice to a slice of types.
+///
+/// This function performs a cast of a binary slice to a slice of some type, returning `Some` if the
+/// following two conditions are met:
+///
+///  1. The size of the slize must be a multiple of the type's size.
+///  2. The slice must be aligned to the alignment of the type.
+///
+/// Note that this function will not convert any endianness. The types must be capable of reading
+/// endianness correclty in case data from other hosts is read.
+pub(crate) fn cast_aligned<T>(data: &[u8]) -> Option<&[T]> {
+    let alignment = mem::align_of::<T>();
+    let size = mem::size_of::<T>();
+
+    let ptr = data.as_ptr();
+    let bytes = data.len();
+
+    match (bytes % size, ptr.align_offset(alignment)) {
+        (0, 0) => Some(unsafe { slice::from_raw_parts(ptr as *const T, bytes / size) }),
+        (_, _) => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     mod parse_buffer {
@@ -1101,7 +1211,7 @@ mod tests {
 
         #[test]
         fn test_parse_cstring() {
-            let mut buf = ParseBuffer::from("hello\x00world\x00\x00\x01".as_bytes());
+            let mut buf = ParseBuffer::from(&b"hello\x00world\x00\x00\x01"[..]);
 
             let val = buf.parse_cstring().unwrap();
             assert_eq!(buf.len(), 8);
@@ -1126,7 +1236,7 @@ mod tests {
 
         #[test]
         fn test_parse_u8_pascal_string() {
-            let mut buf = ParseBuffer::from("\x05hello\x05world\x00\x01".as_bytes());
+            let mut buf = ParseBuffer::from(&b"\x05hello\x05world\x00\x01"[..]);
 
             let val = buf.parse_u8_pascal_string().unwrap();
             assert_eq!(buf.len(), 8);
@@ -1209,6 +1319,51 @@ mod tests {
             let val = buf.parse::<SymbolIndex>().expect("parse");
             assert_eq!(val, SymbolIndex(0x42));
             assert!(buf.is_empty());
+        }
+    }
+
+    mod cast_aligned {
+        use crate::common::cast_aligned;
+        use std::slice;
+
+        #[test]
+        fn test_cast_aligned() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 12) };
+
+            assert_eq!(cast_aligned(bin), Some(data));
+        }
+
+        #[test]
+        fn test_cast_empty() {
+            let data: &[u32] = &[];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 0) };
+
+            assert_eq!(cast_aligned(bin), Some(data));
+        }
+
+        #[test]
+        fn test_cast_unaligned() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr.offset(2), 8) };
+
+            assert_eq!(cast_aligned::<u32>(bin), None);
+        }
+
+        #[test]
+        fn test_cast_wrong_size() {
+            let data: &[u32] = &[1, 2, 3];
+
+            let ptr = data.as_ptr() as *const u8;
+            let bin: &[u8] = unsafe { slice::from_raw_parts(ptr, 11) };
+
+            assert_eq!(cast_aligned::<u32>(bin), None);
         }
     }
 }

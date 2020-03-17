@@ -1,11 +1,18 @@
+use std::fmt;
+
 use crate::common::*;
 use crate::dbi::Module;
 use crate::msf::Stream;
-use crate::symbol::{InlineSiteSymbol, SymbolIter};
+use crate::symbol::SymbolIter;
 use crate::FallibleIterator;
 
 mod c13;
 mod constants;
+
+pub use c13::{
+    CrossModuleExportIter, CrossModuleExports, CrossModuleImports, Inlinee, InlineeIterator,
+    InlineeLineIterator,
+};
 
 #[derive(Clone, Copy, Debug)]
 enum LinesSize {
@@ -73,7 +80,7 @@ impl<'s> ModuleInfo<'s> {
         let inner = match self.lines_size {
             LinesSize::C11(_size) => return Err(Error::UnimplementedFeature("C11 line programs")),
             LinesSize::C13(size) => {
-                LineProgramInner::C13(c13::C13LineProgram::parse(self.lines_data(size))?)
+                LineProgramInner::C13(c13::LineProgram::parse(self.lines_data(size))?)
             }
         };
 
@@ -85,11 +92,29 @@ impl<'s> ModuleInfo<'s> {
     /// Inlinees are not guaranteed to be sorted. When requiring random access by `ItemId`, collect
     /// them into a mapping structure rather than reiterating multiple times.
     pub fn inlinees(&self) -> Result<InlineeIterator<'_>> {
-        Ok(InlineeIterator(match self.lines_size {
+        Ok(match self.lines_size {
             // C11 does not contain inlinee information.
             LinesSize::C11(_size) => Default::default(),
-            LinesSize::C13(size) => c13::C13InlineeIterator::parse(self.lines_data(size))?,
-        }))
+            LinesSize::C13(size) => InlineeIterator::parse(self.lines_data(size))?,
+        })
+    }
+
+    /// Returns a table of exports declared by this module.
+    pub fn exports(&self) -> Result<CrossModuleExports> {
+        Ok(match self.lines_size {
+            // C11 does not have cross module exports.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => CrossModuleExports::parse(self.lines_data(size))?,
+        })
+    }
+
+    /// Returns a table of imports of this module.
+    pub fn imports(&self) -> Result<CrossModuleImports<'_>> {
+        Ok(match self.lines_size {
+            // C11 does not have cross module imports.
+            LinesSize::C11(_size) => Default::default(),
+            LinesSize::C13(size) => CrossModuleImports::parse(self.lines_data(size))?,
+        })
     }
 }
 
@@ -170,7 +195,7 @@ pub struct LineInfo {
 }
 
 enum LineProgramInner<'a> {
-    C13(c13::C13LineProgram<'a>),
+    C13(c13::LineProgram<'a>),
 }
 
 /// The `LineProgram` provides access to source line information for a module and its procedures.
@@ -228,7 +253,7 @@ impl<'a> LineProgram<'a> {
 
 #[derive(Clone, Debug)]
 enum LineIteratorInner<'a> {
-    C13(c13::C13LineIterator<'a>),
+    C13(c13::LineIterator<'a>),
 }
 
 /// An iterator over line information records in a module.
@@ -256,59 +281,9 @@ impl<'a> FallibleIterator for LineIterator<'a> {
     }
 }
 
-/// An inlined function that can evaluate to line information.
-#[derive(Clone, Debug)]
-pub struct Inlinee<'a>(c13::C13Inlinee<'a>);
-
-impl<'a> Inlinee<'a> {
-    /// The index of this inlinee in the `IdInformation` stream (IPI).
-    pub fn index(&self) -> IdIndex {
-        self.0.index()
-    }
-
-    /// Returns an iterator over line records for an inline site.
-    ///
-    /// Note that line records are not guaranteed to be ordered by source code offset. If a
-    /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
-    /// sorted manually.
-    pub fn lines(
-        &self,
-        parent_offset: PdbInternalSectionOffset,
-        inline_site: &InlineSiteSymbol<'a>,
-    ) -> InlineeLineIterator<'a> {
-        InlineeLineIterator(self.0.lines(parent_offset, inline_site))
-    }
-}
-
-/// An iterator over line information records in a module.
-#[derive(Clone, Debug, Default)]
-pub struct InlineeIterator<'a>(c13::C13InlineeIterator<'a>);
-
-impl<'a> FallibleIterator for InlineeIterator<'a> {
-    type Item = Inlinee<'a>;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>> {
-        self.0.next().map(|opt| opt.map(Inlinee))
-    }
-}
-
-/// An iterator over line information records in a module.
-#[derive(Clone, Debug, Default)]
-pub struct InlineeLineIterator<'a>(c13::C13InlineeLineIterator<'a>);
-
-impl<'a> FallibleIterator for InlineeLineIterator<'a> {
-    type Item = LineInfo;
-    type Error = Error;
-
-    fn next(&mut self) -> Result<Option<Self::Item>> {
-        self.0.next()
-    }
-}
-
 #[derive(Clone, Debug)]
 enum FileIteratorInner<'a> {
-    C13(c13::C13FileIterator<'a>),
+    C13(c13::FileIterator<'a>),
 }
 
 /// An iterator over file records in a module.
@@ -334,4 +309,41 @@ impl<'a> FallibleIterator for FileIterator<'a> {
             FileIteratorInner::C13(ref mut inner) => inner.next(),
         }
     }
+}
+
+/// Named reference to a [`Module`].
+///
+/// The name stored in the [`StringTable`] corresponds to the name of the module as returned by
+/// [`Module::module_name`].
+///
+/// [`Module`]: struct.Module.html
+/// [`Module::module_name`]: struct.Module.html#method.module_name
+/// [`StringTable`]: struct.StringTable.html
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct ModuleRef(pub StringRef);
+
+impl fmt::Display for ModuleRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// Reference to a local type or id in another module.
+///
+/// See [`ItemIndex::is_cross_module`] for more information.
+///
+/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct CrossModuleRef<I: ItemIndex>(pub ModuleRef, pub Local<I>);
+
+/// A cross module export that can either be a `Type` or an `Id`.
+///
+/// Other modules may reference this item using its local ID by declaring it in the cross module
+/// imports subsection.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CrossModuleExport {
+    /// A cross module export of a [`Type`](type.Type.html).
+    Type(Local<TypeIndex>, TypeIndex),
+    /// A cross module export of an [`Id`](type.Id.html).
+    Id(Local<IdIndex>, IdIndex),
 }

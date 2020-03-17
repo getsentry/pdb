@@ -9,8 +9,6 @@
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::mem;
-use std::slice;
 
 use crate::common::*;
 use crate::msf::Stream;
@@ -84,7 +82,7 @@ impl fmt::Display for FrameType {
 /// ```
 ///
 /// [`struct tagFRAMEDATA`]: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4635
-#[repr(C, packed)]
+#[repr(C)]
 struct NewFrameData {
     code_start: u32,
     code_size: u32,
@@ -193,7 +191,7 @@ impl fmt::Debug for NewFrameData {
 ///     WORD   cbFrame  : 2;    // frame type
 /// } FPO_DATA;
 /// ```
-#[repr(C, packed)]
+#[repr(C)]
 struct OldFrameData {
     code_start: u32,
     code_size: u32,
@@ -512,13 +510,13 @@ impl<'s> FrameTable<'s> {
         new_stream: Option<Stream<'s>>,
     ) -> Result<Self> {
         if let Some(ref stream) = old_stream {
-            if stream.as_slice().len() % mem::size_of::<OldFrameData>() != 0 {
+            if cast_aligned::<OldFrameData>(stream.as_slice()).is_none() {
                 return Err(Error::InvalidStreamLength("FrameData"));
             }
         }
 
         if let Some(ref stream) = new_stream {
-            if stream.as_slice().len() % mem::size_of::<NewFrameData>() != 0 {
+            if cast_aligned::<NewFrameData>(stream.as_slice()).is_none() {
                 return Err(Error::InvalidStreamLength("FPO"));
             }
         }
@@ -572,30 +570,37 @@ impl<'s> FrameTable<'s> {
     }
 
     fn old_frames(&self) -> &[OldFrameData] {
-        let bytes = match self.old_stream {
-            Some(ref stream) => stream.as_slice(),
-            None => return &[],
-        };
-
-        unsafe {
-            slice::from_raw_parts(
-                bytes.as_ptr() as *const OldFrameData,
-                bytes.len() / mem::size_of::<OldFrameData>(),
-            )
+        match self.old_stream {
+            // alignment checked during parsing
+            Some(ref stream) => cast_aligned(stream.as_slice()).unwrap(),
+            None => &[],
         }
     }
 
     fn new_frames(&self) -> &[NewFrameData] {
-        let bytes = match self.new_stream {
-            Some(ref stream) => stream.as_slice(),
-            None => return &[],
-        };
-
-        unsafe {
-            slice::from_raw_parts(
-                bytes.as_ptr() as *const NewFrameData,
-                bytes.len() / mem::size_of::<NewFrameData>(),
-            )
+        match self.new_stream {
+            // alignment checked during parsing
+            Some(ref stream) => cast_aligned(stream.as_slice()).unwrap(),
+            None => &[],
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::mem;
+
+    #[test]
+    fn test_new_frame_data() {
+        assert_eq!(mem::size_of::<NewFrameData>(), 32);
+        assert_eq!(mem::align_of::<NewFrameData>(), 4);
+    }
+
+    #[test]
+    fn test_old_frame_data() {
+        assert_eq!(mem::size_of::<OldFrameData>(), 16);
+        assert_eq!(mem::align_of::<OldFrameData>(), 4);
     }
 }
