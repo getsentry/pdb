@@ -33,8 +33,34 @@ pub struct Header {
 }
 
 impl Header {
+    pub(crate) fn empty() -> Self {
+        let empty_slice = Slice { offset: 0, size: 0 };
+
+        Header {
+            version: 0,
+            header_size: 0,
+            minimum_index: 0,
+            maximum_index: 0,
+            gprec_size: 0,
+            tpi_hash_stream: 0,
+            tpi_hash_pad_stream: 0,
+            hash_key_size: 0,
+            hash_bucket_size: 0,
+            hash_values: empty_slice,
+            ti_off: empty_slice,
+            hash_adj: empty_slice,
+        }
+    }
+
     pub(crate) fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
-        assert!(buf.pos() == 0);
+        debug_assert!(buf.pos() == 0);
+
+        if buf.is_empty() {
+            // Special case when the buffer is completely empty. This indicates a missing TPI or IPI
+            // stream. In this case, `ItemInformation` acts like an empty shell that never resolves
+            // any types.
+            return Ok(Self::empty());
+        }
 
         let header = Header {
             version: buf.parse()?,

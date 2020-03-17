@@ -1,6 +1,7 @@
-use pdb::{FallibleIterator, PdbInternalRva, PdbInternalSectionOffset, Rva};
 use std::path::Path;
 use std::sync::Once;
+
+use pdb::{FallibleIterator, PdbInternalRva, PdbInternalSectionOffset, Rva};
 
 // This test is intended to cover OMAP address translation:
 //   https://github.com/willglynn/pdb/issues/17
