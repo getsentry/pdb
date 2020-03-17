@@ -1,7 +1,7 @@
 use std::mem;
 use std::slice;
 
-use scroll::{ctx::TryFromCtx, Pread};
+use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
 use crate::modi::{
@@ -46,12 +46,26 @@ impl DebugSubsectionKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Pread)]
+#[derive(Clone, Copy, Debug)]
 struct DebugSubsectionHeader {
     /// The kind of this subsection.
     kind: u32,
     /// The length of this subsection in bytes, following the header.
     len: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for DebugSubsectionHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = DebugSubsectionHeader {
+            kind: this.gread_with(&mut offset, le)?,
+            len: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl DebugSubsectionHeader {
@@ -103,10 +117,23 @@ impl<'a> FallibleIterator for DebugSubsectionIterator<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Pread)]
+#[derive(Clone, Copy, Debug, Default)]
 struct DebugInlineeLinesHeader {
     /// The signature of the inlinees
     signature: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for DebugInlineeLinesHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = DebugInlineeLinesHeader {
+            signature: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl DebugInlineeLinesHeader {
@@ -200,7 +227,7 @@ impl<'a> DebugInlineeLinesSubsection<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Pread)]
+#[derive(Clone, Copy, Debug, Default)]
 struct DebugLinesHeader {
     /// Section offset of this line contribution.
     offset: PdbInternalSectionOffset,
@@ -208,6 +235,21 @@ struct DebugLinesHeader {
     flags: u16,
     /// Code size of this line contribution.
     code_size: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for DebugLinesHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = DebugLinesHeader {
+            offset: this.gread_with(&mut offset, le)?,
+            flags: this.gread_with(&mut offset, le)?,
+            code_size: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl DebugLinesHeader {
@@ -248,7 +290,7 @@ enum LineMarkerKind {
 
 /// The raw line number entry in a PDB.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Pread)]
+#[derive(Clone, Copy, Debug)]
 struct LineNumberHeader {
     /// Offset to start of code bytes for line number.
     offset: u32,
@@ -260,6 +302,20 @@ struct LineNumberHeader {
     /// unsigned long   fStatement  :1;   // true if a statement line number, else an expression
     /// ```
     flags: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for LineNumberHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = LineNumberHeader {
+            offset: this.gread_with(&mut offset, le)?,
+            flags: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 /// A mapping of code section offsets to source line numbers.
@@ -364,11 +420,25 @@ impl FallibleIterator for DebugLinesIterator<'_> {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Pread)]
 #[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
 struct ColumnNumberEntry {
     start_column: u16,
     end_column: u16,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for ColumnNumberEntry {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = ColumnNumberEntry {
+            start_column: this.gread_with(&mut offset, le)?,
+            end_column: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -391,7 +461,7 @@ impl FallibleIterator for DebugColumnsIterator<'_> {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Pread)]
+#[derive(Clone, Copy, Debug, Default)]
 struct DebugLinesBlockHeader {
     /// Offset of the file checksum in the file checksums debug subsection.
     file_index: u32,
@@ -404,6 +474,21 @@ struct DebugLinesBlockHeader {
 
     /// Total byte size of this block, including following line and column entries.
     block_size: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for DebugLinesBlockHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = DebugLinesBlockHeader {
+            file_index: this.gread_with(&mut offset, le)?,
+            num_lines: this.gread_with(&mut offset, le)?,
+            block_size: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl DebugLinesBlockHeader {
@@ -515,11 +600,26 @@ impl FileChecksumKind {
 }
 
 /// Raw header of a single file checksum entry.
-#[derive(Clone, Copy, Debug, Pread)]
+#[derive(Clone, Copy, Debug)]
 struct FileChecksumHeader {
     name_offset: u32,
     checksum_size: u8,
     checksum_kind: u8,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for FileChecksumHeader {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = FileChecksumHeader {
+            name_offset: this.gread_with(&mut offset, le)?,
+            checksum_size: this.gread_with(&mut offset, le)?,
+            checksum_kind: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 /// A file checksum entry.
@@ -726,7 +826,7 @@ impl<'a> CrossModuleImports<'a> {
 ///  1. Binary search over a slice of exports to find the one matching a given local index
 ///  2. Enumerate all for debugging purposes
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Pread)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 struct RawCrossScopeExport {
     /// The local index within the module.
     ///
@@ -737,6 +837,20 @@ struct RawCrossScopeExport {
     ///
     /// This maps to `I: ItemIndex` in the public type signature.
     global: u32,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for RawCrossScopeExport {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = RawCrossScopeExport {
+            local: this.gread_with(&mut offset, le)?,
+            global: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl From<RawCrossScopeExport> for CrossModuleExport {

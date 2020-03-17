@@ -8,7 +8,7 @@
 use std::fmt;
 use std::ops::Deref;
 
-use scroll::Pread;
+use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
 use crate::source::*;
@@ -79,8 +79,8 @@ mod big {
 
     /// The PDB header as stored on disk.
     /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
-    #[derive(Debug, Copy, Clone, Pread)]
     #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
     struct RawHeader {
         magic: [u8; 32],
         page_size: u32,
@@ -88,6 +88,28 @@ mod big {
         pages_used: u32,
         directory_size: u32,
         _reserved: u32,
+    }
+
+    impl<'t> TryFromCtx<'t, Endian> for RawHeader {
+        type Error = scroll::Error;
+        type Size = usize;
+
+        fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+            let mut offset = 0;
+            let data = RawHeader {
+                magic: {
+                    let mut tmp = [0; 32 as usize];
+                    this.gread_inout_with(&mut offset, &mut tmp, le)?;
+                    tmp
+                },
+                page_size: this.gread_with(&mut offset, le)?,
+                free_page_map: this.gread_with(&mut offset, le)?,
+                pages_used: this.gread_with(&mut offset, le)?,
+                directory_size: this.gread_with(&mut offset, le)?,
+                _reserved: this.gread_with(&mut offset, le)?,
+            };
+            Ok((data, offset))
+        }
     }
 
     #[derive(Debug)]
@@ -365,7 +387,19 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
     // map the header
     let mut header_location = PageList::new(4096);
     header_location.push(0);
-    let header_view = view(&mut source, &header_location)?;
+    let header_view = match view(&mut source, &header_location) {
+        Ok(view) => view,
+        Err(e) => match e {
+            Error::IoError(x) => {
+                if x.kind() == std::io::ErrorKind::UnexpectedEof {
+                    return Err(Error::UnrecognizedFileFormat);
+                } else {
+                    return Err(Error::IoError(x));
+                }
+            }
+            _ => return Err(e),
+        },
+    };
 
     // see if it's a BigMSF
     if header_matches(header_view.as_slice(), big::MAGIC) {
@@ -386,6 +420,7 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s,
 mod tests {
     mod header {
         use crate::common::Error;
+        use crate::msf::open_msf;
         use crate::msf::Header;
 
         #[test]
@@ -437,6 +472,19 @@ mod tests {
                 Err(Error::PageReferenceOutOfRange(17)) => true,
                 _ => false,
             });
+        }
+
+        #[test]
+        fn test_small_file_unrecognized_file_format() {
+            let small_file = std::io::Cursor::new(b"\x7FELF");
+
+            match open_msf(small_file) {
+                Ok(_) => panic!("4 byte file should not parse as msf"),
+                Err(e) => match e {
+                    Error::UnrecognizedFileFormat => (),
+                    _ => panic!("4 byte file should parse as unrecognized file format"),
+                },
+            };
         }
     }
 }

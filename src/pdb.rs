@@ -389,7 +389,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// # test().unwrap()
     /// ```
     pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
-        let sections = self.sections()?.ok_or_else(|| Error::AddressMapNotFound)?;
+        let sections = self.sections()?.unwrap_or_default();
         Ok(match self.original_sections()? {
             Some(original_sections) => {
                 let omap_from_src = self

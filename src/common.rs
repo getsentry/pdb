@@ -544,7 +544,7 @@ impl_section_offset!(SectionOffset);
 ///
 /// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
 /// [`SectionOffset`]: struct.SectionOffset.html
-#[derive(Clone, Copy, Default, Eq, Hash, PartialEq, Pread)]
+#[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct PdbInternalSectionOffset {
     /// The memory offset relative from the start of the section's memory.
     pub offset: u32,
@@ -552,6 +552,20 @@ pub struct PdbInternalSectionOffset {
     /// The index of the section in the PDB's section headers list, incremented by `1`. A value of
     /// `0` indicates an invalid or missing reference.
     pub section: u16,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for PdbInternalSectionOffset {
+    type Error = scroll::Error;
+    type Size = usize;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+        let mut offset = 0;
+        let data = PdbInternalSectionOffset {
+            offset: this.gread_with(&mut offset, le)?,
+            section: this.gread_with(&mut offset, le)?,
+        };
+        Ok((data, offset))
+    }
 }
 
 impl_section_offset!(PdbInternalSectionOffset);
