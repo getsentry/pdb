@@ -105,7 +105,7 @@ impl<'s> DebugInformation<'s> {
         // drop the header and modules list
         buf.take(self.header_len + self.header.module_list_size as usize)?;
         let contributions_buf = buf.take(self.header.section_contribution_size as usize)?;
-        DBISectionContributionIter::new(contributions_buf.into())
+        DBISectionContributionIter::parse(contributions_buf.into())
     }
 }
 
@@ -374,11 +374,8 @@ impl From<u16> for MachineType {
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
 #[derive(Debug, Copy, Clone)]
 pub struct DBISectionContribution {
-    /// The index of the section.
-    pub section: u16,
-    _padding1: u16,
-    /// The offset within the section.
-    pub offset: u32,
+    /// Start offset of the section.
+    pub offset: PdbInternalSectionOffset,
     /// The size of the contribution, in bytes.
     pub size: u32,
     /// The characteristics, which map to the `Characteristics` field of
@@ -387,7 +384,6 @@ pub struct DBISectionContribution {
     pub characteristics: u32,
     /// The index of the module.
     pub module: u16,
-    _padding2: u16,
     /// CRC of the contribution(?)
     pub data_crc: u32,
     /// CRC of relocations(?)
@@ -396,14 +392,19 @@ pub struct DBISectionContribution {
 
 impl DBISectionContribution {
     fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        let section = buf.parse_u16()?;
+        let _padding = buf.parse_u16()?;
+        let offset = buf.parse_u32()?;
+        let size = buf.parse_u32()?;
+        let characteristics = buf.parse_u32()?;
+        let module = buf.parse_u16()?;
+        let _padding = buf.parse_u16()?;
+
         Ok(DBISectionContribution {
-            section: buf.parse_u16()?,
-            _padding1: buf.parse_u16()?,
-            offset: buf.parse_u32()?,
-            size: buf.parse_u32()?,
-            characteristics: buf.parse_u32()?,
-            module: buf.parse_u16()?,
-            _padding2: buf.parse_u16()?,
+            offset: PdbInternalSectionOffset { offset, section },
+            size,
+            characteristics,
+            module,
             data_crc: buf.parse_u32()?,
             reloc_crc: buf.parse_u32()?,
         })
@@ -555,7 +556,7 @@ pub struct DBISectionContributionIter<'c> {
 }
 
 impl<'c> DBISectionContributionIter<'c> {
-    fn new(mut buf: ParseBuffer<'c>) -> Result<Self> {
+    fn parse(mut buf: ParseBuffer<'c>) -> Result<Self> {
         let version = buf.parse_u32()?.into();
         Ok(Self { buf, version })
     }
