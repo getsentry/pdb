@@ -98,6 +98,15 @@ impl<'s> DebugInformation<'s> {
             buf: modules_buf.into(),
         })
     }
+
+    /// Returns an iterator that can traverse the section contributions list in sequential order.
+    pub fn section_contributions(&self) -> Result<DBISectionContributionIter<'_>> {
+        let mut buf = self.stream.parse_buffer();
+        // drop the header and modules list
+        buf.take(self.header_len + self.header.module_list_size as usize)?;
+        let contributions_buf = buf.take(self.header.section_contribution_size as usize)?;
+        DBISectionContributionIter::parse(contributions_buf.into())
+    }
 }
 
 /// The version of the PDB format.
@@ -364,37 +373,38 @@ impl From<u16> for MachineType {
 /// `struct SC` in Microsoft's code:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct DBISectionContribution {
-    /// The index of the section.
-    section: u16,
-    _padding1: u16,
-    /// The offset within the section.
-    offset: u32,
+pub struct DBISectionContribution {
+    /// Start offset of the section.
+    pub offset: PdbInternalSectionOffset,
     /// The size of the contribution, in bytes.
-    size: u32,
+    pub size: u32,
     /// The characteristics, which map to the `Characteristics` field of
     /// the [`IMAGE_SECTION_HEADER`][1] field in binaries.
     /// [1]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
-    characteristics: u32,
+    pub characteristics: u32,
     /// The index of the module.
-    module: u16,
-    _padding2: u16,
+    pub module: u16,
     /// CRC of the contribution(?)
-    data_crc: u32,
+    pub data_crc: u32,
     /// CRC of relocations(?)
-    reloc_crc: u32,
+    pub reloc_crc: u32,
 }
 
 impl DBISectionContribution {
     fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        let section = buf.parse_u16()?;
+        let _padding = buf.parse_u16()?;
+        let offset = buf.parse_u32()?;
+        let size = buf.parse_u32()?;
+        let characteristics = buf.parse_u32()?;
+        let module = buf.parse_u16()?;
+        let _padding = buf.parse_u16()?;
+
         Ok(DBISectionContribution {
-            section: buf.parse_u16()?,
-            _padding1: buf.parse_u16()?,
-            offset: buf.parse_u32()?,
-            size: buf.parse_u32()?,
-            characteristics: buf.parse_u32()?,
-            module: buf.parse_u16()?,
-            _padding2: buf.parse_u16()?,
+            offset: PdbInternalSectionOffset { offset, section },
+            size,
+            characteristics,
+            module,
             data_crc: buf.parse_u32()?,
             reloc_crc: buf.parse_u32()?,
         })
@@ -514,6 +524,59 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
             module_name,
             object_file_name,
         }))
+    }
+}
+
+/// The version of the section contribution stream.
+#[derive(Debug, Copy, Clone, PartialEq)]
+#[allow(missing_docs)]
+enum DBISectionContributionStreamVersion {
+    V60,
+    V2,
+    OtherValue(u32),
+}
+
+impl From<u32> for DBISectionContributionStreamVersion {
+    fn from(v: u32) -> Self {
+        const V60: u32 = 0xeffe_0000 + 19_970_605;
+        const V2: u32 = 0xeffe_0000 + 20_140_516;
+        match v {
+            V60 => DBISectionContributionStreamVersion::V60,
+            V2 => DBISectionContributionStreamVersion::V2,
+            _ => DBISectionContributionStreamVersion::OtherValue(v),
+        }
+    }
+}
+
+/// A `DBISectionContributionIter` iterates over the section contributions in the DBI section, producing `DBISectionContribution`s.
+#[derive(Debug)]
+pub struct DBISectionContributionIter<'c> {
+    buf: ParseBuffer<'c>,
+    version: DBISectionContributionStreamVersion,
+}
+
+impl<'c> DBISectionContributionIter<'c> {
+    fn parse(mut buf: ParseBuffer<'c>) -> Result<Self> {
+        let version = buf.parse_u32()?.into();
+        Ok(Self { buf, version })
+    }
+}
+
+impl<'c> FallibleIterator for DBISectionContributionIter<'c> {
+    type Item = DBISectionContribution;
+    type Error = Error;
+
+    fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
+        // see if we're at EOF
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+
+        let contribution = DBISectionContribution::parse(&mut self.buf)?;
+        if self.version == DBISectionContributionStreamVersion::V2 {
+            self.buf.parse_u32()?;
+        }
+        Ok(Some(contribution))
     }
 }
 
