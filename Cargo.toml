@@ -25,5 +25,6 @@ reqwest = "0.9.10"
 
 [package.metadata.release]
 pre-release-commit-message = "Release {{version}}"
+tag-name = "{{version}}"
 tag-message = "Release {{version}}"
 no-dev-version = true
