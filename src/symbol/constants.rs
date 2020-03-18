@@ -471,9 +471,8 @@ impl From<u16> for CPUType {
 
 impl<'a> TryFromCtx<'a, Endian> for CPUType {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         u16::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
     }
 }
@@ -558,9 +557,8 @@ impl From<u8> for SourceLanguage {
 
 impl<'a> TryFromCtx<'a, Endian> for SourceLanguage {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'a [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         u8::try_from_ctx(this, le).map(|(v, l)| (v.into(), l))
     }
 }

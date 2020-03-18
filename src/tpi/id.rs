@@ -41,9 +41,8 @@ impl<'t> IdData<'t> {}
 
 impl<'t> TryFromCtx<'t, scroll::Endian> for IdData<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], _ctx: scroll::Endian) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], _ctx: scroll::Endian) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
         let leaf = buf.parse_u16()?;
 

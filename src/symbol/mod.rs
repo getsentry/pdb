@@ -232,9 +232,8 @@ impl<'t> SymbolData<'t> {
 
 impl<'t> TryFromCtx<'t> for SymbolData<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], _ctx: ()) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], _ctx: ()) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
         let kind = buf.parse()?;
 
@@ -301,9 +300,8 @@ pub struct RegisterVariableSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for RegisterVariableSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = RegisterVariableSymbol {
@@ -329,9 +327,8 @@ pub struct MultiRegisterVariableSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for MultiRegisterVariableSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let type_index = buf.parse()?;
@@ -381,9 +378,8 @@ pub struct PublicSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for PublicSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let flags = buf.parse::<u32>()?;
@@ -423,9 +419,8 @@ pub struct DataSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for DataSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let global = match kind {
@@ -470,9 +465,8 @@ pub struct ProcedureReferenceSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let global = match kind {
@@ -511,9 +505,8 @@ pub struct DataReferenceSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for DataReferenceSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = DataReferenceSymbol {
@@ -546,9 +539,8 @@ pub struct AnnotationReferenceSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = AnnotationReferenceSymbol {
@@ -579,9 +571,8 @@ pub struct ConstantSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ConstantSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = ConstantSymbol {
@@ -608,9 +599,8 @@ pub struct UserDefinedTypeSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for UserDefinedTypeSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = UserDefinedTypeSymbol {
@@ -641,9 +631,8 @@ pub struct ThreadStorageSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ThreadStorageSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let global = match kind {
@@ -695,9 +684,8 @@ pub struct ProcedureFlags {
 
 impl<'t> TryFromCtx<'t, Endian> for ProcedureFlags {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u8::try_from_ctx(this, le)?;
 
         let flags = ProcedureFlags {
@@ -756,9 +744,8 @@ pub struct ProcedureSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let global = match kind {
@@ -813,9 +800,8 @@ pub struct InlineSiteSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for InlineSiteSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = InlineSiteSymbol {
@@ -844,9 +830,8 @@ pub struct BuildInfoSymbol {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for BuildInfoSymbol {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = BuildInfoSymbol { id: buf.parse()? };
@@ -868,9 +853,8 @@ pub struct ObjNameSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ObjNameSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = ObjNameSymbol {
@@ -897,9 +881,8 @@ pub struct CompilerVersion {
 
 impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], has_qfe: bool) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], has_qfe: bool) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let version = CompilerVersion {
@@ -944,9 +927,8 @@ pub struct CompileFlags {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlags {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let is_compile3 = kind == S_COMPILE3;
 
         let raw = this.pread_with::<u16>(0, LE)?;
@@ -993,9 +975,8 @@ pub struct CompileFlagsSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlagsSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let has_qfe = kind == S_COMPILE3;
@@ -1023,9 +1004,8 @@ pub struct UsingNamespaceSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for UsingNamespaceSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = UsingNamespaceSymbol {
@@ -1076,9 +1056,8 @@ pub struct LocalVariableFlags {
 
 impl<'t> TryFromCtx<'t, Endian> for LocalVariableFlags {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u16::try_from_ctx(this, le)?;
 
         let flags = LocalVariableFlags {
@@ -1113,9 +1092,8 @@ pub struct LocalSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = LocalSymbol {
@@ -1148,9 +1126,8 @@ pub struct ExportSymbolFlags {
 
 impl<'t> TryFromCtx<'t, Endian> for ExportSymbolFlags {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u16::try_from_ctx(this, le)?;
 
         let flags = ExportSymbolFlags {
@@ -1181,9 +1158,8 @@ pub struct ExportSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ExportSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = ExportSymbol {
@@ -1211,9 +1187,8 @@ pub struct LabelSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for LabelSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = LabelSymbol {
@@ -1245,9 +1220,8 @@ pub struct BlockSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for BlockSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = BlockSymbol {
@@ -1281,9 +1255,8 @@ pub struct RegisterRelativeSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for RegisterRelativeSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = RegisterRelativeSymbol {
@@ -1344,9 +1317,8 @@ pub struct ThunkSymbol<'t> {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for ThunkSymbol<'t> {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let parent = parse_optional_index(&mut buf)?;
@@ -1398,9 +1370,8 @@ pub struct SeparatedCodeFlags {
 
 impl<'t> TryFromCtx<'t, Endian> for SeparatedCodeFlags {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u32::try_from_ctx(this, le)?;
 
         let flags = SeparatedCodeFlags {
@@ -1433,9 +1404,8 @@ pub struct SeparatedCodeSymbol {
 
 impl<'t> TryFromCtx<'t, SymbolKind> for SeparatedCodeSymbol {
     type Error = Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], _: SymbolKind) -> Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], _: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let parent = buf.parse()?;

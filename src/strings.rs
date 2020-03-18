@@ -49,9 +49,8 @@ struct StringTableHeader {
 
 impl<'t> TryFromCtx<'t, Endian> for StringTableHeader {
     type Error = scroll::Error;
-    type Size = usize;
 
-    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, Self::Size)> {
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
         let data = StringTableHeader {
             magic: this.gread_with(&mut offset, le)?,
