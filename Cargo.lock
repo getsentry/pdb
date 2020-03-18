@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "pdb"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "fallible-iterator 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "getopts 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
