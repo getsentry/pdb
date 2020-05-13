@@ -32,28 +32,30 @@ Design
 Usage Example
 ---
 
-```
-extern crate pdb;
-
+```rust
 use pdb::FallibleIterator;
 use std::fs::File;
 
-fn main() {
-    let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+fn main() -> pdb::Result<()> {
+    let file = File::open("fixtures/self/foo.pdb")?;
     let mut pdb = pdb::PDB::open(file)?;
-    
+
     let symbol_table = pdb.global_symbols()?;
-    
+    let address_map = pdb.address_map()?;
+
     let mut symbols = symbol_table.iter();
     while let Some(symbol) = symbols.next()? {
         match symbol.parse() {
-            Ok(pdb::SymbolData::PublicSymbol{function: true, segment, offset, ..}) => {
-                // we found the location of a function
-                println!("{:x}:{:08x} is {}", segment, offset, symbol.name()?);
+            Ok(pdb::SymbolData::Public(data)) if data.function => {
+                // we found the location of a function!
+                let rva = data.offset.to_rva(&address_map).unwrap_or_default
+                println!("{} is {}", rva, data.name);
             }
             _ => {}
         }
     }
+
+    Ok(())
 }
 ```
 
