@@ -499,13 +499,13 @@ impl_section_offset!(SectionOffset);
 /// For optimized Microsoft binaries, this offset points to a virtual address space before the
 /// rearrangement of sections has been performed. This kind of offset is usually stored in PDB debug
 /// information. It can be converted to an RVA in the transformed address space of the optimized
-/// binary using [`rva`]. Likewise, there is a conversion to [`SectionOffset`] in the actual address
+/// binary using [`to_rva`]. Likewise, there is a conversion to [`SectionOffset`] in the actual address
 /// space.
 ///
 /// For binaries and their PDBs that have not been optimized, both address spaces are equal and the
 /// offsets are interchangeable. The conversion operations are cheap no-ops in this case.
 ///
-/// [`rva`]: struct.PdbInternalSectionOffset.html#method.rva
+/// [`to_rva`]: struct.PdbInternalSectionOffset.html#method.to_rva
 /// [`SectionOffset`]: struct.SectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct PdbInternalSectionOffset {
