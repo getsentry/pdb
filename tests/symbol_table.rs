@@ -4,7 +4,7 @@ use pdb::FallibleIterator;
 
 fn setup<F>(func: F)
 where
-    F: FnOnce(&pdb::SymbolTable<'_>, bool) -> (),
+    F: FnOnce(&pdb::SymbolTable<'_>, bool),
 {
     let (file, is_fixture) = if let Ok(filename) = std::env::var("PDB_FILE") {
         (std::fs::File::open(filename).expect("opening file"), false)

@@ -4,7 +4,7 @@ use pdb::FallibleIterator;
 
 fn setup<F>(func: F)
 where
-    F: FnOnce(&pdb::TypeInformation<'_>) -> (),
+    F: FnOnce(&pdb::TypeInformation<'_>),
 {
     let file = if let Ok(filename) = std::env::var("PDB_FILE") {
         std::fs::File::open(filename)
