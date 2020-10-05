@@ -14,7 +14,7 @@ use std::fmt;
 use crate::common::*;
 
 /// A PE `IMAGE_SECTION_HEADER`, as described in [the Microsoft documentation](https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx).
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Default)]
 pub struct ImageSectionHeader {
     /// An 8-byte, null-padded UTF-8 string. There is no terminating null character if the string is
     /// exactly eight characters long. For longer names, this member contains a forward slash (`/`)

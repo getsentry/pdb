@@ -23,6 +23,22 @@ fn open_file() -> std::fs::File {
 }
 
 #[test]
+fn test_omap_section_zero() {
+    // https://github.com/willglynn/pdb/issues/87
+
+    let mut pdb = pdb::PDB::open(open_file()).expect("opening pdb");
+
+    let address = pdb::PdbInternalSectionOffset {
+        offset: 0,
+        section: 0x1234,
+    };
+
+    let address_map = pdb.address_map().expect("address map");
+
+    assert_eq!(address.to_rva(&address_map), None);
+}
+
+#[test]
 fn test_omap_symbol() {
     let mut pdb = pdb::PDB::open(open_file()).expect("opening pdb");
 
