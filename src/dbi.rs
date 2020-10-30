@@ -245,7 +245,7 @@ impl DBIHeader {
 }
 
 /// The target machine's architecture.
-/// Reference: https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#machine-types
+/// Reference: <https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#machine-types>
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineType {
     /// The contents of this field are assumed to be applicable to any machine type.
