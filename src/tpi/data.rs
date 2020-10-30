@@ -602,10 +602,7 @@ impl FieldAttributes {
 
     #[inline]
     pub fn is_intro_virtual(self) -> bool {
-        match self.method_properties() {
-            0x04 | 0x06 => true,
-            _ => false,
-        }
+        matches!(self.method_properties(), 0x04 | 0x06)
     }
 
     // TODO
@@ -748,10 +745,10 @@ impl PointerAttributes {
 
     /// Returns `true` if this points to a member (either data or function).
     pub fn pointer_to_member(self) -> bool {
-        match self.pointer_mode() {
-            PointerMode::Member | PointerMode::MemberFunction => true,
-            _ => false,
-        }
+        matches!(
+            self.pointer_mode(),
+            PointerMode::Member | PointerMode::MemberFunction
+        )
     }
 
     /// Returns `true` if this is a flat `0:32` pointer.
@@ -781,10 +778,10 @@ impl PointerAttributes {
 
     /// Is this a C++ reference, as opposed to a C pointer?
     pub fn is_reference(self) -> bool {
-        match self.pointer_mode() {
-            PointerMode::LValueReference | PointerMode::RValueReference => true,
-            _ => false,
-        }
+        matches!(
+            self.pointer_mode(),
+            PointerMode::LValueReference | PointerMode::RValueReference
+        )
     }
 
     /// The size of the pointer in bytes.

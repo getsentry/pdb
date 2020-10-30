@@ -228,10 +228,7 @@ mod big {
             }
 
             // stream table is available
-            assert!(match self.stream_table {
-                StreamTable::Available { .. } => true,
-                _ => false,
-            });
+            assert!(matches!(self.stream_table, StreamTable::Available { .. }));
 
             Ok(())
         }
@@ -443,34 +440,22 @@ mod tests {
                 page_size: 4096,
                 maximum_valid_page_number: 15,
             };
-            assert!(match h.validate_page_number(0) {
-                Err(Error::PageReferenceOutOfRange(0)) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(1) {
-                Ok(1) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(2) {
-                Ok(2) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(14) {
-                Ok(14) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(15) {
-                Ok(15) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(16) {
-                Err(Error::PageReferenceOutOfRange(16)) => true,
-                _ => false,
-            });
-            assert!(match h.validate_page_number(17) {
-                Err(Error::PageReferenceOutOfRange(17)) => true,
-                _ => false,
-            });
+            assert!(matches!(
+                h.validate_page_number(0),
+                Err(Error::PageReferenceOutOfRange(0))
+            ));
+            assert!(matches!(h.validate_page_number(1), Ok(1)));
+            assert!(matches!(h.validate_page_number(2), Ok(2)));
+            assert!(matches!(h.validate_page_number(14), Ok(14)));
+            assert!(matches!(h.validate_page_number(15), Ok(15)));
+            assert!(matches!(
+                h.validate_page_number(16),
+                Err(Error::PageReferenceOutOfRange(16))
+            ));
+            assert!(matches!(
+                h.validate_page_number(17),
+                Err(Error::PageReferenceOutOfRange(17))
+            ));
         }
 
         #[test]

@@ -270,6 +270,7 @@ pub const S_LDATA_HLSL32_EX: u16 = 0x1165;
 
 /// These values correspond to the CV_CPU_TYPE_e enumeration, and are documented
 /// [on MSDN](https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx).
+#[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CPUType {
     Intel8080 = 0x0,
@@ -481,22 +482,43 @@ impl<'a> TryFromCtx<'a, Endian> for CPUType {
 /// [on MSDN](https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceLanguage {
+    /// Application language is C.
     C = 0x00,
+    /// Application language is C++.
     Cpp = 0x01,
+    /// Application language is FORTRAN.
     Fortran = 0x02,
+    /// Application language is Microsoft Macro Assembler.
     Masm = 0x03,
+    /// Application language is Pascal.
     Pascal = 0x04,
+    /// Application language is BASIC.
     Basic = 0x05,
+    /// Application language is COBOL.
     Cobol = 0x06,
+    /// Application is a linker-generated module.
     Link = 0x07,
+    /// Application is a resource module converted with CVTRES tool.
     Cvtres = 0x08,
+    /// Application is a POGO optimized module generated with CVTPGD tool.
     Cvtpgd = 0x09,
+    /// Application language is C#.
     CSharp = 0x0a,
+    /// Application language is Visual Basic.
     VB = 0x0b,
+    /// Application language is intermediate language assembly (that is, Common Language Runtime
+    /// (CLR) assembly).
     ILAsm = 0x0c,
+    /// Application language is Java.
     Java = 0x0d,
+    /// Application language is Jscript.
     JScript = 0x0e,
+    /// Application language is an unknown Microsoft Intermediate Language (MSIL), possibly a result
+    /// of using the [/LTCG (Link-time Code
+    /// Generation)](https://docs.microsoft.com/en-us/cpp/build/reference/ltcg-link-time-code-generation)
+    /// switch.
     MSIL = 0x0f,
+    /// Application language is High Level Shader Language.
     HLSL = 0x10,
 
     /// The DMD compiler emits 'D' for the CV source language. Microsoft doesn't

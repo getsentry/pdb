@@ -69,24 +69,49 @@ impl<'t> Symbol<'t> {
     /// If `true`, this symbol has a `parent` and an `end` field, which contains the offset of the
     /// corrsponding end symbol.
     pub fn starts_scope(&self) -> bool {
-        match self.raw_kind() {
-            S_GPROC16 | S_GPROC32 | S_GPROC32_ST | S_GPROCMIPS | S_GPROCMIPS_ST | S_GPROCIA64
-            | S_GPROCIA64_ST | S_LPROC16 | S_LPROC32 | S_LPROC32_ST | S_LPROC32_DPC
-            | S_LPROCMIPS | S_LPROCMIPS_ST | S_LPROCIA64 | S_LPROCIA64_ST | S_LPROC32_DPC_ID
-            | S_GPROC32_ID | S_GPROCMIPS_ID | S_GPROCIA64_ID | S_BLOCK16 | S_BLOCK32
-            | S_BLOCK32_ST | S_WITH16 | S_WITH32 | S_WITH32_ST | S_THUNK16 | S_THUNK32
-            | S_THUNK32_ST | S_SEPCODE | S_GMANPROC | S_GMANPROC_ST | S_LMANPROC
-            | S_LMANPROC_ST | S_INLINESITE | S_INLINESITE2 => true,
-            _ => false,
-        }
+        matches!(
+            self.raw_kind(),
+            S_GPROC16
+                | S_GPROC32
+                | S_GPROC32_ST
+                | S_GPROCMIPS
+                | S_GPROCMIPS_ST
+                | S_GPROCIA64
+                | S_GPROCIA64_ST
+                | S_LPROC16
+                | S_LPROC32
+                | S_LPROC32_ST
+                | S_LPROC32_DPC
+                | S_LPROCMIPS
+                | S_LPROCMIPS_ST
+                | S_LPROCIA64
+                | S_LPROCIA64_ST
+                | S_LPROC32_DPC_ID
+                | S_GPROC32_ID
+                | S_GPROCMIPS_ID
+                | S_GPROCIA64_ID
+                | S_BLOCK16
+                | S_BLOCK32
+                | S_BLOCK32_ST
+                | S_WITH16
+                | S_WITH32
+                | S_WITH32_ST
+                | S_THUNK16
+                | S_THUNK32
+                | S_THUNK32_ST
+                | S_SEPCODE
+                | S_GMANPROC
+                | S_GMANPROC_ST
+                | S_LMANPROC
+                | S_LMANPROC_ST
+                | S_INLINESITE
+                | S_INLINESITE2
+        )
     }
 
     /// Returns whether this symbol declares the end of a scope.
     pub fn ends_scope(&self) -> bool {
-        match self.raw_kind() {
-            S_END | S_PROC_ID_END | S_INLINESITE_END => true,
-            _ => false,
-        }
+        matches!(self.raw_kind(), S_END | S_PROC_ID_END | S_INLINESITE_END)
     }
 }
 
@@ -424,18 +449,12 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let global = match kind {
-            S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST => true,
-            _ => false,
-        };
-        let managed = match kind {
-            S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST => true,
-            _ => false,
-        };
-
         let symbol = DataSymbol {
-            global,
-            managed,
+            global: matches!(kind, S_GDATA32 | S_GDATA32_ST | S_GMANDATA | S_GMANDATA_ST),
+            managed: matches!(
+                kind,
+                S_LMANDATA | S_LMANDATA_ST | S_GMANDATA | S_GMANDATA_ST
+            ),
             type_index: buf.parse()?,
             offset: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?,
@@ -470,13 +489,8 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let global = match kind {
-            S_PROCREF | S_PROCREF_ST => true,
-            _ => false,
-        };
-
         let symbol = ProcedureReferenceSymbol {
-            global,
+            global: matches!(kind, S_PROCREF | S_PROCREF_ST),
             sum_name: buf.parse()?,
             symbol_index: buf.parse()?,
             module: buf.parse()?,
@@ -636,13 +650,8 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ThreadStorageSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let global = match kind {
-            S_GTHREAD32 | S_GTHREAD32_ST => true,
-            _ => false,
-        };
-
         let symbol = ThreadStorageSymbol {
-            global,
+            global: matches!(kind, S_GTHREAD32 | S_GTHREAD32_ST),
             type_index: buf.parse()?,
             offset: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?,
@@ -749,19 +758,9 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let global = match kind {
-            S_GPROC32 | S_GPROC32_ST | S_GPROC32_ID => true,
-            _ => false,
-        };
-
-        let dpc = match kind {
-            S_LPROC32_DPC | S_LPROC32_DPC_ID => true,
-            _ => false,
-        };
-
         let symbol = ProcedureSymbol {
-            global,
-            dpc,
+            global: matches!(kind, S_GPROC32 | S_GPROC32_ST | S_GPROC32_ID),
+            dpc: matches!(kind, S_LPROC32_DPC | S_LPROC32_DPC_ID),
             parent: parse_optional_index(&mut buf)?,
             end: buf.parse()?,
             next: parse_optional_index(&mut buf)?,
