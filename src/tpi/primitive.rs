@@ -33,6 +33,7 @@ pub struct PrimitiveType {
 }
 
 /// A simple type.
+#[non_exhaustive]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum PrimitiveKind {
     /// Uncharacterized type (no type)

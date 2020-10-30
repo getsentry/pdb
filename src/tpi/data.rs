@@ -12,6 +12,7 @@ use crate::tpi::constants::*;
 use crate::tpi::primitive::*;
 
 /// Encapsulates parsed data about a `Type`.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeData<'t> {
     Primitive(PrimitiveType),

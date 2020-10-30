@@ -19,6 +19,7 @@ use scroll::{self, Endian, Pread, LE};
 use crate::tpi::constants;
 
 /// An error that occurred while reading or parsing the PDB.
+#[non_exhaustive]
 #[derive(Debug)]
 pub enum Error {
     /// The input data was not recognized as a MSF (PDB) file.
