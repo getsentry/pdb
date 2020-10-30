@@ -448,8 +448,10 @@ fn get_section_offset(sections: &[ImageSectionHeader], address: u32) -> Option<(
 }
 
 fn get_virtual_address(sections: &[ImageSectionHeader], section: u16, offset: u32) -> Option<u32> {
-    let section = sections.get(section as usize - 1)?;
-    Some(section.virtual_address + offset)
+    (section as usize)
+        .checked_sub(1)
+        .and_then(|i| sections.get(i))
+        .map(|section| section.virtual_address + offset)
 }
 
 impl Rva {
@@ -600,5 +602,19 @@ mod tests {
     fn test_omap_record() {
         assert_eq!(mem::size_of::<OMAPRecord>(), 8);
         assert_eq!(mem::align_of::<OMAPRecord>(), 4);
+    }
+
+    #[test]
+    fn test_get_virtual_address() {
+        let sections = vec![ImageSectionHeader {
+            virtual_address: 0x1000_0000,
+            ..Default::default()
+        }];
+
+        assert_eq!(get_virtual_address(&sections, 1, 0x1234), Some(0x1000_1234));
+        assert_eq!(get_virtual_address(&sections, 2, 0x1234), None);
+
+        // https://github.com/willglynn/pdb/issues/87
+        assert_eq!(get_virtual_address(&sections, 0, 0x1234), None);
     }
 }
