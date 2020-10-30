@@ -900,29 +900,29 @@ impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CompileFlags {
     /// Compiled for edit and continue.
-    edit_and_continue: bool,
+    pub edit_and_continue: bool,
     /// Compiled without debugging info.
-    no_debug_info: bool,
+    pub no_debug_info: bool,
     /// Compiled with `LTCG`.
-    link_time_codegen: bool,
+    pub link_time_codegen: bool,
     /// Compiled with `/bzalign`.
-    no_data_align: bool,
+    pub no_data_align: bool,
     /// Managed code or data is present.
-    managed: bool,
+    pub managed: bool,
     /// Compiled with `/GS`.
-    security_checks: bool,
+    pub security_checks: bool,
     /// Compiled with `/hotpatch`.
-    hot_patch: bool,
+    pub hot_patch: bool,
     /// Compiled with `CvtCIL`.
-    cvtcil: bool,
+    pub cvtcil: bool,
     /// This is a MSIL .NET Module.
-    msil_module: bool,
+    pub msil_module: bool,
     /// Compiled with `/sdl`.
-    sdl: bool,
+    pub sdl: bool,
     /// Compiled with `/ltcg:pgo` or `pgo:`.
-    pgo: bool,
+    pub pgo: bool,
     /// This is a .exp module.
-    exp_module: bool,
+    pub exp_module: bool,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlags {
