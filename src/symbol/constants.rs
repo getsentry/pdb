@@ -269,7 +269,7 @@ pub const S_GDATA_HLSL32_EX: u16 = 0x1164;
 pub const S_LDATA_HLSL32_EX: u16 = 0x1165;
 
 /// These values correspond to the CV_CPU_TYPE_e enumeration, and are documented
-/// here: https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx
+/// [on MSDN](https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CPUType {
     Intel8080 = 0x0,
@@ -478,7 +478,7 @@ impl<'a> TryFromCtx<'a, Endian> for CPUType {
 }
 
 /// These values correspond to the CV_CFL_LANG enumeration, and are documented
-/// here: https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx
+/// [on MSDN](https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceLanguage {
     C = 0x00,
