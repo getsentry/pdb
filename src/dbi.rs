@@ -387,8 +387,8 @@ pub struct DBISectionContribution {
     ///
     /// [`IMAGE_SECTION_HEADER`]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
     pub characteristics: u32,
-    /// The index of the module.
-    pub module: u16,
+    /// Index of the module in [`DebugInformation::modules`] containing the actual symbol.
+    pub module: usize,
     /// CRC of the contribution(?)
     pub data_crc: u32,
     /// CRC of relocations(?)
@@ -402,7 +402,7 @@ impl DBISectionContribution {
         let offset = buf.parse_u32()?;
         let size = buf.parse_u32()?;
         let characteristics = buf.parse_u32()?;
-        let module = buf.parse_u16()?;
+        let module = buf.parse_u16()?.into();
         let _padding = buf.parse_u16()?;
 
         Ok(DBISectionContribution {
