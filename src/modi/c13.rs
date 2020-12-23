@@ -893,8 +893,7 @@ impl<'a> DebugCrossScopeExportsSubsection<'a> {
     }
 }
 
-/// Iterator returned by
-/// [`CrossModuleExports::exports`](struct.CrossModuleExports.html#method.exports).
+/// Iterator returned by [`CrossModuleExports::exports`].
 #[derive(Clone, Debug)]
 pub struct CrossModuleExportIter<'a> {
     exports: slice::Iter<'a, RawCrossScopeExport>,
@@ -917,9 +916,8 @@ impl<'a> FallibleIterator for CrossModuleExportIter<'a> {
 
 /// A table of exports declared by this module.
 ///
-/// Other modules can import types and ids from this module by using [cross module references].
-///
-/// [cross module references]: trait.ItemIndex.html#method.is_cross_module
+/// Other modules can import types and ids from this module by using [cross module
+/// references](ItemIndex::is_cross_module).
 #[derive(Clone, Debug, Default)]
 pub struct CrossModuleExports {
     raw_exports: Vec<RawCrossScopeExport>,
@@ -963,9 +961,10 @@ impl CrossModuleExports {
 
     /// Resolves the global index of the given cross module import's local index.
     ///
-    /// The global index can be used to retrieve items from the [`TypeInformation`] or
-    /// [`IdInformation`] streams. If the given local index is not listed in the export list, this
-    /// function returns `Ok(None)`.
+    /// The global index can be used to retrieve items from the
+    /// [`TypeInformation`](crate::TypeInformation) or [`IdInformation`](crate::IdInformation)
+    /// streams. If the given local index is not listed in the export list, this function returns
+    /// `Ok(None)`.
     pub fn resolve_import<I>(&self, local_index: Local<I>) -> Result<Option<I>>
     where
         I: ItemIndex,

@@ -37,9 +37,10 @@ pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 ///    functions, build infos and source references. Its contents are identified by [`IdIndex`].
 ///
 /// Items in these streams are stored by their index in ascending order. Symbols declared in
-/// [`ModuleInfo`] can refer to items in both streams, as well as items to other items with one
-/// exception: `Type`s cannot refer to `Id`s. Also, the PDB format requires that items refer only to
-/// types with lower indexes. Thus, the stream of items forms a directed acyclic graph.
+/// [`ModuleInfo`](crate::ModuleInfo) can refer to items in both streams, as well as items to other
+/// items with one exception: `Type`s cannot refer to `Id`s. Also, the PDB format requires that
+/// items refer only to types with lower indexes. Thus, the stream of items forms a directed acyclic
+/// graph.
 ///
 /// Both streams can iterate by their index using [`ItemInformation::iter`]. Additionally,
 /// [`ItemFinder`] is a secondary data structure to provide efficient backtracking for random
@@ -123,22 +124,6 @@ pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 /// # }
 /// # assert!(test().expect("test") > 8000);
 /// ```
-///
-/// [`ItemInformation::iter`]: struct.ItemInformation.html#method.iter
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
-/// [`ItemFinder`]: struct.ItemFinder.html
-/// [`TypeFinder`]: type.TypeFinder.html
-/// [`IdFinder`]: type.IdFinder.html
-/// [`ItemIndex`]: trait.ItemIndex.html
-/// [`TypeIndex`]: struct.TypeIndex.html
-/// [`IdIndex`]: struct.IdIndex.html
-/// [`ItemIter`]: struct.ItemIter.html
-/// [`TypeIter`]: type.TypeIter.html
-/// [`IdIter`]: type.IdIter.html
-/// [`Item`]: struct.Item.html
-/// [`Type`]: type.Type.html
-/// [`Id`]: type.Id.html
 #[derive(Debug)]
 pub struct ItemInformation<'s, I> {
     stream: Stream<'s>,
@@ -184,8 +169,6 @@ where
     /// Note that in the case of the type stream ([`TypeInformation`]) primitive types are not
     /// stored in the PDB file. The number of distinct types reachable via this table will be higher
     /// than `len()`.
-    ///
-    /// [`TypeInformation`]: type.TypeInformation.html
     pub fn len(&self) -> usize {
         (self.header.maximum_index - self.header.minimum_index) as usize
     }
@@ -200,8 +183,6 @@ where
     ///
     /// The `ItemFinder` is initially empty and must be populated by iterating. See the struct-level
     /// docs for an example.
-    ///
-    /// [`ItemIndex`]: trait.ItemIndex.html
     pub fn finder(&self) -> ItemFinder<'_, I> {
         ItemFinder::new(self, 3)
     }
@@ -220,17 +201,10 @@ const PRIMITIVE_TYPE: &[u8] = b"\xff\xff";
 ///
 /// The data held by items can be parsed:
 ///
-///  - [`Type::parse`] returns [`TypeData`].
-///  - [`Id::parse`] returns [`IdData`].
+///  - [`Type::parse`](Self::parse) returns [`TypeData`].
+///  - [`Id::parse`](Self::parse) returns [`IdData`].
 ///
 /// Depending on the stream, this can either be a [`Type`] or [`Id`].
-///
-/// [`Type`]: type.Type.html
-/// [`Id`]: type.Id.html
-/// [`Type::parse`]: struct.Item.html#method.parse
-/// [`Id::parse`]: struct.Item.html#method.parse-1
-/// [`TypeData`]: enum.TypeData.html
-/// [`IdData`]: enum.IdData.html
 #[derive(Copy, Clone, PartialEq)]
 pub struct Item<'t, I> {
     index: I,
@@ -244,9 +218,6 @@ where
     /// Returns this item's index.
     ///
     /// Depending on the stream, either a [`TypeIndex`] or [`IdIndex`].
-    ///
-    /// [`TypeIndex`]: struct.TypeIndex.html
-    /// [`IdIndex`]: struct.IdIndex.html
     pub fn index(&self) -> I {
         self.index
     }
@@ -268,8 +239,6 @@ where
     /// Returns the identifier of the kind of data stored by this this `Item`.
     ///
     /// As a special case, if this is a primitive [`Type`], this function will return `0xffff`.
-    ///
-    /// [`Type`]: type.Type.html
     #[inline]
     pub fn raw_kind(&self) -> u16 {
         debug_assert!(self.data.len() >= 2);
@@ -293,13 +262,14 @@ where
     }
 }
 
-/// In-memory index for efficient random-access of [`Items`] by index.
+/// In-memory index for efficient random-access to [`Item`]s by index.
 ///
 /// `ItemFinder` can be obtained via [`ItemInformation::finder`]. It starts out empty and must be
-/// populated by calling [`update`] while iterating. There are two typedefs for easier use:
+/// populated by calling [`ItemFinder::update`] while iterating. There are two typedefs for easier
+/// use:
 ///
-///  - [`TypeFinder`] for finding [`Types`] in a [`TypeInformation`] (TPI stream).
-///  - [`IdFinder`] for finding [`Ids`] in a [`IdInformation`] (IPI stream).
+///  - [`TypeFinder`] for finding [`Type`]s in a [`TypeInformation`](crate::TypeInformation) (TPI stream).
+///  - [`IdFinder`] for finding [`Id`]s in a [`IdInformation`](crate::IdInformation) (IPI stream).
 ///
 /// `ItemFinder` allocates all the memory it needs when it is first created. The footprint is
 /// directly proportional to the total number of types; see [`ItemInformation::len`].
@@ -339,16 +309,6 @@ where
 /// A `shift` of 2 or 3 is likely appropriate for most workloads. 500K items would require 1 MB or
 /// 500 KB of memory respectively, and lookups -- though indirect -- would still usually need only
 /// one or two 64-byte cache lines.
-///
-/// [`Items`]: struct.Item.html
-/// [`ItemInformation::finder`]: struct.ItemInformation.html#method.finder
-/// [`ItemInformation::len`]: struct.ItemInformation.html#method.len
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
-/// [`TypeFinder`]: type.TypeFinder.html
-/// [`Types`]: type.Type.html
-/// [`IdFinder`]: type.IdFinder.html
-/// [`Ids`]: type.Id.html
 #[derive(Debug)]
 pub struct ItemFinder<'t, I> {
     buffer: ParseBuffer<'t>,
@@ -416,9 +376,6 @@ where
     ///
     /// Do this each time you call `.next()`. See documentation of [`ItemInformation`] for an
     /// example.
-    ///
-    /// [`ItemIter`]: struct.ItemIter.html
-    /// [`ItemInformation`]: struct.ItemInformation.html
     #[inline]
     pub fn update(&mut self, iterator: &ItemIter<'t, I>) {
         let (vec_index, iteration_count) = self.resolve(iterator.index);
@@ -477,14 +434,12 @@ where
     }
 }
 
-/// An iterator over items in [`TypeInformation`] or [`IdInformation`].
+/// An iterator over items in [`TypeInformation`](crate::TypeInformation) or
+/// [`IdInformation`](crate::IdInformation).
 ///
 /// The TPI and IPI streams are represented internally as a series of records, each of which have a
 /// length, a kind, and a type-specific field layout. Iteration performance is therefore similar to
 /// a linked list.
-///
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
 #[derive(Debug)]
 pub struct ItemIter<'t, I> {
     buf: ParseBuffer<'t>,
@@ -532,25 +487,15 @@ where
 ///
 /// This stream exposes types, the variants of which are enumerated by [`TypeData`]. See
 /// [`ItemInformation`] for more information on accessing types.
-///
-/// [`TypeData`]: enum.TypeData.html
-/// [`ItemInformation`]: struct.ItemInformation.html
 pub type TypeInformation<'s> = ItemInformation<'s, TypeIndex>;
 
-/// In-memory index for efficient random-access of [`Types`] by index.
+/// In-memory index for efficient random-access of [`Type`]s by index.
 ///
-/// `TypeFinder` can be obtained via [`TypeInformation::finder`]. See [`ItemFinder`] for more
-/// information.
-///
-/// [`Types`]: type.Type.html
-/// [`TypeInformation::finder`]: struct.ItemInformation.html#method.finder
-/// [`ItemFinder`]: struct.ItemFinder.html
+/// `TypeFinder` can be obtained via [`TypeInformation::finder`](ItemInformation::finder). See
+/// [`ItemFinder`] for more information.
 pub type TypeFinder<'t> = ItemFinder<'t, TypeIndex>;
 
-/// An iterator over [`Types`] returned by [`TypeInformation::iter`].
-///
-/// [`TypeInformation::iter`]: struct.ItemInformation.html#method.iter
-/// [`Types`]: type.Type.html
+/// An iterator over [`Type`]s returned by [`TypeInformation::iter`](ItemInformation::iter).
 pub type TypeIter<'t> = ItemIter<'t, TypeIndex>;
 
 /// Information on a primitive type, class, or procedure.
@@ -579,25 +524,15 @@ impl<'t> Item<'t, TypeIndex> {
 ///
 /// This stream exposes types, the variants of which are enumerated by [`IdData`]. See
 /// [`ItemInformation`] for more information on accessing types.
-///
-/// [`IdData`]: enum.IdData.html
-/// [`ItemInformation`]: struct.ItemInformation.html
 pub type IdInformation<'s> = ItemInformation<'s, IdIndex>;
 
-/// In-memory index for efficient random-access of [`Ids`] by index.
+/// In-memory index for efficient random-access of [`Id`]s by index.
 ///
-/// `IdFinder` can be obtained via [`IdInformation::finder`]. See [`ItemFinder`] for more
-/// information.
-///
-/// [`Ids`]: type.Id.html
-/// [`IdInformation::finder`]: struct.ItemInformation.html#method.finder
-/// [`ItemFinder`]: struct.ItemFinder.html
+/// `IdFinder` can be obtained via [`IdInformation::finder`](ItemInformation::finder). See
+/// [`ItemFinder`] for more information.
 pub type IdFinder<'t> = ItemFinder<'t, IdIndex>;
 
-/// An iterator over [`Ids`] returned by [`IdInformation::iter`].
-///
-/// [`IdInformation::iter`]: struct.ItemInformation.html#method.iter
-/// [`Ids`]: type.Id.html
+/// An iterator over [`Id`]s returned by [`IdInformation::iter`](ItemInformation::iter).
 pub type IdIter<'t> = ItemIter<'t, IdIndex>;
 
 /// Information on an inline function, build infos or source references.

@@ -174,7 +174,6 @@ impl fmt::Debug for NewFrameData {
 /// stream might describe the same RVA.
 ///
 /// [`struct _FPO_DATA`]: https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#debug-type
-/// [`NewFrameData`]: struct.NewFrameData.html
 ///
 /// ```c
 /// typedef struct _FPO_DATA {
@@ -274,10 +273,7 @@ pub struct FrameData {
     /// Relative virtual address of the start of the code block.
     ///
     /// Note that this address is internal to the PDB. To convert this to an actual [`Rva`], use
-    /// [`to_rva`].
-    ///
-    /// [`Rva`]: struct.Rva.html
-    /// [`to_rva`]: struct.PdbInternalRva.html#method.to_rva
+    /// [`PdbInternalRva::to_rva`].
     pub code_start: PdbInternalRva,
 
     /// Size of the code block covered by this frame data in bytes.
@@ -362,7 +358,7 @@ impl From<&'_ NewFrameData> for FrameData {
     }
 }
 
-/// Iterator over entries in a [`FrameTable`](struct.FrameTable.html).
+/// Iterator over entries in a [`FrameTable`].
 #[derive(Debug, Default)]
 pub struct FrameDataIter<'t> {
     old_frames: &'t [OldFrameData],
@@ -472,7 +468,7 @@ fn binary_search_by_rva<R: AddrRange>(frames: &[R], rva: PdbInternalRva) -> usiz
 ///
 /// A procedure/function might be described by multiple entries, with the first one declaring
 /// `is_function_start`. To retrieve frame information for a specific function, use
-/// [`FrameTable::at_rva`].
+/// [`FrameTable::iter_at_rva`].
 ///
 /// Not every function in the image file must have frame data defined for it. Those functions that
 /// do not have frame data are assumed to have normal stack frames.
@@ -544,11 +540,8 @@ impl<'s> FrameTable<'s> {
     /// frame data covers the given RVA, the iterator starts at the first item **after** the RVA.
     /// Therefore, check for the desired RVA range when iterating frame data.
     ///
-    /// To obtain a `PdbInternalRva`, use the `to_internal_rva` methods on
-    /// [`PdbInternalSectionOffset`] or [`Rva`].
-    ///
-    /// [`PdbInternalSectionOffset`]: struct.PdbInternalSectionOffset.html
-    /// [`Rva`]: struct.Rva.html
+    /// To obtain a `PdbInternalRva`, use [`PdbInternalSectionOffset::to_internal_rva`] or
+    /// [`Rva::to_internal_rva`].
     pub fn iter_at_rva(&self, rva: PdbInternalRva) -> FrameDataIter<'_> {
         let old_frames = self.old_frames();
         let old_index = binary_search_by_rva(old_frames, rva);

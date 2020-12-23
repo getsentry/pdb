@@ -79,9 +79,7 @@ impl StringTableHeader {
 /// [`StringRef`] offsets to their string values. Sometimes, it is also referred to as "Name table".
 /// The mapping from string to offset has not been implemented yet.
 ///
-/// Use [`PDB::string_table`] to obtain an instance.
-///
-/// [`PDB::string_table`]: struct.PDB.html#method.string_table
+/// Use [`PDB::string_table`](crate::PDB::string_table) to obtain an instance.
 #[derive(Debug)]
 pub struct StringTable<'s> {
     header: StringTableHeader,
@@ -143,9 +141,7 @@ impl StringRef {
     /// Resolves the raw string value of this reference.
     ///
     /// This method errors if the offset is out of bounds of the string table. Use
-    /// [`PDB::string_table`] to obtain an instance of the string table.
-    ///
-    /// [`PDB::string_table`]: struct.PDB.html#method.string_table
+    /// [`PDB::string_table`](crate::PDB::string_table) to obtain an instance of the string table.
     pub fn to_raw_string<'s>(self, strings: &'s StringTable<'_>) -> Result<RawString<'s>> {
         strings.get(self)
     }
@@ -153,9 +149,7 @@ impl StringRef {
     /// Resolves and decodes the UTF-8 string value of this reference.
     ///
     /// This method errors if the offset is out of bounds of the string table. Use
-    /// [`PDB::string_table`] to obtain an instance of the string table.
-    ///
-    /// [`PDB::string_table`]: struct.PDB.html#method.string_table
+    /// [`PDB::string_table`](crate::PDB::string_table) to obtain an instance of the string table.
     pub fn to_string_lossy<'s>(self, strings: &'s StringTable<'_>) -> Result<Cow<'s, str>> {
         strings.get(self).map(|r| r.to_string())
     }

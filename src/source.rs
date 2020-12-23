@@ -22,12 +22,12 @@ pub struct SourceSlice {
 
 /// The `pdb` crate accesses PDB files via the `pdb::Source` trait.
 ///
-/// This library is written with zero-copy in mind. `Source`s provide `SourceView`s which need not
+/// This library is written with zero-copy in mind. `Source`s provide [`SourceView`]s which need not
 /// outlive their parent, supporting implementations of e.g. memory mapped files.
 ///
 /// PDB files are "multi-stream files" (MSF) under the hood. MSFs have various layers of
 /// indirection, but ultimately the MSF code asks a `Source` to view a series of
-/// [`{ offset, size }` records](struct.SourceSlice.html), which the `Source` provides as a
+/// [`{ offset, size }` records](SourceSlice), which the `Source` provides as a
 /// contiguous `&[u8]`.
 ///
 /// # Default
@@ -40,8 +40,8 @@ pub struct SourceSlice {
 /// # Alignment
 ///
 /// The requested offsets will always be aligned to the MSF's page size, which is always a power of
-/// two and is usually (but not always) 4096 bytes. The requested sizes will also be multiples of the
-/// page size, except for the size of the final `SourceSlice`, which may be smaller.
+/// two and is usually (but not always) 4096 bytes. The requested sizes will also be multiples of
+/// the page size, except for the size of the final `SourceSlice`, which may be smaller.
 ///
 /// PDB files are specified as always being a multiple of the page size, so `Source` implementations
 /// are free to e.g. map whole pages and return a sub-slice of the requested length.

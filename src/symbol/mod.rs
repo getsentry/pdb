@@ -164,8 +164,6 @@ fn parse_optional_index(buf: &mut ParseBuffer<'_>) -> Result<Option<SymbolIndex>
 //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/cvdump/dumpsym7.cpp#L264
 
 /// Information parsed from a [`Symbol`] record.
-///
-/// [`Symbol`]: struct.Symbol.html
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SymbolData<'t> {
     /// End of a scope, such as a procedure.
@@ -192,7 +190,7 @@ pub enum SymbolData<'t> {
     CompileFlags(CompileFlagsSymbol<'t>),
     /// A using namespace directive.
     UsingNamespace(UsingNamespaceSymbol<'t>),
-    /// Reference to a [`ProcedureSymbol`](struct.ProcedureSymbol.html).
+    /// Reference to a [`ProcedureSymbol`].
     ProcedureReference(ProcedureReferenceSymbol<'t>),
     /// Reference to an imported variable.
     DataReference(DataReferenceSymbol<'t>),
@@ -473,7 +471,7 @@ pub struct ProcedureReferenceSymbol<'t> {
     pub global: bool,
     /// SUC of the name.
     pub sum_name: u32,
-    /// Symbol index of the referenced [`ProcedureSymbol`](struct.ProcedureSymbol.html).
+    /// Symbol index of the referenced [`ProcedureSymbol`].
     ///
     /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
@@ -508,7 +506,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
 pub struct DataReferenceSymbol<'t> {
     /// SUC of the name.
     pub sum_name: u32,
-    /// Symbol index of the referenced [`DataSymbol`](struct.DataSymbol.html).
+    /// Symbol index of the referenced [`DataSymbol`].
     ///
     /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
@@ -785,8 +783,6 @@ pub struct InlineSiteSymbol<'t> {
     /// Index of the parent function.
     ///
     /// This might either be a [`ProcedureSymbol`] or another `InlineSiteSymbol`.
-    ///
-    /// [`ProcedureSymbol`]: struct.ProcedureSymbol.html
     pub parent: Option<SymbolIndex>,
     /// The end symbol of this callsite.
     pub end: SymbolIndex,
@@ -1028,7 +1024,7 @@ const CV_LVARFLAG_ISOPTIMIZEDOUT: u16 = 0x80;
 const CV_LVARFLAG_ISENREG_GLOB: u16 = 0x100;
 const CV_LVARFLAG_ISENREG_STAT: u16 = 0x200;
 
-/// Flags for a [`LocalSymbol`](struct.LocalSymbol.html).
+/// Flags for a [`LocalSymbol`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LocalVariableFlags {
     /// Variable is a parameter.
@@ -1107,7 +1103,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
 }
 
 // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
-/// Flags of an [`ExportSymbol`](struct.ExportSymbol.html).
+/// Flags of an [`ExportSymbol`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ExportSymbolFlags {
     /// An exported constant.
@@ -1359,7 +1355,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ThunkSymbol<'t> {
 const CV_SEPCODEFLAG_IS_LEXICAL_SCOPE: u32 = 0x01;
 const CV_SEPCODEFLAG_RETURNS_TO_PARENT: u32 = 0x02;
 
-/// Flags for a [`SeparatedCodeSymbol`](struct.SeparatedCodeSymbol.html).
+/// Flags for a [`SeparatedCodeSymbol`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct SeparatedCodeFlags {
     /// S_SEPCODE doubles as lexical scope.
