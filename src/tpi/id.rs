@@ -78,18 +78,21 @@ impl<'t> TryFromCtx<'t, scroll::Endian> for IdData<'t> {
                 name: parse_string(leaf, &mut buf)?,
             }),
             LF_UDT_SRC_LINE | LF_UDT_MOD_SRC_LINE => {
-                let mut udt = UserDefinedTypeSourceId {
-                    udt: buf.parse()?,
-                    source_file: buf.parse()?,
-                    line: buf.parse()?,
-                    module: None,
+                let udt = buf.parse()?;
+                let file_id = buf.parse()?;
+                let line = buf.parse()?;
+
+                let source_file = if leaf == self::LF_UDT_SRC_LINE {
+                    UserDefinedTypeSourceFileRef::Local(IdIndex(file_id))
+                } else {
+                    UserDefinedTypeSourceFileRef::Remote(buf.parse()?, StringRef(file_id))
                 };
 
-                if leaf == LF_UDT_MOD_SRC_LINE {
-                    udt.module = Some(buf.parse()?);
-                }
-
-                IdData::UserDefinedTypeSource(udt)
+                IdData::UserDefinedTypeSource(UserDefinedTypeSourceId {
+                    udt,
+                    source_file,
+                    line,
+                })
             }
             _ => return Err(Error::UnimplementedTypeKind(leaf)),
         };
@@ -153,17 +156,28 @@ pub struct StringId<'t> {
     pub name: RawString<'t>,
 }
 
+/// A reference to the source file name of a [`UserDefinedTypeSourceId`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UserDefinedTypeSourceFileRef {
+    /// Index of the source file name in the [`IdInformation`](crate::IdInformation) of the same module.
+    ///
+    /// The index should resolve to a [`IdData::String`].
+    Local(IdIndex),
+    /// Reference into the [`StringTable`](crate::StringTable) of another module that contributes
+    /// this UDT definition.
+    ///
+    /// Use [`DebugInformation::modules`](crate::DebugInformation::modules) to resolve the
+    /// corresponding module.
+    Remote(u16, StringRef),
+}
+
 /// Source and line of the definition of a User Defined Type (UDT).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserDefinedTypeSourceId {
     /// Index of the UDT's type definition.
     pub udt: TypeIndex,
-    /// Index of the source file name.
-    pub source_file: IdIndex,
+    /// Reference to the source file name.
+    pub source_file: UserDefinedTypeSourceFileRef,
     /// Line number in the source file.
     pub line: u32,
-    /// Module that contributes this UDT definition.
-    ///
-    /// If None, the UDT is declared in the same module.
-    pub module: Option<u16>,
 }
