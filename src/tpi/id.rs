@@ -100,7 +100,7 @@ impl<'t> TryFromCtx<'t, scroll::Endian> for IdData<'t> {
 
 /// Global function, usually inlined.
 ///
-/// This Id is usually referenced by [`InlineSiteSymbol`](struct.InlineSiteSymbol.html).
+/// This Id is usually referenced by [`InlineSiteSymbol`](crate::InlineSiteSymbol).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FunctionId<'t> {
     /// Parent scope of this id.
@@ -113,7 +113,7 @@ pub struct FunctionId<'t> {
 
 /// Member function, usually inlined.
 ///
-/// This Id is usually referenced by [`InlineSiteSymbol`](struct.InlineSiteSymbol.html).
+/// This Id is usually referenced by [`InlineSiteSymbol`](crate::InlineSiteSymbol).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MemberFunctionId<'t> {
     /// Index of the parent type.
@@ -126,7 +126,7 @@ pub struct MemberFunctionId<'t> {
 
 /// Tool, version and command line build information.
 ///
-/// This Id is usually referenced by [`BuildInfoSymbol`](struct.BuildInfoSymbol.html).
+/// This Id is usually referenced by [`BuildInfoSymbol`](crate::BuildInfoSymbol).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BuildInfoId {
     /// Indexes of build arguments.
@@ -135,7 +135,7 @@ pub struct BuildInfoId {
 
 /// A list of substrings.
 ///
-/// This Id is usually referenced by [`StringId`](struct.StringId.html).
+/// This Id is usually referenced by [`StringId`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringListId {
     /// The list of substrings.
@@ -144,8 +144,7 @@ pub struct StringListId {
 
 /// A string.
 ///
-/// This Id is usually referenced by [`FunctionId`](struct.FunctionId.html) and contains the
-/// full namespace of a function.
+/// This Id is usually referenced by [`FunctionId`] and contains the full namespace of a function.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StringId<'t> {
     /// Index of the list of substrings.

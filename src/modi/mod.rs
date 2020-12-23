@@ -143,7 +143,7 @@ impl PartialEq for FileChecksum<'_> {
 /// Information record on a source file.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FileInfo<'a> {
-    /// Reference to the file name in the [string table](struct.StringTable.html).
+    /// Reference to the file name in the [`StringTable`](crate::StringTable).
     pub name: StringRef,
 
     /// Checksum of the file contents.
@@ -313,12 +313,8 @@ impl<'a> FallibleIterator for FileIterator<'a> {
 
 /// Named reference to a [`Module`].
 ///
-/// The name stored in the [`StringTable`] corresponds to the name of the module as returned by
-/// [`Module::module_name`].
-///
-/// [`Module`]: struct.Module.html
-/// [`Module::module_name`]: struct.Module.html#method.module_name
-/// [`StringTable`]: struct.StringTable.html
+/// The name stored in the [`StringTable`](crate::StringTable) corresponds to the name of the module
+/// as returned by [`Module::module_name`].
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct ModuleRef(pub StringRef);
 
@@ -331,8 +327,6 @@ impl fmt::Display for ModuleRef {
 /// Reference to a local type or id in another module.
 ///
 /// See [`ItemIndex::is_cross_module`] for more information.
-///
-/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct CrossModuleRef<I: ItemIndex>(pub ModuleRef, pub Local<I>);
 
@@ -342,8 +336,8 @@ pub struct CrossModuleRef<I: ItemIndex>(pub ModuleRef, pub Local<I>);
 /// imports subsection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CrossModuleExport {
-    /// A cross module export of a [`Type`](type.Type.html).
+    /// A cross module export of a [`Type`](crate::Type).
     Type(Local<TypeIndex>, TypeIndex),
-    /// A cross module export of an [`Id`](type.Id.html).
+    /// A cross module export of an [`Id`](crate::Id).
     Id(Local<IdIndex>, IdIndex),
 }

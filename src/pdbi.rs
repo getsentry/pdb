@@ -15,11 +15,11 @@ use crate::msf::*;
 
 /// A PDB info stream header parsed from a stream.
 ///
-/// The [PDB information stream][1] contains the GUID and age fields that can be used to
+/// The [PDB information stream] contains the GUID and age fields that can be used to
 /// verify that a PDB file matches a specific binary, as well a list of named PDB streams
 /// with their stream indices.
 ///
-/// [1]: http://llvm.org/docs/PDB/PdbStream.html
+/// [PDB information stream]: http://llvm.org/docs/PDB/PdbStream.html
 #[derive(Debug)]
 pub struct PDBInformation<'s> {
     /// The version of the PDB format in use.
@@ -30,12 +30,10 @@ pub struct PDBInformation<'s> {
     ///
     /// This number is bumped by the linker and other tools every time the PDB is modified. It does
     /// not necessarily correspond to the age declared in the image. Consider using
-    /// [`DebugInformation::age`] for a better match.
+    /// [`DebugInformation::age`](crate::DebugInformation::age) for a better match.
     ///
     /// This PDB matches an image, if the `guid` values match and the PDB age is equal or higher
     /// than the image's age.
-    ///
-    /// [`DebugInformation::age`]: struct.DebugInformation.html#method.age
     pub age: u32,
     /// A `Uuid` generated when this PDB file was created that should uniquely identify it.
     pub guid: Uuid,
@@ -159,11 +157,8 @@ pub struct StreamName<'n> {
 
 /// A list of named streams contained within the PDB file.
 ///
-/// Call [`StreamNames::iter`][1] to iterate over the names. The iterator produces [`StreamName`][2]
+/// Call [`StreamNames::iter`] to iterate over the names. The iterator produces [`StreamName`]
 /// objects.
-///
-/// [1]: #method.iter
-/// [2]: struct.StreamName.html
 #[derive(Debug)]
 pub struct StreamNames<'s> {
     buf: ParseBuffer<'s>,
@@ -171,9 +166,7 @@ pub struct StreamNames<'s> {
     names: Vec<StreamName<'s>>,
 }
 
-/// An iterator over [`StreamName`][1]s.
-///
-/// [1]: struct.StreamName.html
+/// An iterator over [`StreamName`]s.
 pub type NameIter<'a, 'n> = std::slice::Iter<'a, StreamName<'n>>;
 
 impl<'s> StreamNames<'s> {

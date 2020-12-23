@@ -73,14 +73,14 @@ impl<'s> DebugInformation<'s> {
 
     /// Returns this PDB's original `age`.
     ///
-    /// This number is written by the linker and should be equal to the image's `age` value.
-    /// In contrast, [`PDBInformation::age`] may be bumped by other tools and should be greater or
+    /// This number is written by the linker and should be equal to the image's `age` value. In
+    /// contrast, [`PDBInformation::age`] may be bumped by other tools and should be greater or
     /// equal to the image's `age` value.
     ///
     /// Old PDB files may not specify an age, in which case only [`PDBInformation::age`] should be
     /// checked for matching the image.
     ///
-    /// [`PDBInformation::age`]: struct.PDBInformation.html#structfield.age
+    /// [`PDBInformation::age`]: crate::PDBInformation::age
     pub fn age(&self) -> Option<u32> {
         match self.header.age {
             0 => None,
@@ -379,8 +379,9 @@ pub struct DBISectionContribution {
     /// The size of the contribution, in bytes.
     pub size: u32,
     /// The characteristics, which map to the `Characteristics` field of
-    /// the [`IMAGE_SECTION_HEADER`][1] field in binaries.
-    /// [1]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
+    /// the [`IMAGE_SECTION_HEADER`] field in binaries.
+    ///
+    /// [`IMAGE_SECTION_HEADER`]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
     pub characteristics: u32,
     /// The index of the module.
     pub module: u16,
@@ -464,13 +465,11 @@ impl DBIModuleInfo {
 
 /// Represents a module from the DBI stream.
 ///
-/// A `Module` is a single item that contributes to the binary, such as an
-/// object file or import library.
+/// A `Module` is a single item that contributes to the binary, such as an object file or import
+/// library.
 ///
-/// Much of the useful information for a `Module` is stored in a separate stream in the PDB.
-/// It can be retrieved by calling [`PDB::module_info`] with a specific module.
-///
-/// [`PDB::module_info`]: struct.PDB.html#method.module_info
+/// Much of the useful information for a `Module` is stored in a separate stream in the PDB. It can
+/// be retrieved by calling [`PDB::module_info`](crate::PDB::module_info) with a specific module.
 #[derive(Debug, Clone)]
 pub struct Module<'m> {
     info: DBIModuleInfo,

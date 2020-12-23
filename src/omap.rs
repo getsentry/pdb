@@ -117,8 +117,7 @@ impl Ord for OMAPRecord {
 /// storing target addresses), but given that OMAP tables are an uncommon PDBs feature, the obvious
 /// binary search implementation seems appropriate.
 ///
-/// [module level documentation]: ./index.html
-/// [`AddressMap`]: struct.AddressMap.html
+/// [module level documentation]: self
 pub(crate) struct OMAPTable<'s> {
     stream: Stream<'s>,
 }
@@ -272,10 +271,7 @@ impl Iterator for RangeIter<'_> {
 
 impl FusedIterator for RangeIter<'_> {}
 
-/// Iterator over [`Rva`] ranges returned by [`rva_ranges`].
-///
-/// [`Rva`]: struct.Rva.html
-/// [`rva_ranges`]: struct.AddressMap.html#method.rva_ranges
+/// Iterator over [`Rva`] ranges returned by [`AddressMap::rva_ranges`].
 pub struct RvaRangeIter<'t>(RangeIter<'t>);
 
 impl Iterator for RvaRangeIter<'_> {
@@ -288,10 +284,7 @@ impl Iterator for RvaRangeIter<'_> {
 
 impl FusedIterator for RvaRangeIter<'_> {}
 
-/// Iterator over [`InternalPdbRva`] ranges returned by [`internal_rva_ranges`].
-///
-/// [`InternalPdbRva`]: struct.InternalPdbRva.html
-/// [`internal_rva_ranges`]: struct.AddressMap.html#method.internal_rva_ranges
+/// Iterator over [`PdbInternalRva`] ranges returned by [`AddressMap::internal_rva_ranges`].
 pub struct PdbInternalRvaRangeIter<'t>(RangeIter<'t>);
 
 impl Iterator for PdbInternalRvaRangeIter<'_> {
@@ -394,10 +387,6 @@ impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 /// [Vulcan research project]: https://research.microsoft.com/pubs/69850/tr-2001-50.pdf
 /// [Microsoft Binary Technologies Projects]: https://microsoft.com/windows/cse/bit_projects.mspx
 /// [1997 reference material]: https://www.microsoft.com/msj/0597/hood0597.aspx
-/// [`Rva`]: struct.Rva.html
-/// [`PdbInternalRva`]: struct.PdbInternalRva.html
-/// [`SectionOffset`]: struct.SectionOffset.html
-/// [`PdbInternalSectionOffset`]: struct.PdbInternalSectionOffset.html
 #[derive(Debug, Default)]
 pub struct AddressMap<'s> {
     pub(crate) original_sections: Vec<ImageSectionHeader>,
@@ -469,9 +458,7 @@ impl Rva {
     /// Resolves the section offset in the PE headers.
     ///
     /// This is an offset into PE section headers of the executable. To retrieve section offsets
-    /// used in the PDB, use [`to_internal_offset`] instead.
-    ///
-    /// [`to_internal_offset`]: struct.Rva.html#method.to_internal_offset
+    /// used in the PDB, use [`to_internal_offset`](Self::to_internal_offset) instead.
     pub fn to_section_offset(self, translator: &AddressMap<'_>) -> Option<SectionOffset> {
         let (section, offset) = match translator.transformed_sections {
             Some(ref sections) => get_section_offset(sections, self.0)?,
@@ -484,9 +471,7 @@ impl Rva {
     /// Resolves the PDB internal section offset.
     ///
     /// This is the offset value used in the PDB file. To index into the actual PE section headers,
-    /// use [`to_section_offset`] instead.
-    ///
-    /// [`to_section_offset`]: struct.Rva.html#method.to_section_offset
+    /// use [`to_section_offset`](Self::to_section_offset) instead.
     pub fn to_internal_offset(
         self,
         translator: &AddressMap<'_>,
@@ -508,9 +493,7 @@ impl PdbInternalRva {
     /// Resolves the section offset in the PE headers.
     ///
     /// This is an offset into PE section headers of the executable. To retrieve section offsets
-    /// used in the PDB, use [`to_internal_offset`] instead.
-    ///
-    /// [`to_internal_offset`]: struct.PdbInternalRva.html#method.to_internal_offset
+    /// used in the PDB, use [`to_internal_offset`](Self::to_internal_offset) instead.
     pub fn to_section_offset(self, translator: &AddressMap<'_>) -> Option<SectionOffset> {
         self.to_rva(translator)?.to_section_offset(translator)
     }
@@ -518,9 +501,7 @@ impl PdbInternalRva {
     /// Resolves the PDB internal section offset.
     ///
     /// This is the offset value used in the PDB file. To index into the actual PE section headers,
-    /// use [`to_section_offset`] instead.
-    ///
-    /// [`to_section_offset`]: struct.Rva.html#method.to_section_offset
+    /// use [`to_section_offset`](Self::to_section_offset) instead.
     pub fn to_internal_offset(
         self,
         translator: &AddressMap<'_>,

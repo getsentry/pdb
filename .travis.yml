@@ -14,5 +14,8 @@ matrix:
     - name: clippy
       install: rustup component add clippy
       script: cargo clippy --all-features --tests --all --examples -- -D clippy::all
+    - name: docs
+      script: cargo doc --no-deps --all-features
+      env: RUSTDOCFLAGS=-Dbroken_intra_doc_links
   allow_failures:
     - rust: nightly

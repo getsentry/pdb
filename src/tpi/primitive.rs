@@ -166,8 +166,8 @@ pub enum PrimitiveKind {
 
 /// Pointer mode of primitive types.
 ///
-/// This is partially overlapping with [`PointerKind`](enum.PointerKind.html) for regular pointer
-/// type definitions. While `PointerKind` can specify many more pointer types, including relative
+/// This is partially overlapping with [`PointerKind`](crate::PointerKind) for regular pointer type
+/// definitions. While `PointerKind` can specify many more pointer types, including relative
 /// pointers, `Indirection` also contains a 128-bit variant.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Indirection {

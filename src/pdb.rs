@@ -18,8 +18,8 @@ use crate::strings::StringTable;
 use crate::symbol::SymbolTable;
 use crate::tpi::{IdInformation, TypeInformation};
 
-/// Some streams have a fixed stream index.
-/// http://llvm.org/docs/PDB/index.html
+// Some streams have a fixed stream index.
+// http://llvm.org/docs/PDB/index.html
 
 const PDB_STREAM: u32 = 1;
 const TPI_STREAM: u32 = 2;
@@ -180,17 +180,17 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
 
     /// Retrieve the module info stream for a specific `Module`.
     ///
-    /// Some information for each module is stored in a separate stream per-module.
-    /// `Module`s can be retrieved from the `PDB` by first calling [`debug_information`] to
-    /// get the debug information stream, and then calling [`modules`] on that.
+    /// Some information for each module is stored in a separate stream per-module. `Module`s can be
+    /// retrieved from the `PDB` by first calling [`debug_information`](Self::debug_information) to
+    /// get the debug information stream, and then calling [`modules`](DebugInformation::modules) on
+    /// that.
     ///
     /// # Errors
     ///
     /// * `Error::StreamNotFound` if the PDB does not contain this module info stream
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
-    /// * `Error::UnimplementedFeature` if the module information stream is an unsupported
-    ///   version
+    /// * `Error::UnimplementedFeature` if the module information stream is an unsupported version
     ///
     /// # Example
     ///
@@ -214,9 +214,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// # Ok(())
     /// # }
     /// ```
-    ///
-    /// [`debug_information`]: #method.debug_information
-    /// [`modules`]: struct.DebugInformation.html#method.modules
     pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<Option<ModuleInfo<'s>>> {
         match self.raw_stream(module.info().stream)? {
             Some(stream) => ModuleInfo::parse(stream, module).map(Some),
@@ -355,8 +352,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::StreamNotFound` if the PDB somehow does not contain a debug information stream
     /// * `Error::UnimplementedFeature` if the debug information header predates ~1995
     ///
-    /// [`AddressMap`]: struct.AddressMap.html
-    ///
     /// # Example
     ///
     /// ```rust
@@ -449,8 +444,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::UnexpectedEof` if the string table ends prematurely
-    ///
-    /// [`StringRef`]: struct.StringRef.html
     pub fn string_table(&mut self) -> Result<StringTable<'s>> {
         let stream = self.named_stream(b"/names")?;
         StringTable::parse(stream)

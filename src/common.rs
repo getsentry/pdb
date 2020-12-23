@@ -375,10 +375,7 @@ impl_va!(Rva);
 ///
 /// An internal RVA points into the PDB internal address space and may not correspond to RVAs of the
 /// executable. It can be converted into an actual [`Rva`] suitable for debugging purposes using
-/// [`rva`].
-///
-/// [`Rva`]: struct.Rva.html
-/// [`rva`]: struct.PdbInternalRva.html#method.rva
+/// [`to_rva`](Self::to_rva).
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PdbInternalRva(pub u32);
 
@@ -479,9 +476,7 @@ macro_rules! impl_section_offset {
 ///
 /// This offset can be converted to an `Rva` to receive the address relative to the entire image.
 /// Note that this offset applies to the actual PE headers. The PDB debug information actually
-/// stores [`PdbInternalSectionOffsets`].
-///
-/// [`PdbInternalSectionOffsets`]: struct.PdbInternalSectionOffset.html
+/// stores [`PdbInternalSectionOffset`]s.
 #[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct SectionOffset {
     /// The memory offset relative from the start of the section's memory.
@@ -499,14 +494,11 @@ impl_section_offset!(SectionOffset);
 /// For optimized Microsoft binaries, this offset points to a virtual address space before the
 /// rearrangement of sections has been performed. This kind of offset is usually stored in PDB debug
 /// information. It can be converted to an RVA in the transformed address space of the optimized
-/// binary using [`to_rva`]. Likewise, there is a conversion to [`SectionOffset`] in the actual address
+/// binary using [`to_rva`](PdbInternalSectionOffset::to_rva). Likewise, there is a conversion to [`SectionOffset`] in the actual address
 /// space.
 ///
 /// For binaries and their PDBs that have not been optimized, both address spaces are equal and the
 /// offsets are interchangeable. The conversion operations are cheap no-ops in this case.
-///
-/// [`to_rva`]: struct.PdbInternalSectionOffset.html#method.to_rva
-/// [`SectionOffset`]: struct.SectionOffset.html
 #[derive(Clone, Copy, Default, Eq, Hash, PartialEq)]
 pub struct PdbInternalSectionOffset {
     /// The memory offset relative from the start of the section's memory.
@@ -534,13 +526,10 @@ impl_section_offset!(PdbInternalSectionOffset);
 
 /// Index of a PDB stream.
 ///
-/// This index can either refer to a stream, or indicate the absence of a stream. Check [`is_none`]
-/// to see whether a stream should exist.
+/// This index can either refer to a stream, or indicate the absence of a stream. Check
+/// [`is_none`](Self::is_none) to see whether a stream should exist.
 ///
-/// Use [`StreamIndex::get`] to load data for this stream.
-///
-/// [`is_none`]: struct.StreamIndex.html#method.is_none
-/// [`StreamIndex::get`]: struct.StreamIndex.html#method.get
+/// Use [`get`](Self::get) to load data for this stream.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StreamIndex(pub u16);
 
@@ -573,10 +562,8 @@ impl fmt::Debug for StreamIndex {
 impl_opt!(StreamIndex, 0xffff);
 impl_pread!(StreamIndex);
 
-/// An index into either the [`TypeInformation`] or [`IdInformation`] stream.
-///
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
+/// An index into either the [`TypeInformation`](crate::TypeInformation) or
+/// [`IdInformation`](crate::IdInformation) stream.
 pub trait ItemIndex:
     Copy + Default + fmt::Debug + fmt::Display + PartialEq + PartialOrd + From<u32> + Into<u32>
 {
@@ -586,33 +573,26 @@ pub trait ItemIndex:
     /// cases, a lookup in the global streams will not succeed. Instead, the import must be resolved
     /// using cross module references:
     ///
-    ///  1. Look up the index in [`CrossModuleImports`] of the current module.
-    ///  2. Use [`StringTable`] to resolve the name of the referenced module.
-    ///  3. Find the [`Module`] with the same module name and load its [`ModuleInfo`].
-    ///  4. Resolve the [`Local`] index into a global one using [`CrossModuleExports`].
+    ///  1. Look up the index in [`CrossModuleImports`](crate::CrossModuleImports) of the current
+    ///     module.
+    ///  2. Use [`StringTable`](crate::StringTable) to resolve the name of the referenced module.
+    ///  3. Find the [`Module`](crate::Module) with the same module name and load its
+    ///     [`ModuleInfo`](crate::ModuleInfo).
+    ///  4. Resolve the [`Local`](crate::Local) index into a global one using
+    ///     [`CrossModuleExports`](crate::CrossModuleExports).
     ///
     /// Cross module references are specially formatted indexes with the most significant bit set to
     /// `1`. The remaining bits are divided into a module and index offset into the
-    /// [`CrossModuleImports`] section.
-    ///
-    /// [`CrossModuleExports`]: struct.CrossModuleExports.html
-    /// [`CrossModuleImports`]: struct.CrossModuleImports.html
-    /// [`Local`]: struct.Local.html
-    /// [`Module`]: struct.Module.html
-    /// [`ModuleInfo`]: struct.ModuleInfo.html
-    /// [`StringTable`]: struct.StringTable.html
+    /// [`CrossModuleImports`](crate::CrossModuleImports) section.
     fn is_cross_module(self) -> bool {
         (self.into() & 0x8000_0000) != 0
     }
 }
 
-/// Index of a [`Type`] in the [`TypeInformation`] stream.
+/// Index of [`TypeData`](crate::TypeData) in the [`TypeInformation`](crate::TypeInformation) stream.
 ///
-/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
-///
-/// [`Type`]: type.Type.html
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
+/// If this index is a [cross module reference](ItemIndex::is_cross_module), it must be resolved
+/// before lookup in the stream.
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct TypeIndex(pub u32);
 
@@ -622,13 +602,10 @@ impl_pread!(TypeIndex);
 
 impl ItemIndex for TypeIndex {}
 
-/// Index of an [`Id`] in [`IdInformation`] stream.
+/// Index of an [`Id`](crate::Id) in [`IdInformation`](crate::IdInformation) stream.
 ///
-/// If this index is a [cross module reference], it must be resolved before lookup in the stream.
-///
-/// [`Id`]: type.Id.html
-/// [`IdInformation`]: type.IdInformation.html
-/// [cross module reference]: trait.ItemIndex.html#method.is_cross_module
+/// If this index is a [cross module reference](ItemIndex::is_cross_module), it must be resolved
+/// before lookup in the stream.
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct IdIndex(pub u32);
 
@@ -640,18 +617,13 @@ impl ItemIndex for IdIndex {}
 
 /// An [`ItemIndex`] that is local to a module.
 ///
-/// This index is usually part of a [`CrossModuleRef`]. It cannot be used to query the
-/// [`TypeInformation`] or [`IdInformation`] streams directly. Instead, it must be looked up in the
-/// [`CrossModuleImports`] of the module it belongs to in order to obtain the global index.
+/// This index is usually part of a [`CrossModuleRef`](crate::CrossModuleRef). It cannot be used to
+/// query the [`TypeInformation`](crate::TypeInformation) or [`IdInformation`](crate::IdInformation)
+/// streams directly. Instead, it must be looked up in the
+/// [`CrossModuleImports`](crate::CrossModuleImports) of the module it belongs to in order to obtain
+/// the global index.
 ///
 /// See [`ItemIndex::is_cross_module`] for more information.
-///
-/// [`ItemIndex`]: trait.ItemIndex.html
-/// [`CrossModuleImports`]: struct.CrossModuleImports.html
-/// [`CrossModuleRef`]: struct.CrossModuleRef.html
-/// [`TypeInformation`]: type.TypeInformation.html
-/// [`IdInformation`]: type.IdInformation.html
-/// [`ItemIndex::is_cross_module`]: trait.ItemIndex.html#method.is_cross_module
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Local<I: ItemIndex>(pub I);
 
@@ -667,11 +639,8 @@ where
 /// A reference to a string in the string table.
 ///
 /// This type stores an offset into the global string table of the PDB. To retrieve the string
-/// value, use [`to_raw_string`], [`to_string_lossy`] or methods on [`StringTable`].
-///
-/// [`to_raw_string`]: struct.StringRef.html#method.to_raw_string
-/// [`to_string_lossy`]: struct.StringRef.html#method.to_string_lossy
-/// [`StringTable`]: struct.StringTable.html
+/// value, use [`to_raw_string`](Self::to_raw_string), [`to_string_lossy`](Self::to_string_lossy) or
+/// methods on [`StringTable`](crate::StringTable).
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StringRef(pub u32);
 
@@ -681,9 +650,7 @@ impl_pread!(StringRef);
 
 /// Index of a file entry in the module.
 ///
-/// Use the [`LineProgram`] to resolve information on the file from this offset.
-///
-/// [`LineProgram`]: struct.LineProgram.html
+/// Use the [`LineProgram`](crate::LineProgram) to resolve information on the file from this offset.
 #[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct FileIndex(pub u32);
 
@@ -693,11 +660,9 @@ impl_pread!(FileIndex);
 
 /// A reference into the symbol table of a module.
 ///
-/// To retrieve the symbol referenced by this index, use [`ModuleInfo::symbols_at`]. When iterating,
-/// use [`SymbolIter::seek`] to jump between symbols.
-///
-/// [`ModuleInfo::symbols_at`]: struct.ModuleInfo.html#method.symbols_at
-/// [`SymbolIter::seek`]: struct.SymbolIter.html#method.seek
+/// To retrieve the symbol referenced by this index, use
+/// [`ModuleInfo::symbols_at`](crate::ModuleInfo::symbols_at). When iterating, use
+/// [`SymbolIter::seek`](crate::SymbolIter::seek) to jump between symbols.
 #[derive(Clone, Copy, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SymbolIndex(pub u32);
 
@@ -966,10 +931,9 @@ impl<'b> RawString<'b> {
 
     /// Returns a UTF-8 `String`, substituting in replacement characters as needed.
     ///
-    /// This uses [`String::from_utf8_lossy()`](https://doc.rust-lang.org/std/string/struct.String.html#method.from_utf8_lossy)
-    /// and thus avoids copying in cases where the original string was valid UTF-8. This is the
-    /// expected case for strings that appear in PDB files, since they are almost always composed of
-    /// printable 7-bit ASCII characters.
+    /// This uses [`String::from_utf8_lossy`] and thus avoids copying in cases where the original
+    /// string was valid UTF-8. This is the expected case for strings that appear in PDB files,
+    /// since they are almost always composed of printable 7-bit ASCII characters.
     #[inline]
     pub fn to_string(&self) -> Cow<'b, str> {
         String::from_utf8_lossy(self.0)

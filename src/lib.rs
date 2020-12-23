@@ -11,7 +11,7 @@
 //!
 //! # Usage
 //!
-//! PDB files are accessed via the [`pdb::PDB` object](struct.PDB.html).
+//! PDB files are accessed via the [`pdb::PDB`] object.
 //!
 //! # Example
 //!
