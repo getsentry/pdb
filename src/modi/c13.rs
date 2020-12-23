@@ -722,8 +722,7 @@ impl<'a> FallibleIterator for CrossScopeImportModuleIter<'a> {
         let count = self.buf.parse::<u32>()? as usize;
 
         let data = self.buf.take(count * mem::size_of::<u32>())?;
-        let imports =
-            cast_aligned(data).ok_or_else(|| Error::InvalidStreamLength("CrossScopeImports"))?;
+        let imports = cast_aligned(data).ok_or(Error::InvalidStreamLength("CrossScopeImports"))?;
 
         Ok(Some(CrossScopeImportModule { name, imports }))
     }
@@ -800,11 +799,11 @@ impl<'a> CrossModuleImports<'a> {
         let module = self
             .modules
             .get(module_index)
-            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+            .ok_or(Error::CrossModuleRefNotFound(raw_index))?;
 
         let local_index = module
             .get(import_index)
-            .ok_or_else(|| Error::CrossModuleRefNotFound(raw_index))?;
+            .ok_or(Error::CrossModuleRefNotFound(raw_index))?;
 
         Ok(CrossModuleRef(module.name, local_index))
     }
@@ -1334,7 +1333,7 @@ impl<'a> LineProgram<'a> {
         let mut entries = self.file_checksums.entries_at_offset(index)?;
         let entry = entries
             .next()?
-            .ok_or_else(|| Error::InvalidFileChecksumOffset(index.0))?;
+            .ok_or(Error::InvalidFileChecksumOffset(index.0))?;
 
         Ok(FileInfo {
             name: entry.name,

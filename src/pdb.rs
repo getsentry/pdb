@@ -392,12 +392,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let sections = self.sections()?.unwrap_or_default();
         Ok(match self.original_sections()? {
             Some(original_sections) => {
-                let omap_from_src = self
-                    .omap_from_src()?
-                    .ok_or_else(|| Error::AddressMapNotFound)?;
-                let omap_to_src = self
-                    .omap_to_src()?
-                    .ok_or_else(|| Error::AddressMapNotFound)?;
+                let omap_from_src = self.omap_from_src()?.ok_or(Error::AddressMapNotFound)?;
+                let omap_to_src = self.omap_to_src()?.ok_or(Error::AddressMapNotFound)?;
 
                 AddressMap {
                     original_sections,
