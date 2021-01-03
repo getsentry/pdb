@@ -235,7 +235,7 @@ impl<'a> LineProgram<'a> {
     /// Note that line records are not guaranteed to be ordered by source code offset. If a
     /// monotonic order by `PdbInternalSectionOffset` or `Rva` is required, the lines have to be
     /// sorted manually.
-    pub fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> LineIterator {
+    pub fn lines_at_offset(&self, offset: PdbInternalSectionOffset) -> LineIterator<'_> {
         match self.inner {
             LineProgramInner::C13(ref inner) => LineIterator {
                 inner: LineIteratorInner::C13(inner.lines_at_offset(offset)),

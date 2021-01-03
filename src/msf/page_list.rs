@@ -87,9 +87,7 @@ impl PageList {
 
     /// Return the total length of this PageList.
     pub fn len(&self) -> usize {
-        self.source_slices
-            .iter()
-            .fold(0 as usize, |acc, s| acc + s.size)
+        self.source_slices.iter().fold(0, |acc, s| acc + s.size)
     }
 
     /// Return a slice of SourceSlices.

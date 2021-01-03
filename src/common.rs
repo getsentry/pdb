@@ -545,7 +545,7 @@ impl StreamIndex {
 }
 
 impl fmt::Display for StreamIndex {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.msf_number() {
             Some(number) => write!(f, "{}", number),
             None => write!(f, "None"),
@@ -554,7 +554,7 @@ impl fmt::Display for StreamIndex {
 }
 
 impl fmt::Debug for StreamIndex {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "StreamIndex({})", self)
     }
 }
@@ -855,7 +855,7 @@ pub enum Variant {
 }
 
 impl fmt::Display for Variant {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             Variant::U8(value) => write!(f, "{}", value),
             Variant::U16(value) => write!(f, "{}", value),

@@ -97,7 +97,7 @@ mod big {
             let mut offset = 0;
             let data = RawHeader {
                 magic: {
-                    let mut tmp = [0; 32 as usize];
+                    let mut tmp = [0; 32];
                     this.gread_inout_with(&mut offset, &mut tmp, le)?;
                     tmp
                 },

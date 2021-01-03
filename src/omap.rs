@@ -60,7 +60,7 @@ impl OMAPRecord {
 }
 
 impl fmt::Debug for OMAPRecord {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OMAPRecord")
             .field(
                 "source_address",
@@ -185,7 +185,7 @@ impl<'s> OMAPTable<'s> {
 }
 
 impl fmt::Debug for OMAPTable<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_tuple("OMAPTable").field(&self.records()).finish()
     }
 }
