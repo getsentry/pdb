@@ -78,7 +78,7 @@ fn find_symbols() {
             return;
         }
 
-        let mut map: HashMap<&[u8], Option<pdb::SymbolData>> = HashMap::new();
+        let mut map: HashMap<&[u8], Option<pdb::SymbolData<'_>>> = HashMap::new();
 
         // look for:
         // main(), defined in the program

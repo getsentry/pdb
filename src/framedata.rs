@@ -43,7 +43,7 @@ pub enum FrameType {
 }
 
 impl fmt::Display for FrameType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             FrameType::Unknown => write!(f, "unknown"),
             FrameType::FPO => write!(f, "fpo"),
@@ -146,7 +146,7 @@ impl NewFrameData {
 }
 
 impl fmt::Debug for NewFrameData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("NewFrameData")
             .field("code_start", &self.code_start())
             .field("code_size", &self.code_size())
@@ -249,7 +249,7 @@ impl OldFrameData {
 }
 
 impl fmt::Debug for OldFrameData {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("OldFrameData")
             .field("code_start", &self.code_start())
             .field("code_size", &self.code_size())
