@@ -270,6 +270,7 @@ pub const S_LDATA_HLSL32_EX: u16 = 0x1165;
 
 /// These values correspond to the CV_CPU_TYPE_e enumeration, and are documented
 /// [on MSDN](https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx).
+#[non_exhaustive]
 #[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CPUType {
@@ -480,6 +481,7 @@ impl<'a> TryFromCtx<'a, Endian> for CPUType {
 
 /// These values correspond to the CV_CFL_LANG enumeration, and are documented
 /// [on MSDN](https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx).
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceLanguage {
     /// Application language is C.

@@ -112,6 +112,7 @@ impl<'s> DebugInformation<'s> {
 /// The version of the PDB format.
 ///
 /// This version type is used in multiple locations: the DBI header, and the PDBI header.
+#[non_exhaustive]
 #[derive(Debug, Copy, Clone)]
 #[allow(missing_docs)]
 pub enum HeaderVersion {
@@ -246,6 +247,7 @@ impl DBIHeader {
 
 /// The target machine's architecture.
 /// Reference: <https://docs.microsoft.com/en-us/windows/desktop/debug/pe-format#machine-types>
+#[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum MachineType {
     /// The contents of this field are assumed to be applicable to any machine type.

@@ -21,6 +21,7 @@ fn parse_string<'t>(leaf: u16, buf: &mut ParseBuffer<'t>) -> Result<RawString<'t
 }
 
 /// Encapsulates parsed data about an `Id`.
+#[non_exhaustive]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdData<'t> {
     /// Global function, usually inlined.
