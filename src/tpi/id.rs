@@ -4,7 +4,7 @@ use crate::common::*;
 use crate::tpi::constants::*;
 
 #[inline]
-fn parse_optional_id_index<'t>(buf: &mut ParseBuffer<'t>) -> Result<Option<IdIndex>> {
+fn parse_optional_id_index(buf: &mut ParseBuffer<'_>) -> Result<Option<IdIndex>> {
     Ok(match buf.parse()? {
         IdIndex(0) => None,
         index => Some(index),

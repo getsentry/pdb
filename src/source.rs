@@ -55,7 +55,7 @@ pub trait Source<'s>: fmt::Debug {
 }
 
 /// An owned, droppable, read-only view of the source file which can be referenced as a byte slice.
-pub trait SourceView<'s>: Drop + fmt::Debug {
+pub trait SourceView<'s>: fmt::Debug {
     /// Returns a view to the raw data.
     fn as_slice(&self) -> &[u8];
 }
@@ -77,18 +77,12 @@ impl SourceView<'_> for ReadView {
     }
 }
 
-impl Drop for ReadView {
-    fn drop(&mut self) {
-        // no-op
-    }
-}
-
 impl<'s, T> Source<'s> for T
 where
     T: io::Read + io::Seek + fmt::Debug + 's,
 {
     fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<dyn SourceView<'s>>, io::Error> {
-        let len = slices.iter().fold(0 as usize, |acc, s| acc + s.size);
+        let len = slices.iter().fold(0, |acc, s| acc + s.size);
 
         let mut v = ReadView {
             bytes: Vec::with_capacity(len),

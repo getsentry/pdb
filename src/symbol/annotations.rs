@@ -110,12 +110,12 @@ pub enum BinaryAnnotation {
 impl BinaryAnnotation {
     /// Does this annotation emit a line info?
     pub fn emits_line_info(self) -> bool {
-        match self {
-            BinaryAnnotation::ChangeCodeOffset(..) => true,
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(..) => true,
-            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(..) => true,
-            _ => false,
-        }
+        matches!(
+            self,
+            BinaryAnnotation::ChangeCodeOffset(..)
+                | BinaryAnnotation::ChangeCodeOffsetAndLineOffset(..)
+                | BinaryAnnotation::ChangeCodeLengthAndCodeOffset(..)
+        )
     }
 }
 

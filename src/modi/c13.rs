@@ -36,7 +36,7 @@ enum DebugSubsectionKind {
 
 impl DebugSubsectionKind {
     fn parse(value: u32) -> Result<Option<Self>> {
-        if value >= 0xf1 && value <= 0xfd {
+        if (0xf1..=0xfd).contains(&value) {
             Ok(Some(unsafe { std::mem::transmute(value) }))
         } else if value == constants::DEBUG_S_IGNORE {
             Ok(None)
@@ -351,8 +351,8 @@ impl LineNumberHeader {
         // that they are not confused with actual line number entries.
         let start_line = self.flags & 0x00ff_ffff;
         let marker = match start_line {
-            0xfee_fee => Some(LineMarkerKind::DoNotStepOnto),
-            0xf00_f00 => Some(LineMarkerKind::DoNotStepInto),
+            0xfeefee => Some(LineMarkerKind::DoNotStepOnto),
+            0xf00f00 => Some(LineMarkerKind::DoNotStepInto),
             _ => None,
         };
 
