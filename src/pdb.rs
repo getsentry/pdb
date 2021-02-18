@@ -175,7 +175,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             .raw_stream(dbi_header.symbol_records_stream)?
             .ok_or(Error::GlobalSymbolsNotFound)?;
 
-        SymbolTable::parse(stream)
+        Ok(SymbolTable::new(stream))
     }
 
     /// Retrieve the module info stream for a specific `Module`.

@@ -663,8 +663,8 @@ struct DebugFileChecksumsSubsection<'a> {
 
 impl<'a> DebugFileChecksumsSubsection<'a> {
     /// Creates a new file checksums subsection.
-    fn parse(data: &'a [u8]) -> Result<Self> {
-        Ok(Self { data })
+    fn new(data: &'a [u8]) -> Self {
+        Self { data }
     }
 
     /// Returns an iterator over all file checksum entries.
@@ -734,8 +734,8 @@ struct DebugCrossScopeImportsSubsection<'a> {
 }
 
 impl<'a> DebugCrossScopeImportsSubsection<'a> {
-    fn parse(data: &'a [u8]) -> Result<Self> {
-        Ok(Self { data })
+    fn new(data: &'a [u8]) -> Self {
+        Self { data }
     }
 
     fn modules(self) -> CrossScopeImportModuleIter<'a> {
@@ -767,7 +767,7 @@ impl<'a> CrossModuleImports<'a> {
             .map(|sec| sec.data);
 
         match import_data {
-            Some(d) => Self::from_section(DebugCrossScopeImportsSubsection::parse(d)?),
+            Some(d) => Self::from_section(DebugCrossScopeImportsSubsection::new(d)),
             None => Ok(Self::default()),
         }
     }
@@ -1281,7 +1281,7 @@ impl<'a> LineProgram<'a> {
             .map(|sec| sec.data);
 
         let file_checksums = match checksums_data {
-            Some(d) => DebugFileChecksumsSubsection::parse(d)?,
+            Some(d) => DebugFileChecksumsSubsection::new(d),
             None => DebugFileChecksumsSubsection::default(),
         };
 
@@ -1622,8 +1622,7 @@ mod tests {
 
     #[test]
     fn test_parse_cross_section_imports() {
-        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
-            .expect("parse imports");
+        let sec = DebugCrossScopeImportsSubsection::new(&CROSS_MODULE_IMPORT_DATA.0);
 
         let modules: Vec<_> = sec.modules().collect().expect("collect imports");
         assert_eq!(modules.len(), 2);
@@ -1636,8 +1635,7 @@ mod tests {
 
     #[test]
     fn test_resolve_cross_module_import() {
-        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
-            .expect("parse imports");
+        let sec = DebugCrossScopeImportsSubsection::new(&CROSS_MODULE_IMPORT_DATA.0);
 
         let imports = CrossModuleImports::from_section(sec).expect("parse section");
         let cross_ref = imports
@@ -1656,8 +1654,7 @@ mod tests {
 
     #[test]
     fn test_resolve_cross_module_import2() {
-        let sec = DebugCrossScopeImportsSubsection::parse(&CROSS_MODULE_IMPORT_DATA.0)
-            .expect("parse imports");
+        let sec = DebugCrossScopeImportsSubsection::new(&CROSS_MODULE_IMPORT_DATA.0);
 
         let imports = CrossModuleImports::from_section(sec).expect("parse section");
         let cross_ref = imports
