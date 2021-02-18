@@ -1479,8 +1479,8 @@ pub struct SymbolTable<'s> {
 
 impl<'s> SymbolTable<'s> {
     /// Parses a symbol table from raw stream data.
-    pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
-        Ok(SymbolTable { stream })
+    pub(crate) fn new(stream: Stream<'s>) -> Self {
+        SymbolTable { stream }
     }
 
     /// Returns an iterator that can traverse the symbol table in sequential order.
