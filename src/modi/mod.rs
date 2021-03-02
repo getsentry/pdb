@@ -31,15 +31,8 @@ pub struct ModuleInfo<'s> {
 
 impl<'s> ModuleInfo<'s> {
     /// Parses a `ModuleInfo` from it's Module info stream data.
-    pub(crate) fn parse(stream: Stream<'s>, module: &Module<'_>) -> Result<Self> {
+    pub(crate) fn parse(stream: Stream<'s>, module: &Module<'_>) -> Self {
         let info = module.info();
-
-        let mut buf = stream.parse_buffer();
-        if buf.parse_u32()? != constants::CV_SIGNATURE_C13 {
-            return Err(Error::UnimplementedFeature(
-                "Unsupported module info format",
-            ));
-        }
 
         let lines_size = if info.lines_size > 0 {
             LinesSize::C11(info.lines_size as usize)
@@ -48,11 +41,11 @@ impl<'s> ModuleInfo<'s> {
         };
 
         let symbols_size = info.symbols_size as usize;
-        Ok(ModuleInfo {
+        ModuleInfo {
             stream,
             symbols_size,
             lines_size,
-        })
+        }
     }
 
     fn lines_data(&self, size: usize) -> &[u8] {
@@ -64,7 +57,14 @@ impl<'s> ModuleInfo<'s> {
     pub fn symbols(&self) -> Result<SymbolIter<'_>> {
         let mut buf = self.stream.parse_buffer();
         buf.truncate(self.symbols_size)?;
-        buf.parse_u32()?;
+        if self.symbols_size > 0 {
+            let sig = buf.parse_u32()?;
+            if sig != constants::CV_SIGNATURE_C13 {
+                return Err(Error::UnimplementedFeature(
+                    "Unsupported symbol data format",
+                ));
+            }
+        }
         Ok(SymbolIter::new(buf))
     }
 

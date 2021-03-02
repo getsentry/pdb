@@ -215,10 +215,9 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// # }
     /// ```
     pub fn module_info<'m>(&mut self, module: &Module<'m>) -> Result<Option<ModuleInfo<'s>>> {
-        match self.raw_stream(module.info().stream)? {
-            Some(stream) => ModuleInfo::parse(stream, module).map(Some),
-            None => Ok(None),
-        }
+        Ok(self
+            .raw_stream(module.info().stream)?
+            .map(|stream| ModuleInfo::parse(stream, module)))
     }
 
     /// Retrieve the executable's section headers, as stored inside this PDB.
