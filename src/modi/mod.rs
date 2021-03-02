@@ -61,7 +61,7 @@ impl<'s> ModuleInfo<'s> {
             let sig = buf.parse_u32()?;
             if sig != constants::CV_SIGNATURE_C13 {
                 return Err(Error::UnimplementedFeature(
-                    "Unsupported module info format",
+                    "Unsupported symbol data format",
                 ));
             }
         }
