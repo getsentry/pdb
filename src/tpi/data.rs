@@ -117,7 +117,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_MEMBER | LF_MEMBER_ST => Ok(TypeData::Member(MemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
             field_type: buf.parse()?,
-            offset: parse_unsigned(&mut buf)? as u16,
+            offset: parse_unsigned(&mut buf)?,
             name: parse_string(leaf, &mut buf)?,
         })),
 
@@ -868,7 +868,7 @@ pub enum ClassKind {
 pub struct MemberType<'t> {
     pub attributes: FieldAttributes,
     pub field_type: TypeIndex,
-    pub offset: u16,
+    pub offset: u64,
     pub name: RawString<'t>,
 }
 
