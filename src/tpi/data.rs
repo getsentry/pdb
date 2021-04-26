@@ -101,7 +101,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 derived_from: parse_optional_type_index(&mut buf)?,
                 vtable_shape: parse_optional_type_index(&mut buf)?,
                 count: buf.parse_u16()?,
-                size: parse_unsigned(&mut buf)? as u16,
+                size: parse_unsigned(&mut buf)?,
                 name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
