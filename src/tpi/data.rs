@@ -80,7 +80,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 fields: parse_optional_type_index(&mut buf)?,
                 derived_from: parse_optional_type_index(&mut buf)?,
                 vtable_shape: parse_optional_type_index(&mut buf)?,
-                size: parse_unsigned(&mut buf)? as u16,
+                size: parse_unsigned(&mut buf)?,
                 name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
@@ -324,7 +324,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 count: buf.parse_u16()?,
                 properties: TypeProperties(buf.parse_u16()?),
                 fields: buf.parse()?,
-                size: parse_unsigned(&mut buf)? as u32,
+                size: parse_unsigned(&mut buf)?,
                 name: parse_string(leaf, &mut buf)?,
                 unique_name: None,
             };
@@ -846,7 +846,7 @@ pub struct ClassType<'t> {
     /// Type index which describes the shape of the vtable for this class, if any
     pub vtable_shape: Option<TypeIndex>,
 
-    pub size: u16,
+    pub size: u64,
 
     /// Display name of the class including type parameters.
     pub name: RawString<'t>,
@@ -1018,7 +1018,7 @@ pub struct UnionType<'t> {
     pub count: u16,
     pub properties: TypeProperties,
     pub fields: TypeIndex,
-    pub size: u32,
+    pub size: u64,
     pub name: RawString<'t>,
     pub unique_name: Option<RawString<'t>>,
 }
