@@ -617,7 +617,6 @@ impl DBIExtraStreams {
                 + header.section_map_size
                 + header.file_info_size
                 + header.type_server_map_size
-                + header.mfc_type_server_index
                 + header.ec_substream_size) as usize;
 
         // seek
