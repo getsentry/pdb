@@ -35,7 +35,7 @@ impl PageList {
         assert!(!self.truncated);
 
         let is_continuous = match self.last_page {
-            Some(n) => (n + 1) == page,
+            Some(n) => n.checked_add(1) == Some(page),
             None => false,
         };
 
@@ -278,5 +278,12 @@ mod tests {
 
         // bam!
         list.push(6);
+    }
+
+    #[test]
+    fn push_overflow() {
+        let mut list = PageList::new(4096);
+        list.push(u32::MAX);
+        list.push(u32::MAX);
     }
 }
