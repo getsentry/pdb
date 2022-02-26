@@ -578,7 +578,9 @@ pub trait ItemIndex:
     ///     module.
     ///  2. Use [`StringTable`](crate::StringTable) to resolve the name of the referenced module.
     ///  3. Find the [`Module`](crate::Module) with the same module name and load its
-    ///     [`ModuleInfo`](crate::ModuleInfo).
+    ///     [`ModuleInfo`](crate::ModuleInfo).  Note that this comparison needs to be done
+    ///     case-insensitively as the name in the DBI stream and name table are known to not
+    ///     have matching cases.
     ///  4. Resolve the [`Local`](crate::Local) index into a global one using
     ///     [`CrossModuleExports`](crate::CrossModuleExports).
     ///
