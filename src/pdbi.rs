@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+use std::convert::TryInto;
 use std::mem;
 
 use uuid::Uuid;
@@ -56,9 +57,8 @@ impl<'s> PDBInformation<'s> {
                 buf.parse_u32()?,
                 buf.parse_u16()?,
                 buf.parse_u16()?,
-                buf.take(8)?,
-            )
-            .unwrap();
+                buf.take(8)?.try_into().unwrap(),
+            );
             let names_size = buf.parse_u32()? as usize;
             let names_offset = buf.pos();
             (version, signature, age, guid, names_size, names_offset)
