@@ -83,6 +83,7 @@ impl StringTableHeader {
 #[derive(Debug)]
 pub struct StringTable<'s> {
     header: StringTableHeader,
+    #[allow(dead_code)] // reason = "reverse-lookups through hash table not implemented"
     hash_version: StringTableHashVersion,
     stream: Stream<'s>,
 }

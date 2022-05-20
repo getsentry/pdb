@@ -332,6 +332,7 @@ struct LineMarkerEntry {
     /// Delta offset to the start of this line contribution (debug lines subsection).
     pub offset: u32,
     /// The marker kind, hinting a debugger how to deal with code at this offset.
+    #[allow(dead_code)] // reason = "debugger instructions are not exposed"
     pub kind: LineMarkerKind,
 }
 
