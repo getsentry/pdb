@@ -374,7 +374,7 @@ impl From<u16> for MachineType {
 
 /// Information about a module's contribution to a section.
 /// `struct SC` in Microsoft's code:
-/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
+/// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42>
 #[derive(Debug, Copy, Clone)]
 pub struct DBISectionContribution {
     /// Start offset of the section.

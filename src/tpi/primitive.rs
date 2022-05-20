@@ -161,7 +161,7 @@ pub enum PrimitiveKind {
 
     /// Windows `HRESULT` error code.
     ///
-    /// See: https://docs.microsoft.com/en-us/windows/desktop/seccrypto/common-hresult-values
+    /// See: <https://docs.microsoft.com/en-us/windows/desktop/seccrypto/common-hresult-values>
     HRESULT,
 }
 
