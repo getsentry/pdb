@@ -315,7 +315,7 @@ mod big {
         }
     }
 
-    impl<'s, S: Source<'s>> MSF<'s, S> for BigMSF<'s, S> {
+    impl<'s, S: Source<'s>> Msf<'s, S> for BigMSF<'s, S> {
         fn get(&mut self, stream_number: u32, limit: Option<usize>) -> Result<Stream<'s>> {
             // look up the stream
             let mut page_list = self.look_up_stream(stream_number)?;
@@ -370,7 +370,7 @@ impl Deref for Stream<'_> {
 }
 
 /// Provides access to a "multi-stream file", which is the container format used by PDBs.
-pub trait MSF<'s, S>: fmt::Debug {
+pub trait Msf<'s, S>: fmt::Debug {
     /// Accesses a stream by stream number, optionally restricted by a byte limit.
     fn get(&mut self, stream_number: u32, limit: Option<usize>) -> Result<Stream<'s>>;
 }
@@ -379,7 +379,7 @@ fn header_matches(actual: &[u8], expected: &[u8]) -> bool {
     actual.len() >= expected.len() && &actual[0..expected.len()] == expected
 }
 
-pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn MSF<'s, S> + 's>> {
+pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn Msf<'s, S> + 's>> {
     // map the header
     let mut header_location = PageList::new(4096);
     header_location.push(0);

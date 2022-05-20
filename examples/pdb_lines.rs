@@ -56,7 +56,7 @@ fn main() {
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+        Err(f) => panic!("{}", f.to_string()),
     };
 
     let filename = if matches.free.len() == 1 {
@@ -67,7 +67,7 @@ fn main() {
         return;
     };
 
-    match dump_pdb(&filename) {
+    match dump_pdb(filename) {
         Ok(_) => {}
         Err(e) => {
             writeln!(&mut std::io::stderr(), "error dumping PDB: {}", e).expect("stderr write");

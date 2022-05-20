@@ -61,7 +61,7 @@ impl<'t> Symbol<'t> {
     /// Parse the symbol into the `SymbolData` it contains.
     #[inline]
     pub fn parse(&self) -> Result<SymbolData<'t>> {
-        Ok(self.raw_bytes().pread_with(0, ())?)
+        self.raw_bytes().pread_with(0, ())
     }
 
     /// Returns whether this symbol starts a scope.

@@ -681,7 +681,7 @@ impl_convert!(Register, u16);
 impl_pread!(Register);
 
 /// Provides little-endian access to a &[u8].
-#[derive(Debug, Clone)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct ParseBuffer<'b>(&'b [u8], usize);
 
 macro_rules! def_parse {
@@ -690,7 +690,7 @@ macro_rules! def_parse {
           #[inline]
           #[allow(unused)]
           pub fn $n(&mut self) -> Result<$t> {
-              Ok(self.parse()?)
+              self.parse()
           })*
     }
 }
@@ -818,12 +818,6 @@ impl<'b> ParseBuffer<'b> {
         } else {
             Err(Error::UnexpectedEof)
         }
-    }
-}
-
-impl Default for ParseBuffer<'_> {
-    fn default() -> Self {
-        ParseBuffer(&[], 0)
     }
 }
 
