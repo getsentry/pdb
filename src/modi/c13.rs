@@ -231,6 +231,7 @@ struct DebugLinesHeader {
     /// See LineFlags enumeration.
     flags: u16,
     /// Code size of this line contribution.
+    #[allow(dead_code)] // reason = "unused until TODO in LineIterator is resolved"
     code_size: u32,
 }
 
@@ -330,6 +331,7 @@ struct LineNumberEntry {
 #[derive(Clone, Debug)]
 struct LineMarkerEntry {
     /// Delta offset to the start of this line contribution (debug lines subsection).
+    #[allow(dead_code)] // reason = "unused until TODO in LineIterator is resolved"
     pub offset: u32,
     /// The marker kind, hinting a debugger how to deal with code at this offset.
     #[allow(dead_code)] // reason = "debugger instructions are not exposed"
@@ -438,7 +440,6 @@ impl<'t> TryFromCtx<'t, Endian> for ColumnNumberEntry {
 
 #[derive(Clone, Debug, Default)]
 struct DebugColumnsIterator<'a> {
-    block: DebugLinesBlockHeader,
     buf: ParseBuffer<'a>,
 }
 
@@ -528,8 +529,7 @@ impl<'a> DebugLinesBlock<'a> {
 
     fn columns(&self) -> DebugColumnsIterator<'a> {
         DebugColumnsIterator {
-            block: self.header,
-            buf: ParseBuffer::from(self.line_data),
+            buf: ParseBuffer::from(self.column_data),
         }
     }
 }
