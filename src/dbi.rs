@@ -139,8 +139,9 @@ impl From<u32> for HeaderVersion {
 }
 
 /// A DBI header -- `NewDBIHdr`, really -- parsed from a stream.
+///
 /// Reference:
-/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
+/// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124>
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)] // reason = "unused fields added for completeness"
 pub(crate) struct DBIHeader {
@@ -415,9 +416,10 @@ impl DBISectionContribution {
     }
 }
 
-/// Information about a module parsed from the DBI stream. Named `MODI` in
-/// the Microsoft PDB source:
-/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197
+/// Information about a module parsed from the DBI stream.
+///
+/// Named `MODI` in the Microsoft PDB source:
+/// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197>
 #[derive(Debug, Copy, Clone)]
 #[allow(dead_code)] // reason = "unused fields added for completeness"
 pub(crate) struct DBIModuleInfo {
@@ -427,7 +429,7 @@ pub(crate) struct DBIModuleInfo {
     pub section: DBISectionContribution,
     /// Flags, expressed as bitfields in the C struct:
     /// written, EC enabled, unused, tsm
-    /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1201-L1204
+    /// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1201-L1204>
     pub flags: u16,
     /// Stream number of module debug info (syms, lines, fpo).
     pub stream: StreamIndex,
