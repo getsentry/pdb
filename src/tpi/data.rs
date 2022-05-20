@@ -59,7 +59,7 @@ impl<'t> TypeData<'t> {
 }
 
 /// Parse a type out of a `ParseBuffer`.
-pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>> {
+pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<'t>> {
     let leaf = buf.parse_u16()?;
 
     match leaf {
@@ -77,10 +77,10 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 },
                 count: buf.parse_u16()?,
                 properties: TypeProperties(buf.parse_u16()?),
-                fields: parse_optional_type_index(&mut buf)?,
-                derived_from: parse_optional_type_index(&mut buf)?,
-                vtable_shape: parse_optional_type_index(&mut buf)?,
-                size: parse_unsigned(&mut buf)?,
+                fields: parse_optional_type_index(buf)?,
+                derived_from: parse_optional_type_index(buf)?,
+                vtable_shape: parse_optional_type_index(buf)?,
+                size: parse_unsigned(buf)?,
                 name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
@@ -97,11 +97,11 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let mut class = ClassType {
                 kind: ClassKind::Struct,
                 properties: TypeProperties(buf.parse_u32()? as u16),
-                fields: parse_optional_type_index(&mut buf)?,
-                derived_from: parse_optional_type_index(&mut buf)?,
-                vtable_shape: parse_optional_type_index(&mut buf)?,
+                fields: parse_optional_type_index(buf)?,
+                derived_from: parse_optional_type_index(buf)?,
+                vtable_shape: parse_optional_type_index(buf)?,
                 count: buf.parse_u16()?,
-                size: parse_unsigned(&mut buf)?,
+                size: parse_unsigned(buf)?,
                 name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
@@ -117,8 +117,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_MEMBER | LF_MEMBER_ST => Ok(TypeData::Member(MemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
             field_type: buf.parse()?,
-            offset: parse_unsigned(&mut buf)?,
-            name: parse_string(leaf, &mut buf)?,
+            offset: parse_unsigned(buf)?,
+            name: parse_string(leaf, buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2699-L2714
@@ -137,7 +137,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             Ok(TypeData::Nested(NestedType {
                 attributes: FieldAttributes(raw_attr),
                 nested_type: buf.parse()?,
-                name: parse_string(leaf, &mut buf)?,
+                name: parse_string(leaf, buf)?,
             }))
         }
 
@@ -145,7 +145,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_MFUNCTION => Ok(TypeData::MemberFunction(MemberFunctionType {
             return_type: buf.parse()?,
             class_type: buf.parse()?,
-            this_pointer_type: parse_optional_type_index(&mut buf)?,
+            this_pointer_type: parse_optional_type_index(buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
             argument_list: buf.parse()?,
@@ -156,7 +156,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_METHOD | LF_METHOD_ST => Ok(TypeData::OverloadedMethod(OverloadedMethodType {
             count: buf.parse_u16()?,
             method_list: buf.parse()?,
-            name: parse_string(leaf, &mut buf)?,
+            name: parse_string(leaf, buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2671-L2678
@@ -171,7 +171,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                     // yes, this is variable length
                     None
                 },
-                name: parse_string(leaf, &mut buf)?,
+                name: parse_string(leaf, buf)?,
             }))
         }
 
@@ -184,7 +184,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             },
             attributes: FieldAttributes(buf.parse_u16()?),
             base_class: buf.parse()?,
-            offset: parse_unsigned(&mut buf)? as u32,
+            offset: parse_unsigned(buf)? as u32,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2615-L2619
@@ -202,7 +202,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_STMEMBER | LF_STMEMBER_ST => Ok(TypeData::StaticMember(StaticMemberType {
             attributes: FieldAttributes(buf.parse_u16()?),
             field_type: buf.parse()?,
-            name: parse_string(leaf, &mut buf)?,
+            name: parse_string(leaf, buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1469-L1506
@@ -225,7 +225,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1775-L1782
         LF_PROCEDURE => Ok(TypeData::Procedure(ProcedureType {
-            return_type: parse_optional_type_index(&mut buf)?,
+            return_type: parse_optional_type_index(buf)?,
             attributes: FunctionAttributes(buf.parse_u16()?),
             parameter_count: buf.parse_u16()?,
             argument_list: buf.parse()?,
@@ -253,12 +253,12 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 properties: TypeProperties(buf.parse_u16()?),
                 underlying_type: buf.parse()?,
                 fields: buf.parse()?,
-                name: parse_string(leaf, &mut buf)?,
+                name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
 
             if enumeration.properties.has_unique_name() {
-                enumeration.unique_name = Some(parse_string(leaf, &mut buf)?);
+                enumeration.unique_name = Some(parse_string(leaf, buf)?);
             }
 
             Ok(TypeData::Enumeration(enumeration))
@@ -268,7 +268,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
         LF_ENUMERATE | LF_ENUMERATE_ST => Ok(TypeData::Enumerate(EnumerateType {
             attributes: FieldAttributes(buf.parse_u16()?),
             value: buf.parse()?,
-            name: parse_string(leaf, &mut buf)?,
+            name: parse_string(leaf, buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1564-L1579
@@ -284,7 +284,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             let mut dimensions: Vec<u32> = Vec::new();
 
             loop {
-                let dim = parse_unsigned(&mut buf)?;
+                let dim = parse_unsigned(buf)?;
                 if dim > u64::from(u32::max_value()) {
                     return Err(Error::UnimplementedFeature("u64 array sizes"));
                 }
@@ -303,7 +303,7 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             }
 
             // eat any padding
-            parse_padding(&mut buf)?;
+            parse_padding(buf)?;
 
             //println!("array: {:x}", buf);
             //println!("dimensions: {:?}", dimensions);
@@ -324,13 +324,13 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                 count: buf.parse_u16()?,
                 properties: TypeProperties(buf.parse_u16()?),
                 fields: buf.parse()?,
-                size: parse_unsigned(&mut buf)?,
-                name: parse_string(leaf, &mut buf)?,
+                size: parse_unsigned(buf)?,
+                name: parse_string(leaf, buf)?,
                 unique_name: None,
             };
 
             if union.properties.has_unique_name() {
-                union.unique_name = Some(parse_string(leaf, &mut buf)?);
+                union.unique_name = Some(parse_string(leaf, buf)?);
             }
 
             Ok(TypeData::Union(union))
@@ -361,8 +361,8 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
             attributes: FieldAttributes(buf.parse_u16()?),
             base_class: buf.parse()?,
             base_pointer: buf.parse()?,
-            base_pointer_offset: parse_unsigned(&mut buf)? as u32,
-            virtual_base_offset: parse_unsigned(&mut buf)? as u32,
+            base_pointer_offset: parse_unsigned(buf)? as u32,
+            virtual_base_offset: parse_unsigned(buf)? as u32,
         })),
 
         // List types
@@ -386,12 +386,12 @@ pub(crate) fn parse_type_data<'t>(mut buf: &mut ParseBuffer<'t>) -> Result<TypeD
                     _ => {
                         // other type
                         // recurse because recursion is endless fun because [STACK OVERFLOW]
-                        fields.push(parse_type_data(&mut buf)?);
+                        fields.push(parse_type_data(buf)?);
                     }
                 }
 
                 // consume any padding
-                parse_padding(&mut buf)?;
+                parse_padding(buf)?;
             }
 
             Ok(TypeData::FieldList(FieldList {

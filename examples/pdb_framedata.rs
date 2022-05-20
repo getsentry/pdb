@@ -39,7 +39,7 @@ fn dump_framedata(filename: &str) -> pdb::Result<()> {
             if data.has_cpp_eh { 'Y' } else { 'N' },
             if data.is_function_start { 'Y' } else { 'N' },
             if data.uses_base_pointer { 'Y' } else { 'N' },
-            data.ty.to_string(),
+            data.ty,
             program_string,
         );
     }
@@ -55,7 +55,7 @@ fn main() {
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+        Err(f) => panic!("{}", f.to_string()),
     };
 
     let filename = if matches.free.len() == 1 {
@@ -65,7 +65,7 @@ fn main() {
         return;
     };
 
-    match dump_framedata(&filename) {
+    match dump_framedata(filename) {
         Ok(_) => (),
         Err(e) => eprintln!("error dumping PDB: {}", e),
     }

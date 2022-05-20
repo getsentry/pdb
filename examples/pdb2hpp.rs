@@ -322,7 +322,7 @@ struct BaseClass {
 struct Field<'p> {
     type_name: String,
     name: pdb::RawString<'p>,
-    offset: u16,
+    offset: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -611,22 +611,12 @@ fn write_class(filename: &str, class_name: &str) -> pdb::Result<()> {
     }
 
     // add all the needed types iteratively until we're done
-    loop {
-        // get the last element in needed_types without holding an immutable borrow
-        let last = match needed_types.iter().next_back() {
-            Some(n) => Some(*n),
-            None => None,
-        };
+    while let Some(type_index) = needed_types.iter().next_back().copied() {
+        // remove it
+        needed_types.remove(&type_index);
 
-        if let Some(type_index) = last {
-            // remove it
-            needed_types.remove(&type_index);
-
-            // add the type
-            data.add(&type_finder, type_index, &mut needed_types)?;
-        } else {
-            break;
-        }
+        // add the type
+        data.add(&type_finder, type_index, &mut needed_types)?;
     }
 
     if data.classes.is_empty() {
@@ -652,7 +642,7 @@ fn main() {
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
+        Err(f) => panic!("{}", f.to_string()),
     };
 
     let (filename, class_name) = if matches.free.len() == 2 {
@@ -662,7 +652,7 @@ fn main() {
         return;
     };
 
-    match write_class(&filename, &class_name) {
+    match write_class(filename, class_name) {
         Ok(_) => (),
         Err(e) => eprintln!("error dumping PDB: {}", e),
     }

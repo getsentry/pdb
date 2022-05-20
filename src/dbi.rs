@@ -142,6 +142,7 @@ impl From<u32> for HeaderVersion {
 /// Reference:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124
 #[derive(Debug, Copy, Clone)]
+#[allow(dead_code)] // reason = "unused fields added for completeness"
 pub(crate) struct DBIHeader {
     pub signature: u32,
     pub version: HeaderVersion,
@@ -373,7 +374,7 @@ impl From<u16> for MachineType {
 
 /// Information about a module's contribution to a section.
 /// `struct SC` in Microsoft's code:
-/// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42
+/// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/dbicommon.h#L42>
 #[derive(Debug, Copy, Clone)]
 pub struct DBISectionContribution {
     /// Start offset of the section.
@@ -418,6 +419,7 @@ impl DBISectionContribution {
 /// the Microsoft PDB source:
 /// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L1197
 #[derive(Debug, Copy, Clone)]
+#[allow(dead_code)] // reason = "unused fields added for completeness"
 pub(crate) struct DBIModuleInfo {
     /// Currently open module.
     pub opened: u32,
@@ -583,6 +585,7 @@ impl<'c> FallibleIterator for DBISectionContributionIter<'c> {
 
 /// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
 #[derive(Debug, Copy, Clone)]
+#[allow(dead_code)] // reason = "unused fields added for completeness"
 pub(crate) struct DBIExtraStreams {
     // The struct itself is defined at:
     //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L250-L274

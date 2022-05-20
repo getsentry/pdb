@@ -9,7 +9,7 @@ use crate::common::*;
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
 use crate::framedata::FrameTable;
 use crate::modi::ModuleInfo;
-use crate::msf::{self, Stream, MSF};
+use crate::msf::{self, Msf, Stream};
 use crate::omap::{AddressMap, OMAPTable};
 use crate::pdbi::PDBInformation;
 use crate::pe::ImageSectionHeader;
@@ -34,7 +34,7 @@ const IPI_STREAM: u32 = 4;
 #[derive(Debug)]
 pub struct PDB<'s, S> {
     /// `msf` provides access to the underlying data streams
-    msf: Box<dyn MSF<'s, S> + 's>,
+    msf: Box<dyn Msf<'s, S> + 's>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<DBIHeader>,

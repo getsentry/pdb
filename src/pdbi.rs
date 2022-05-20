@@ -117,32 +117,31 @@ impl<'s> PDBInformation<'s> {
         // [4]: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/include/array.h#L209
 
         let mut names = vec![];
-        let buf = {
-            let mut buf = self.stream.parse_buffer();
-            // Seek forward to the name map.
-            buf.take(self.names_offset + self.names_size)?;
-            let count = buf.parse_u32()?;
-            // We don't actually use most of these.
-            let _entries_size = buf.parse_u32()?;
-            let ok_words = buf.parse_u32()?;
-            let _ok_bits = buf.take(ok_words as usize * mem::size_of::<u32>())?;
-            let deleted_words = buf.parse_u32()?;
-            let _deleted_bits = buf.take(deleted_words as usize * mem::size_of::<u32>())?;
+        let mut buf = self.stream.parse_buffer();
 
-            // Skip over the header here.
-            let mut names_reader = self.stream.parse_buffer();
-            names_reader.take(self.names_offset)?;
-            // And take just the name data.
-            let names_buf = names_reader.take(self.names_size)?;
-            for _ in 0..count {
-                let name_offset = buf.parse_u32()? as usize;
-                let stream_id = StreamIndex(buf.parse_u32()? as u16);
-                let name = ParseBuffer::from(&names_buf[name_offset..]).parse_cstring()?;
-                names.push(StreamName { name, stream_id });
-            }
-            names_reader
-        };
-        Ok(StreamNames { buf, names })
+        // Seek forward to the name map.
+        buf.take(self.names_offset + self.names_size)?;
+        let count = buf.parse_u32()?;
+        // We don't actually use most of these.
+        let _entries_size = buf.parse_u32()?;
+        let ok_words = buf.parse_u32()?;
+        let _ok_bits = buf.take(ok_words as usize * mem::size_of::<u32>())?;
+        let deleted_words = buf.parse_u32()?;
+        let _deleted_bits = buf.take(deleted_words as usize * mem::size_of::<u32>())?;
+
+        // Skip over the header here.
+        let mut names_reader = self.stream.parse_buffer();
+        names_reader.take(self.names_offset)?;
+        // And take just the name data.
+        let names_buf = names_reader.take(self.names_size)?;
+        for _ in 0..count {
+            let name_offset = buf.parse_u32()? as usize;
+            let stream_id = StreamIndex(buf.parse_u32()? as u16);
+            let name = ParseBuffer::from(&names_buf[name_offset..]).parse_cstring()?;
+            names.push(StreamName { name, stream_id });
+        }
+
+        Ok(StreamNames { names })
     }
 }
 
@@ -161,7 +160,6 @@ pub struct StreamName<'n> {
 /// objects.
 #[derive(Debug)]
 pub struct StreamNames<'s> {
-    buf: ParseBuffer<'s>,
     /// The list of streams and their names.
     names: Vec<StreamName<'s>>,
 }

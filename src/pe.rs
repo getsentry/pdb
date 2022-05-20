@@ -92,7 +92,7 @@ impl ImageSectionHeader {
             .name
             .iter()
             .position(|ch| *ch == 0)
-            .unwrap_or_else(|| self.name.len());
+            .unwrap_or(self.name.len());
 
         // The spec guarantees that the name is a proper UTF-8 string.
         // TODO: Look up long names from the string table.
