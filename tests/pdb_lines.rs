@@ -30,7 +30,7 @@ fn test_module_lines() {
         .expect("file name");
 
     assert_eq!(line_info.line_start, 29);
-    assert_eq!(line_info.column_start, Some(0)); // looks like useless column info
+    assert_eq!(line_info.column_start, None);
     assert_eq!(rva, Rva(0x64f0));
     assert_eq!(file_name, "c:\\users\\user\\desktop\\self\\foo.cpp");
 }
