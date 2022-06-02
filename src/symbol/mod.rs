@@ -476,8 +476,9 @@ pub struct ProcedureReferenceSymbol<'t> {
     ///
     /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
-    /// Index of the module containing the actual symbol.
-    pub module: u16,
+    /// Index of the module in [`DebugInformation::modules`](crate::DebugInformation::modules)
+    /// containing the actual symbol.
+    pub module: Option<usize>,
     /// Name of the procedure reference.
     pub name: Option<RawString<'t>>,
 }
@@ -492,7 +493,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureReferenceSymbol<'t> {
             global: matches!(kind, S_PROCREF | S_PROCREF_ST),
             sum_name: buf.parse()?,
             symbol_index: buf.parse()?,
-            module: buf.parse()?,
+            module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
             name: parse_optional_name(&mut buf, kind)?,
         };
 
@@ -511,8 +512,9 @@ pub struct DataReferenceSymbol<'t> {
     ///
     /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
-    /// Index of the module containing the actual symbol.
-    pub module: u16,
+    /// Index of the module in [`DebugInformation::modules`](crate::DebugInformation::modules)
+    /// containing the actual symbol.
+    pub module: Option<usize>,
     /// Name of the data reference.
     pub name: Option<RawString<'t>>,
 }
@@ -526,7 +528,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for DataReferenceSymbol<'t> {
         let symbol = DataReferenceSymbol {
             sum_name: buf.parse()?,
             symbol_index: buf.parse()?,
-            module: buf.parse()?,
+            module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
             name: parse_optional_name(&mut buf, kind)?,
         };
 
@@ -545,8 +547,9 @@ pub struct AnnotationReferenceSymbol<'t> {
     ///
     /// Note that this symbol might be located in a different module.
     pub symbol_index: SymbolIndex,
-    /// Index of the module containing the actual symbol.
-    pub module: u16,
+    /// Index of the module in [`DebugInformation::modules`](crate::DebugInformation::modules)
+    /// containing the actual symbol.
+    pub module: Option<usize>,
     /// Name of the annotation reference.
     pub name: RawString<'t>,
 }
@@ -560,7 +563,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
         let symbol = AnnotationReferenceSymbol {
             sum_name: buf.parse()?,
             symbol_index: buf.parse()?,
-            module: buf.parse()?,
+            module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
             name: parse_symbol_name(&mut buf, kind)?,
         };
 
@@ -670,7 +673,7 @@ const CV_PFLAG_CUST_CALL: u8 = 0x20;
 const CV_PFLAG_NOINLINE: u8 = 0x40;
 const CV_PFLAG_OPTDBGINFO: u8 = 0x80;
 
-/// Flags of a [`ProcedureSymbol`](struct.ProcedureSymbol).
+/// Flags of a [`ProcedureSymbol`].
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ProcedureFlags {
@@ -1764,7 +1767,7 @@ mod tests {
                     global: true,
                     sum_name: 0,
                     symbol_index: SymbolIndex(108),
-                    module: 1,
+                    module: Some(0),
                     name: Some("Baz::f_public".into()),
                 })
             );
@@ -1878,7 +1881,7 @@ mod tests {
                     global: false,
                     sum_name: 0,
                     symbol_index: SymbolIndex(1152),
-                    module: 182,
+                    module: Some(181),
                     name: Some("capture_current_context".into()),
                 })
             );
