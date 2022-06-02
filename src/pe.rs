@@ -23,22 +23,32 @@ pub struct ImageSectionHeader {
     /// than eight characters.
     pub name: [u8; 8],
 
-    /// The file address.
-    pub physical_address: u32,
+    /// The total size of the section when loaded into memory, in bytes. If this value is greater
+    /// than the [`size_of_raw_data`](Self::size_of_raw_data) member, the section is filled with
+    /// zeroes. This field is valid only for executable images and should be set to `0` for object
+    /// files.
+    ///
+    /// In object files, this field would be replaced with the physical file address. Such headers
+    /// are never embedded in PDBs.
+    pub virtual_size: u32,
 
     /// The address of the first byte of the section when loaded into memory, relative to the image
     /// base. For object files, this is the address of the first byte before relocation is applied.
     pub virtual_address: u32,
 
     /// The size of the initialized data on disk, in bytes. This value must be a multiple of the
-    /// `FileAlignment` member of the `IMAGE_OPTIONAL_HEADER` structure. If this value is less than
-    /// the `VirtualSize` member, the remainder of the section is filled with zeroes. If the section
-    /// contains only uninitialized data, the member is zero.
+    /// `FileAlignment` member of the [`IMAGE_OPTIONAL_HEADER`] structure. If this value is less than
+    /// the [`virtual_size`](Self::virtual_size) member, the remainder of the section is filled with
+    /// zeroes. If the section contains only uninitialized data, the member is zero.
+    ///
+    /// [`IMAGE_OPTIONAL_HEADER`]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32
     pub size_of_raw_data: u32,
 
     /// A file pointer to the first page within the COFF file. This value must be a multiple of the
-    /// `FileAlignment` member of the `IMAGE_OPTIONAL_HEADER` structure. If a section contains only
+    /// `FileAlignment` member of the [`IMAGE_OPTIONAL_HEADER`] structure. If a section contains only
     /// uninitialized data, set this member is zero.
+    ///
+    /// [`IMAGE_OPTIONAL_HEADER`]: https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_optional_header32
     pub pointer_to_raw_data: u32,
 
     /// A file pointer to the beginning of the relocation entries for the section. If there are no
@@ -74,7 +84,7 @@ impl ImageSectionHeader {
                 name_bytes[6],
                 name_bytes[7],
             ],
-            physical_address: parse_buffer.parse_u32()?,
+            virtual_size: parse_buffer.parse_u32()?,
             virtual_address: parse_buffer.parse_u32()?,
             size_of_raw_data: parse_buffer.parse_u32()?,
             pointer_to_raw_data: parse_buffer.parse_u32()?,
@@ -104,10 +114,7 @@ impl fmt::Debug for ImageSectionHeader {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ImageSectionHeader")
             .field("name()", &self.name().to_string())
-            .field(
-                "physical_address",
-                &format_args!("{:#x}", self.physical_address),
-            )
+            .field("virtual_size", &format_args!("{:#x}", self.virtual_size))
             .field(
                 "virtual_address",
                 &format_args!("{:#x}", self.virtual_address),
@@ -152,7 +159,7 @@ mod tests {
         let ish = ImageSectionHeader::parse(&mut parse_buffer).expect("parse");
         assert_eq!(&ish.name, b".data\0\0\0");
         assert_eq!(ish.name(), ".data");
-        assert_eq!(ish.physical_address, 0x93548);
+        assert_eq!(ish.virtual_size, 0x93548);
         assert_eq!(ish.virtual_address, 0x001e_d000);
         assert_eq!(ish.size_of_raw_data, 0xfe00);
         assert_eq!(ish.pointer_to_raw_data, 0x001e_a200);
