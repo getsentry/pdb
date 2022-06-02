@@ -78,7 +78,8 @@ mod big {
     pub const MAGIC: &[u8] = b"Microsoft C/C++ MSF 7.00\r\n\x1a\x44\x53\x00\x00\x00";
 
     /// The PDB header as stored on disk.
-    /// See the Microsoft code for reference: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946
+    ///
+    /// See the Microsoft code for reference: <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L946>
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
     struct RawHeader {
