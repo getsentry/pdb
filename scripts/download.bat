@@ -1,0 +1,2 @@
+powershell -Command "Invoke-WebRequest https://msdl.microsoft.com/download/symbols/wntdll.pdb/0ea7c70545374958ad3307514bdfc8642/wntdll.pdb -OutFile fixtures/symbol_server/0ea7c70545374958ad3307514bdfc8642-wntdll.pdb"
+powershell -Command "Invoke-WebRequest https://msdl.microsoft.com/download/symbols/ntkrnlmp.pdb/3844dbb920174967be7aa4a2c20430fa2/ntkrnlmp.pdb -OutFile fixtures/symbol_server/3844dbb920174967be7aa4a2c20430fa2-ntkrnlmp.pdb"

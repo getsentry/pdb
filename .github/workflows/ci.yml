@@ -61,6 +61,9 @@ jobs:
 
       - uses: swatinem/rust-cache@v1
 
+      - name: Download Fixtures
+        run: scripts/download
+
       - name: Run Cargo Tests
         uses: actions-rs/cargo@v1
         with:
