@@ -36,7 +36,7 @@ impl Header {
     pub(crate) fn empty() -> Self {
         let empty_slice = Slice { offset: 0, size: 0 };
 
-        Header {
+        Self {
             version: 0,
             header_size: 0,
             minimum_index: 0,
@@ -62,7 +62,7 @@ impl Header {
             return Ok(Self::empty());
         }
 
-        let header = Header {
+        let header = Self {
             version: buf.parse()?,
             header_size: buf.parse()?,
             minimum_index: buf.parse()?,

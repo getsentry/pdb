@@ -60,7 +60,7 @@ impl<'t> TryFromCtx<'t, Endian> for DebugSubsectionHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = DebugSubsectionHeader {
+        let data = Self {
             kind: this.gread_with(&mut offset, le)?,
             len: this.gread_with(&mut offset, le)?,
         };
@@ -128,7 +128,7 @@ impl<'t> TryFromCtx<'t, Endian> for DebugInlineeLinesHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = DebugInlineeLinesHeader {
+        let data = Self {
             signature: this.gread_with(&mut offset, le)?,
         };
         Ok((data, offset))
@@ -240,7 +240,7 @@ impl<'t> TryFromCtx<'t, Endian> for DebugLinesHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = DebugLinesHeader {
+        let data = Self {
             offset: this.gread_with(&mut offset, le)?,
             flags: this.gread_with(&mut offset, le)?,
             code_size: this.gread_with(&mut offset, le)?,
@@ -307,7 +307,7 @@ impl<'t> TryFromCtx<'t, Endian> for LineNumberHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = LineNumberHeader {
+        let data = Self {
             offset: this.gread_with(&mut offset, le)?,
             flags: this.gread_with(&mut offset, le)?,
         };
@@ -431,7 +431,7 @@ impl<'t> TryFromCtx<'t, Endian> for ColumnNumberEntry {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = ColumnNumberEntry {
+        let data = Self {
             start_column: this.gread_with(&mut offset, le)?,
             end_column: this.gread_with(&mut offset, le)?,
         };
@@ -478,7 +478,7 @@ impl<'t> TryFromCtx<'t, Endian> for DebugLinesBlockHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = DebugLinesBlockHeader {
+        let data = Self {
             file_index: this.gread_with(&mut offset, le)?,
             num_lines: this.gread_with(&mut offset, le)?,
             block_size: this.gread_with(&mut offset, le)?,
@@ -607,7 +607,7 @@ impl<'t> TryFromCtx<'t, Endian> for FileChecksumHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = FileChecksumHeader {
+        let data = Self {
             name_offset: this.gread_with(&mut offset, le)?,
             checksum_size: this.gread_with(&mut offset, le)?,
             checksum_kind: this.gread_with(&mut offset, le)?,
@@ -837,7 +837,7 @@ impl<'t> TryFromCtx<'t, Endian> for RawCrossScopeExport {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = RawCrossScopeExport {
+        let data = Self {
             local: this.gread_with(&mut offset, le)?,
             global: this.gread_with(&mut offset, le)?,
         };

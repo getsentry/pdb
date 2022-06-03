@@ -26,8 +26,8 @@ enum StringTableHashVersion {
 impl StringTableHashVersion {
     fn parse_u32(value: u32) -> Result<Self> {
         match value {
-            1 => Ok(StringTableHashVersion::LongHash),
-            2 => Ok(StringTableHashVersion::LongHashV2),
+            1 => Ok(Self::LongHash),
+            2 => Ok(Self::LongHashV2),
             _ => Err(Error::UnimplementedFeature(
                 "unknown string table hash version",
             )),
@@ -52,7 +52,7 @@ impl<'t> TryFromCtx<'t, Endian> for StringTableHeader {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = StringTableHeader {
+        let data = Self {
             magic: this.gread_with(&mut offset, le)?,
             hash_version: this.gread_with(&mut offset, le)?,
             names_size: this.gread_with(&mut offset, le)?,

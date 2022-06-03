@@ -128,12 +128,12 @@ impl From<u32> for HeaderVersion {
     #[allow(clippy::inconsistent_digit_grouping)]
     fn from(v: u32) -> Self {
         match v {
-            93_08_03 => HeaderVersion::V41,
-            1996_03_07 => HeaderVersion::V50,
-            1997_06_06 => HeaderVersion::V60,
-            1999_09_03 => HeaderVersion::V70,
-            2009_12_01 => HeaderVersion::V110,
-            _ => HeaderVersion::OtherValue(v),
+            93_08_03 => Self::V41,
+            1996_03_07 => Self::V50,
+            1997_06_06 => Self::V60,
+            1999_09_03 => Self::V70,
+            2009_12_01 => Self::V110,
+            _ => Self::OtherValue(v),
         }
     }
 }
@@ -211,7 +211,7 @@ impl DBIHeader {
     }
 
     fn parse_buf(buf: &mut ParseBuffer<'_>) -> Result<Self> {
-        let header = DBIHeader {
+        let header = Self {
             signature: buf.parse_u32()?,
             version: From::from(buf.parse_u32()?),
             age: buf.parse_u32()?,
@@ -308,33 +308,33 @@ pub enum MachineType {
 
 impl fmt::Display for MachineType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            MachineType::Invalid => write!(f, "Invalid"),
-            MachineType::Unknown => write!(f, "Unknown"),
-            MachineType::Am33 => write!(f, "Am33"),
-            MachineType::Amd64 => write!(f, "Amd64"),
-            MachineType::Arm => write!(f, "Arm"),
-            MachineType::Arm64 => write!(f, "Arm64"),
-            MachineType::ArmNT => write!(f, "ArmNT"),
-            MachineType::Ebc => write!(f, "Ebc"),
-            MachineType::X86 => write!(f, "X86"),
-            MachineType::Ia64 => write!(f, "Ia64"),
-            MachineType::M32R => write!(f, "M32R"),
-            MachineType::Mips16 => write!(f, "Mips16"),
-            MachineType::MipsFpu => write!(f, "MipsFpu"),
-            MachineType::MipsFpu16 => write!(f, "MipsFpu16"),
-            MachineType::PowerPC => write!(f, "PowerPC"),
-            MachineType::PowerPCFP => write!(f, "PowerPCFP"),
-            MachineType::R4000 => write!(f, "R4000"),
-            MachineType::RiscV32 => write!(f, "RiscV32"),
-            MachineType::RiscV64 => write!(f, "RiscV64"),
-            MachineType::RiscV128 => write!(f, "RiscV128"),
-            MachineType::SH3 => write!(f, "SH3"),
-            MachineType::SH3DSP => write!(f, "SH3DSP"),
-            MachineType::SH4 => write!(f, "SH4"),
-            MachineType::SH5 => write!(f, "SH5"),
-            MachineType::Thumb => write!(f, "Thumb"),
-            MachineType::WceMipsV2 => write!(f, "WceMipsV2"),
+        match self {
+            Self::Invalid => write!(f, "Invalid"),
+            Self::Unknown => write!(f, "Unknown"),
+            Self::Am33 => write!(f, "Am33"),
+            Self::Amd64 => write!(f, "Amd64"),
+            Self::Arm => write!(f, "Arm"),
+            Self::Arm64 => write!(f, "Arm64"),
+            Self::ArmNT => write!(f, "ArmNT"),
+            Self::Ebc => write!(f, "Ebc"),
+            Self::X86 => write!(f, "X86"),
+            Self::Ia64 => write!(f, "Ia64"),
+            Self::M32R => write!(f, "M32R"),
+            Self::Mips16 => write!(f, "Mips16"),
+            Self::MipsFpu => write!(f, "MipsFpu"),
+            Self::MipsFpu16 => write!(f, "MipsFpu16"),
+            Self::PowerPC => write!(f, "PowerPC"),
+            Self::PowerPCFP => write!(f, "PowerPCFP"),
+            Self::R4000 => write!(f, "R4000"),
+            Self::RiscV32 => write!(f, "RiscV32"),
+            Self::RiscV64 => write!(f, "RiscV64"),
+            Self::RiscV128 => write!(f, "RiscV128"),
+            Self::SH3 => write!(f, "SH3"),
+            Self::SH3DSP => write!(f, "SH3DSP"),
+            Self::SH4 => write!(f, "SH4"),
+            Self::SH5 => write!(f, "SH5"),
+            Self::Thumb => write!(f, "Thumb"),
+            Self::WceMipsV2 => write!(f, "WceMipsV2"),
         }
     }
 }
@@ -342,33 +342,33 @@ impl fmt::Display for MachineType {
 impl From<u16> for MachineType {
     fn from(value: u16) -> Self {
         match value {
-            0xffff => MachineType::Invalid,
-            0x0 => MachineType::Unknown,
-            0x13 => MachineType::Am33,
-            0x8664 => MachineType::Amd64,
-            0x1C0 => MachineType::Arm,
-            0xAA64 => MachineType::Arm64,
-            0x1C4 => MachineType::ArmNT,
-            0xEBC => MachineType::Ebc,
-            0x14C => MachineType::X86,
-            0x200 => MachineType::Ia64,
-            0x9041 => MachineType::M32R,
-            0x266 => MachineType::Mips16,
-            0x366 => MachineType::MipsFpu,
-            0x466 => MachineType::MipsFpu16,
-            0x1F0 => MachineType::PowerPC,
-            0x1F1 => MachineType::PowerPCFP,
-            0x166 => MachineType::R4000,
-            0x5032 => MachineType::RiscV32,
-            0x5064 => MachineType::RiscV64,
-            0x5128 => MachineType::RiscV128,
-            0x1A2 => MachineType::SH3,
-            0x1A3 => MachineType::SH3DSP,
-            0x1A6 => MachineType::SH4,
-            0x1A8 => MachineType::SH5,
-            0x1C2 => MachineType::Thumb,
-            0x169 => MachineType::WceMipsV2,
-            _ => MachineType::Unknown,
+            0xffff => Self::Invalid,
+            0x0 => Self::Unknown,
+            0x13 => Self::Am33,
+            0x8664 => Self::Amd64,
+            0x1C0 => Self::Arm,
+            0xAA64 => Self::Arm64,
+            0x1C4 => Self::ArmNT,
+            0xEBC => Self::Ebc,
+            0x14C => Self::X86,
+            0x200 => Self::Ia64,
+            0x9041 => Self::M32R,
+            0x266 => Self::Mips16,
+            0x366 => Self::MipsFpu,
+            0x466 => Self::MipsFpu16,
+            0x1F0 => Self::PowerPC,
+            0x1F1 => Self::PowerPCFP,
+            0x166 => Self::R4000,
+            0x5032 => Self::RiscV32,
+            0x5064 => Self::RiscV64,
+            0x5128 => Self::RiscV128,
+            0x1A2 => Self::SH3,
+            0x1A3 => Self::SH3DSP,
+            0x1A6 => Self::SH4,
+            0x1A8 => Self::SH5,
+            0x1C2 => Self::Thumb,
+            0x169 => Self::WceMipsV2,
+            _ => Self::Unknown,
         }
     }
 }
@@ -405,7 +405,7 @@ impl DBISectionContribution {
         let module = buf.parse_u16()?.into();
         let _padding = buf.parse_u16()?;
 
-        Ok(DBISectionContribution {
+        Ok(Self {
             offset: PdbInternalSectionOffset { offset, section },
             size,
             characteristics,
@@ -452,7 +452,7 @@ pub(crate) struct DBIModuleInfo {
 
 impl DBIModuleInfo {
     fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
-        Ok(DBIModuleInfo {
+        Ok(Self {
             opened: buf.parse_u32()?,
             section: DBISectionContribution::parse(buf)?,
             flags: buf.parse_u16()?,
@@ -546,9 +546,9 @@ impl From<u32> for DBISectionContributionStreamVersion {
         const V60: u32 = 0xeffe_0000 + 19_970_605;
         const V2: u32 = 0xeffe_0000 + 20_140_516;
         match v {
-            V60 => DBISectionContributionStreamVersion::V60,
-            V2 => DBISectionContributionStreamVersion::V2,
-            _ => DBISectionContributionStreamVersion::OtherValue(v),
+            V60 => Self::V60,
+            V2 => Self::V2,
+            _ => Self::OtherValue(v),
         }
     }
 }
@@ -651,7 +651,7 @@ impl DBIExtraStreams {
             }
         }
 
-        Ok(DBIExtraStreams {
+        Ok(Self {
             fpo: next_index(buf)?,
             exception: next_index(buf)?,
             fixup: next_index(buf)?,

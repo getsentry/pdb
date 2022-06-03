@@ -44,13 +44,13 @@ pub enum FrameType {
 
 impl fmt::Display for FrameType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            FrameType::Unknown => write!(f, "unknown"),
-            FrameType::FPO => write!(f, "fpo"),
-            FrameType::Trap => write!(f, "trap"),
-            FrameType::TSS => write!(f, "tss"),
-            FrameType::Standard => write!(f, "std"),
-            FrameType::FrameData => write!(f, "fdata"),
+        match self {
+            Self::Unknown => write!(f, "unknown"),
+            Self::FPO => write!(f, "fpo"),
+            Self::Trap => write!(f, "trap"),
+            Self::TSS => write!(f, "tss"),
+            Self::Standard => write!(f, "std"),
+            Self::FrameData => write!(f, "fdata"),
         }
     }
 }
@@ -320,7 +320,7 @@ pub struct FrameData {
 
 impl From<&'_ OldFrameData> for FrameData {
     fn from(data: &OldFrameData) -> Self {
-        FrameData {
+        Self {
             ty: data.frame_type(),
             code_start: data.code_start(),
             code_size: data.code_size(),
@@ -340,7 +340,7 @@ impl From<&'_ OldFrameData> for FrameData {
 
 impl From<&'_ NewFrameData> for FrameData {
     fn from(data: &NewFrameData) -> Self {
-        FrameData {
+        Self {
             ty: FrameType::FrameData,
             code_start: data.code_start(),
             code_size: data.code_size(),
