@@ -197,6 +197,8 @@ pub enum SymbolData<'t> {
     DataReference(DataReferenceSymbol<'t>),
     /// Reference to an annotation.
     AnnotationReference(AnnotationReferenceSymbol<'t>),
+    /// Trampoline thunk.
+    Trampoline(TrampolineSymbol),
     /// An exported symbol.
     Export(ExportSymbol<'t>),
     /// A local symbol in optimized code.
@@ -209,15 +211,15 @@ pub enum SymbolData<'t> {
     InlineSiteEnd,
     /// End of a procedure.
     ProcedureEnd,
-    /// A label
+    /// A label.
     Label(LabelSymbol<'t>),
-    /// A block
+    /// A block.
     Block(BlockSymbol<'t>),
-    /// Data allocated relative to a register
+    /// Data allocated relative to a register.
     RegisterRelative(RegisterRelativeSymbol<'t>),
-    /// A thunk
+    /// A thunk.
     Thunk(ThunkSymbol<'t>),
-    /// A block of separated code
+    /// A block of separated code.
     SeparatedCode(SeparatedCodeSymbol),
 }
 
@@ -240,6 +242,7 @@ impl<'t> SymbolData<'t> {
             SymbolData::ProcedureReference(data) => data.name,
             SymbolData::DataReference(data) => data.name,
             SymbolData::AnnotationReference(data) => Some(data.name),
+            SymbolData::Trampoline(_) => None,
             SymbolData::Export(data) => Some(data.name),
             SymbolData::Local(data) => Some(data.name),
             SymbolData::InlineSite(_) => None,
@@ -290,6 +293,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_PROCREF | S_PROCREF_ST | S_LPROCREF | S_LPROCREF_ST => {
                 SymbolData::ProcedureReference(buf.parse_with(kind)?)
             }
+            S_TRAMPOLINE => Self::Trampoline(buf.parse_with(kind)?),
             S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
             S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
             S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
@@ -565,6 +569,62 @@ impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
             symbol_index: buf.parse()?,
             module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
             name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// Subtype of [`TrampolineSymbol`].
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TrampolineType {
+    /// An incremental thunk.
+    Incremental,
+    /// Branch island thunk.
+    BranchIsland,
+    /// An unknown thunk type.
+    Unknown,
+}
+
+/// Trampoline thunk.
+///
+/// Symbol kind `S_TRAMPOLINE`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TrampolineSymbol {
+    /// Trampoline symbol subtype.
+    pub tramp_type: TrampolineType,
+    /// Code size of the thunk.
+    pub size: u16,
+    /// Code offset of the thunk.
+    pub thunk: PdbInternalSectionOffset,
+    /// Code offset of the thunk target.
+    pub target: PdbInternalSectionOffset,
+}
+
+impl TryFromCtx<'_, SymbolKind> for TrampolineSymbol {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'_ [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let tramp_type = match buf.parse::<u16>()? {
+            0x00 => TrampolineType::Incremental,
+            0x01 => TrampolineType::BranchIsland,
+            _ => TrampolineType::Unknown,
+        };
+
+        let size = buf.parse()?;
+        let thunk_offset = buf.parse()?;
+        let target_offset = buf.parse()?;
+        let thunk_section = buf.parse()?;
+        let target_section = buf.parse()?;
+
+        let symbol = Self {
+            tramp_type,
+            size,
+            thunk: PdbInternalSectionOffset::new(thunk_section, thunk_offset),
+            target: PdbInternalSectionOffset::new(target_section, target_offset),
         };
 
         Ok((symbol, buf.pos()))
@@ -1883,6 +1943,33 @@ mod tests {
                     symbol_index: SymbolIndex(1152),
                     module: Some(181),
                     name: Some("capture_current_context".into()),
+                })
+            );
+        }
+
+        #[test]
+        fn kind_112c() {
+            let data = &[44, 17, 0, 0, 5, 0, 5, 0, 0, 0, 32, 124, 0, 0, 2, 0, 2, 0];
+
+            let symbol = Symbol {
+                data,
+                index: SymbolIndex(0),
+            };
+
+            assert_eq!(symbol.raw_kind(), 0x112c);
+            assert_eq!(
+                symbol.parse().expect("parse"),
+                SymbolData::Trampoline(TrampolineSymbol {
+                    tramp_type: TrampolineType::Incremental,
+                    size: 0x5,
+                    thunk: PdbInternalSectionOffset {
+                        offset: 0x5,
+                        section: 0x2
+                    },
+                    target: PdbInternalSectionOffset {
+                        offset: 0x7c20,
+                        section: 0x2
+                    },
                 })
             );
         }
