@@ -1,24 +1,10 @@
 //! Tests that IdInformation works on files where the IPI is missing (empty stream).
 
-use std::path::Path;
-use std::sync::Once;
-
 use pdb::{FallibleIterator, IdIndex, PDB};
 
-static DOWNLOADED: Once = Once::new();
 fn open_file() -> std::fs::File {
     let path = "fixtures/symbol_server/0ea7c70545374958ad3307514bdfc8642-wntdll.pdb";
-    let url = "https://msdl.microsoft.com/download/symbols/wntdll.pdb/0ea7c70545374958ad3307514bdfc8642/wntdll.pdb";
-
-    DOWNLOADED.call_once(|| {
-        if !Path::new(path).exists() {
-            let mut response = reqwest::get(url).expect("GET request");
-            let mut destination = std::fs::File::create(path).expect("create PDB");
-            response.copy_to(&mut destination).expect("download");
-        }
-    });
-
-    std::fs::File::open(path).expect("open PDB")
+    std::fs::File::open(path).expect("missing fixtures, please run scripts/download from the root")
 }
 
 #[test]

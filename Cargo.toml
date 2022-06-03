@@ -20,9 +20,6 @@ uuid = "1.0.0"
 # for examples/
 getopts = "0.2.21"
 
-# for tests/
-reqwest = "0.9.10"
-
 [package.metadata.release]
 pre-release-commit-message = "Release {{version}}"
 tag-name = "{{version}}"
