@@ -31,7 +31,7 @@ pub(crate) struct OMAPRecord {
 impl OMAPRecord {
     /// Create a new OMAP record for the given mapping.
     pub fn new(source_address: u32, target_address: u32) -> Self {
-        OMAPRecord {
+        Self {
             source_address: source_address.to_le(),
             target_address: target_address.to_le(),
         }

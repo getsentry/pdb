@@ -73,7 +73,7 @@ impl ImageSectionHeader {
     pub(crate) fn parse(parse_buffer: &mut ParseBuffer<'_>) -> Result<Self> {
         let name_bytes = parse_buffer.take(8)?;
 
-        Ok(ImageSectionHeader {
+        Ok(Self {
             name: [
                 name_bytes[0],
                 name_bytes[1],

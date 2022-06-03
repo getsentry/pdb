@@ -112,8 +112,8 @@ pub enum Error {
 
 impl std::error::Error for Error {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match *self {
-            Self::IoError(ref error) => Some(error),
+        match self {
+            Self::IoError(error) => Some(error),
             _ => None,
         }
     }
@@ -121,71 +121,71 @@ impl std::error::Error for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> ::std::result::Result<(), fmt::Error> {
-        match *self {
-            Error::PageReferenceOutOfRange(p) => {
+        match self {
+            Self::PageReferenceOutOfRange(p) => {
                 write!(f, "MSF referred to page number ({}) out of range", p)
             }
-            Error::InvalidPageSize(n) => write!(
+            Self::InvalidPageSize(n) => write!(
                 f,
                 "The MSF header specifies an invalid page size ({} bytes)",
                 n
             ),
-            Error::StreamNotFound(s) => {
+            Self::StreamNotFound(s) => {
                 write!(f, "The requested stream ({}) is not stored in this file", s)
             }
-            Error::InvalidStreamLength(s) => write!(
+            Self::InvalidStreamLength(s) => write!(
                 f,
                 "{} stream has an invalid length or alignment for its records",
                 s
             ),
-            Error::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
-            Error::UnimplementedFeature(feature) => {
+            Self::IoError(ref e) => write!(f, "IO error while reading PDB: {}", e),
+            Self::UnimplementedFeature(feature) => {
                 write!(f, "Unimplemented PDB feature: {}", feature)
             }
-            Error::UnimplementedSymbolKind(kind) => write!(
+            Self::UnimplementedSymbolKind(kind) => write!(
                 f,
                 "Support for symbols of kind {:#06x} is not implemented",
                 kind
             ),
-            Error::InvalidTypeInformationHeader(reason) => {
+            Self::InvalidTypeInformationHeader(reason) => {
                 write!(f, "The type information header was invalid: {}", reason)
             }
-            Error::TypeNotFound(type_index) => write!(f, "Type {} not found", type_index),
-            Error::TypeNotIndexed(type_index, indexed_count) => write!(
+            Self::TypeNotFound(type_index) => write!(f, "Type {} not found", type_index),
+            Self::TypeNotIndexed(type_index, indexed_count) => write!(
                 f,
                 "Type {} not indexed (index covers {})",
                 type_index, indexed_count
             ),
-            Error::UnimplementedTypeKind(kind) => write!(
+            Self::UnimplementedTypeKind(kind) => write!(
                 f,
                 "Support for types of kind {:#06x} is not implemented",
                 kind
             ),
-            Error::NotACrossModuleRef(index) => {
+            Self::NotACrossModuleRef(index) => {
                 write!(f, "Type {:#06x} is not a cross module reference", index)
             }
-            Error::CrossModuleRefNotFound(index) => write!(
+            Self::CrossModuleRefNotFound(index) => write!(
                 f,
                 "Cross module reference {:#06x} not found in imports",
                 index
             ),
-            Error::UnexpectedNumericPrefix(prefix) => write!(
+            Self::UnexpectedNumericPrefix(prefix) => write!(
                 f,
                 "Variable-length numeric parsing encountered an unexpected prefix ({:#06x}",
                 prefix
             ),
-            Error::UnimplementedDebugSubsection(kind) => write!(
+            Self::UnimplementedDebugSubsection(kind) => write!(
                 f,
                 "Debug module subsection of kind {:#06x} is not implemented",
                 kind
             ),
-            Error::UnimplementedFileChecksumKind(kind) => {
+            Self::UnimplementedFileChecksumKind(kind) => {
                 write!(f, "Unknown source file checksum kind {}", kind)
             }
-            Error::InvalidFileChecksumOffset(offset) => {
+            Self::InvalidFileChecksumOffset(offset) => {
                 write!(f, "Invalid source file checksum offset {:#x}", offset)
             }
-            Error::UnknownBinaryAnnotation(num) => write!(f, "Unknown binary annotation {}", num),
+            Self::UnknownBinaryAnnotation(num) => write!(f, "Unknown binary annotation {}", num),
             _ => fmt::Debug::fmt(self, f),
         }
     }
@@ -193,7 +193,7 @@ impl fmt::Display for Error {
 
 impl From<io::Error> for Error {
     fn from(e: io::Error) -> Self {
-        Error::IoError(e)
+        Self::IoError(e)
     }
 }
 
@@ -201,8 +201,8 @@ impl From<scroll::Error> for Error {
     fn from(e: scroll::Error) -> Self {
         match e {
             // Convert a couple of scroll errors into EOF.
-            scroll::Error::BadOffset(_) | scroll::Error::TooBig { .. } => Error::UnexpectedEof,
-            _ => Error::ScrollError(e),
+            scroll::Error::BadOffset(_) | scroll::Error::TooBig { .. } => Self::UnexpectedEof,
+            _ => Self::ScrollError(e),
         }
     }
 }
@@ -515,7 +515,7 @@ impl<'t> TryFromCtx<'t, Endian> for PdbInternalSectionOffset {
 
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let mut offset = 0;
-        let data = PdbInternalSectionOffset {
+        let data = Self {
             offset: this.gread_with(&mut offset, le)?,
             section: this.gread_with(&mut offset, le)?,
         };
@@ -853,15 +853,15 @@ pub enum Variant {
 
 impl fmt::Display for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Variant::U8(value) => write!(f, "{}", value),
-            Variant::U16(value) => write!(f, "{}", value),
-            Variant::U32(value) => write!(f, "{}", value),
-            Variant::U64(value) => write!(f, "{}", value),
-            Variant::I8(value) => write!(f, "{}", value),
-            Variant::I16(value) => write!(f, "{}", value),
-            Variant::I32(value) => write!(f, "{}", value),
-            Variant::I64(value) => write!(f, "{}", value),
+        match self {
+            Self::U8(value) => write!(f, "{}", value),
+            Self::U16(value) => write!(f, "{}", value),
+            Self::U32(value) => write!(f, "{}", value),
+            Self::U64(value) => write!(f, "{}", value),
+            Self::I8(value) => write!(f, "{}", value),
+            Self::I16(value) => write!(f, "{}", value),
+            Self::I32(value) => write!(f, "{}", value),
+            Self::I64(value) => write!(f, "{}", value),
         }
     }
 }
@@ -873,14 +873,14 @@ impl<'a> TryFromCtx<'a, Endian> for Variant {
         let mut offset = 0;
 
         let variant = match this.gread_with(&mut offset, le)? {
-            value if value < constants::LF_NUMERIC => Variant::U16(value),
-            constants::LF_CHAR => Variant::U8(this.gread_with(&mut offset, le)?),
-            constants::LF_SHORT => Variant::I16(this.gread_with(&mut offset, le)?),
-            constants::LF_LONG => Variant::I32(this.gread_with(&mut offset, le)?),
-            constants::LF_QUADWORD => Variant::I64(this.gread_with(&mut offset, le)?),
-            constants::LF_USHORT => Variant::U16(this.gread_with(&mut offset, le)?),
-            constants::LF_ULONG => Variant::U32(this.gread_with(&mut offset, le)?),
-            constants::LF_UQUADWORD => Variant::U64(this.gread_with(&mut offset, le)?),
+            value if value < constants::LF_NUMERIC => Self::U16(value),
+            constants::LF_CHAR => Self::U8(this.gread_with(&mut offset, le)?),
+            constants::LF_SHORT => Self::I16(this.gread_with(&mut offset, le)?),
+            constants::LF_LONG => Self::I32(this.gread_with(&mut offset, le)?),
+            constants::LF_QUADWORD => Self::I64(this.gread_with(&mut offset, le)?),
+            constants::LF_USHORT => Self::U16(this.gread_with(&mut offset, le)?),
+            constants::LF_ULONG => Self::U32(this.gread_with(&mut offset, le)?),
+            constants::LF_UQUADWORD => Self::U64(this.gread_with(&mut offset, le)?),
             _ if cfg!(debug_assertions) => unreachable!(),
             other => return Err(Error::UnexpectedNumericPrefix(other)),
         };

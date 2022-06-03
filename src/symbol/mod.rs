@@ -227,33 +227,33 @@ impl<'t> SymbolData<'t> {
     /// Returns the name of this symbol if it has one.
     pub fn name(&self) -> Option<RawString<'t>> {
         match self {
-            SymbolData::ScopeEnd => None,
-            SymbolData::ObjName(data) => Some(data.name),
-            SymbolData::RegisterVariable(_) => None,
-            SymbolData::Constant(data) => Some(data.name),
-            SymbolData::UserDefinedType(data) => Some(data.name),
-            SymbolData::MultiRegisterVariable(_) => None,
-            SymbolData::Data(data) => Some(data.name),
-            SymbolData::Public(data) => Some(data.name),
-            SymbolData::Procedure(data) => Some(data.name),
-            SymbolData::ThreadStorage(data) => Some(data.name),
-            SymbolData::CompileFlags(_) => None,
-            SymbolData::UsingNamespace(data) => Some(data.name),
-            SymbolData::ProcedureReference(data) => data.name,
-            SymbolData::DataReference(data) => data.name,
-            SymbolData::AnnotationReference(data) => Some(data.name),
-            SymbolData::Trampoline(_) => None,
-            SymbolData::Export(data) => Some(data.name),
-            SymbolData::Local(data) => Some(data.name),
-            SymbolData::InlineSite(_) => None,
-            SymbolData::BuildInfo(_) => None,
-            SymbolData::InlineSiteEnd => None,
-            SymbolData::ProcedureEnd => None,
-            SymbolData::Label(data) => Some(data.name),
-            SymbolData::Block(data) => Some(data.name),
-            SymbolData::RegisterRelative(data) => Some(data.name),
-            SymbolData::Thunk(data) => Some(data.name),
-            SymbolData::SeparatedCode(_) => None,
+            Self::ScopeEnd => None,
+            Self::ObjName(data) => Some(data.name),
+            Self::RegisterVariable(_) => None,
+            Self::Constant(data) => Some(data.name),
+            Self::UserDefinedType(data) => Some(data.name),
+            Self::MultiRegisterVariable(_) => None,
+            Self::Data(data) => Some(data.name),
+            Self::Public(data) => Some(data.name),
+            Self::Procedure(data) => Some(data.name),
+            Self::ThreadStorage(data) => Some(data.name),
+            Self::CompileFlags(_) => None,
+            Self::UsingNamespace(data) => Some(data.name),
+            Self::ProcedureReference(data) => data.name,
+            Self::DataReference(data) => data.name,
+            Self::AnnotationReference(data) => Some(data.name),
+            Self::Trampoline(_) => None,
+            Self::Export(data) => Some(data.name),
+            Self::Local(data) => Some(data.name),
+            Self::InlineSite(_) => None,
+            Self::BuildInfo(_) => None,
+            Self::InlineSiteEnd => None,
+            Self::ProcedureEnd => None,
+            Self::Label(data) => Some(data.name),
+            Self::Block(data) => Some(data.name),
+            Self::RegisterRelative(data) => Some(data.name),
+            Self::Thunk(data) => Some(data.name),
+            Self::SeparatedCode(_) => None,
         }
     }
 }
@@ -761,7 +761,7 @@ impl<'t> TryFromCtx<'t, Endian> for ProcedureFlags {
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u8::try_from_ctx(this, le)?;
 
-        let flags = ProcedureFlags {
+        let flags = Self {
             nofpo: value & CV_PFLAG_NOFPO != 0,
             int: value & CV_PFLAG_INT != 0,
             far: value & CV_PFLAG_FAR != 0,
@@ -895,7 +895,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BuildInfoSymbol {
     fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let symbol = BuildInfoSymbol { id: buf.parse()? };
+        let symbol = Self { id: buf.parse()? };
 
         Ok((symbol, buf.pos()))
     }
@@ -946,7 +946,7 @@ impl<'t> TryFromCtx<'t, bool> for CompilerVersion {
     fn try_from_ctx(this: &'t [u8], has_qfe: bool) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let version = CompilerVersion {
+        let version = Self {
             major: buf.parse()?,
             minor: buf.parse()?,
             build: buf.parse()?,
@@ -996,7 +996,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for CompileFlags {
         let raw = this.pread_with::<u16>(0, LE)?;
         this.pread::<u8>(2)?; // unused
 
-        let flags = CompileFlags {
+        let flags = Self {
             edit_and_continue: raw & 1 != 0,
             no_debug_info: (raw >> 1) & 1 != 0,
             link_time_codegen: (raw >> 2) & 1 != 0,
@@ -1123,7 +1123,7 @@ impl<'t> TryFromCtx<'t, Endian> for LocalVariableFlags {
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u16::try_from_ctx(this, le)?;
 
-        let flags = LocalVariableFlags {
+        let flags = Self {
             isparam: value & CV_LVARFLAG_ISPARAM != 0,
             addrtaken: value & CV_LVARFLAG_ADDRTAKEN != 0,
             compgenx: value & CV_LVARFLAG_COMPGENX != 0,
@@ -1194,7 +1194,7 @@ impl<'t> TryFromCtx<'t, Endian> for ExportSymbolFlags {
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u16::try_from_ctx(this, le)?;
 
-        let flags = ExportSymbolFlags {
+        let flags = Self {
             constant: value & 0x01 != 0,
             data: value & 0x02 != 0,
             private: value & 0x04 != 0,
@@ -1440,7 +1440,7 @@ impl<'t> TryFromCtx<'t, Endian> for SeparatedCodeFlags {
     fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
         let (value, size) = u32::try_from_ctx(this, le)?;
 
-        let flags = SeparatedCodeFlags {
+        let flags = Self {
             islexicalscope: value & CV_SEPCODEFLAG_IS_LEXICAL_SCOPE != 0,
             returnstoparent: value & CV_SEPCODEFLAG_RETURNS_TO_PARENT != 0,
         };
@@ -1483,7 +1483,7 @@ impl<'t> TryFromCtx<'t, SymbolKind> for SeparatedCodeSymbol {
         let section = buf.parse()?;
         let parent_section = buf.parse()?;
 
-        let symbol = SeparatedCodeSymbol {
+        let symbol = Self {
             parent,
             end,
             len,

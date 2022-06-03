@@ -96,7 +96,7 @@ mod big {
 
         fn try_from_ctx(this: &'t [u8], le: Endian) -> scroll::Result<(Self, usize)> {
             let mut offset = 0;
-            let data = RawHeader {
+            let data = Self {
                 magic: {
                     let mut tmp = [0; 32];
                     this.gread_inout_with(&mut offset, &mut tmp, le)?;

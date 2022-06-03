@@ -42,15 +42,15 @@ pub enum TypeData<'t> {
 impl<'t> TypeData<'t> {
     /// Return the name of this TypeData, if any
     pub fn name(&self) -> Option<RawString<'t>> {
-        let name = match *self {
-            TypeData::Class(ClassType { ref name, .. })
-            | TypeData::Member(MemberType { ref name, .. })
-            | TypeData::OverloadedMethod(OverloadedMethodType { ref name, .. })
-            | TypeData::StaticMember(StaticMemberType { ref name, .. })
-            | TypeData::Nested(NestedType { ref name, .. })
-            | TypeData::Enumeration(EnumerationType { ref name, .. })
-            | TypeData::Enumerate(EnumerateType { ref name, .. })
-            | TypeData::Union(UnionType { ref name, .. }) => name,
+        let name = match self {
+            Self::Class(ClassType { ref name, .. })
+            | Self::Member(MemberType { ref name, .. })
+            | Self::OverloadedMethod(OverloadedMethodType { ref name, .. })
+            | Self::StaticMember(StaticMemberType { ref name, .. })
+            | Self::Nested(NestedType { ref name, .. })
+            | Self::Enumeration(EnumerationType { ref name, .. })
+            | Self::Enumerate(EnumerateType { ref name, .. })
+            | Self::Union(UnionType { ref name, .. }) => name,
             _ => return None,
         };
 

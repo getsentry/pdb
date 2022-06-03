@@ -161,7 +161,7 @@ pub enum LineInfoKind {
 
 impl Default for LineInfoKind {
     fn default() -> Self {
-        LineInfoKind::Statement
+        Self::Statement
     }
 }
 
