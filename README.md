@@ -14,6 +14,8 @@ support for debugging 16-bit executables, COBOL user-defined types, and myriad
 other features. `pdb` does not understand everything about the PDB format,
 but it does cover enough to be useful for typical programs compiled today.
 
+[Documentation on docs.rs](https://docs.rs/pdb/).
+
 Design
 ---
 
@@ -72,6 +74,12 @@ Run with `cargo run --release --example <name>`:
 
 * [`pdb_lines`](examples/pdb_lines.rs) outputs line number information for every symbol in every module contained in
   a PDB.
+
+Real-world examples:
+
+* [`mstange/pdb-addr2line`](https://github.com/mstange/pdb-addr2line) resolves addresses to function names, and to file name and line number information, with the help of a PDB file. Inline stacks are supported.
+
+* [`getsentry/symbolic`](https://github.com/getsentry/symbolic) is a high-level symbolication library supporting most common debug file formats, demangling, and more.
 
 License
 ---
