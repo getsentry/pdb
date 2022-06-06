@@ -239,10 +239,6 @@ impl SectionCharacteristics {
 impl fmt::Debug for SectionCharacteristics {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if f.alternate() {
-            f.debug_tuple("ImageCharacteristics")
-                .field(&format_args!("{:#x}", self.0))
-                .finish()
-        } else {
             f.debug_struct("ImageCharacteristics")
                 .field("executable", &self.executable())
                 .field("initialized_data", &self.initialized_data())
@@ -267,6 +263,10 @@ impl fmt::Debug for SectionCharacteristics {
                 .field("execute", &self.execute())
                 .field("read", &self.read())
                 .field("write", &self.write())
+                .finish()
+        } else {
+            f.debug_tuple("ImageCharacteristics")
+                .field(&format_args!("{:#x}", self.0))
                 .finish()
         }
     }
