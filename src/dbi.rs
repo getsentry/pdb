@@ -13,7 +13,7 @@ use std::result;
 
 use crate::common::*;
 use crate::msf::*;
-use crate::FallibleIterator;
+use crate::{FallibleIterator, SectionCharacteristics};
 
 /// Provides access to the "DBI" stream inside the PDB.
 ///
@@ -382,11 +382,10 @@ pub struct DBISectionContribution {
     pub offset: PdbInternalSectionOffset,
     /// The size of the contribution, in bytes.
     pub size: u32,
-    /// The characteristics, which map to the `Characteristics` field of
-    /// the [`IMAGE_SECTION_HEADER`] field in binaries.
+    /// The characteristics, which map to [`ImageSectionHeader::characteristics`] in binaries.
     ///
-    /// [`IMAGE_SECTION_HEADER`]: https://msdn.microsoft.com/en-us/library/windows/desktop/ms680341(v=vs.85).aspx
-    pub characteristics: u32,
+    /// [`ImageSectionHeader::characteristics`]: crate::ImageSectionHeader::characteristics
+    pub characteristics: SectionCharacteristics,
     /// Index of the module in [`DebugInformation::modules`] containing the actual symbol.
     pub module: usize,
     /// CRC of the contribution(?)
@@ -401,7 +400,7 @@ impl DBISectionContribution {
         let _padding = buf.parse_u16()?;
         let offset = buf.parse_u32()?;
         let size = buf.parse_u32()?;
-        let characteristics = buf.parse_u32()?;
+        let characteristics = buf.parse()?;
         let module = buf.parse_u16()?.into();
         let _padding = buf.parse_u16()?;
 
