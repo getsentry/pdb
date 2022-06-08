@@ -25,4 +25,4 @@ getopts = "0.2.21"
 pre-release-commit-message = "Release {{version}}"
 tag-name = "{{version}}"
 tag-message = "Release {{version}}"
-no-dev-version = true
+dev-version = false
