@@ -51,7 +51,8 @@ impl<'t> TypeData<'t> {
             | Self::Nested(NestedType { ref name, .. })
             | Self::Enumeration(EnumerationType { ref name, .. })
             | Self::Enumerate(EnumerateType { ref name, .. })
-            | Self::Union(UnionType { ref name, .. }) => name,
+            | Self::Union(UnionType { ref name, .. })
+            | Self::Alias(AliasType { ref name, .. }) => name,
             _ => return None,
         };
 
@@ -340,7 +341,7 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1669-L1673
         LF_ALIAS | LF_ALIAS_ST => Ok(TypeData::Alias(AliasType {
             underlying_type: buf.parse()?,
-            name: parse_string(leaf, &mut buf)?,
+            name: parse_string(leaf, buf)?,
         })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2164-L2170
