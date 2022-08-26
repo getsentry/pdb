@@ -235,6 +235,10 @@ pub enum SymbolData<'t> {
     DefRangeSubFieldRegister(DefRangeSubFieldRegisterSymbol),
     /// A live range of a variable related to a register.
     DefRangeRegisterRelative(DefRangeRegisterRelativeSymbol),
+    /// A base pointer-relative variable.
+    BasePointerRelative(BasePointerRelativeSymbol<'t>),
+    /// Extra frame and proc information.
+    FrameProcedure(FrameProcedureSymbol),
 }
 
 impl<'t> SymbolData<'t> {
@@ -275,6 +279,8 @@ impl<'t> SymbolData<'t> {
             Self::DefRangeFramePointerRelativeFullScope(_) => None,
             Self::DefRangeSubFieldRegister(_) => None,
             Self::DefRangeRegisterRelative(_) => None,
+            Self::BasePointerRelative(data) => Some(data.name),
+            Self::FrameProcedure(_) => None,
         }
     }
 }
@@ -341,6 +347,10 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
                 SymbolData::DefRangeSubFieldRegister(buf.parse_with(kind)?)
             }
             S_DEFRANGE_REGISTER_REL => SymbolData::DefRangeRegisterRelative(buf.parse_with(kind)?),
+            S_BPREL32 | S_BPREL32_ST | S_BPREL32_16t => {
+                SymbolData::BasePointerRelative(buf.parse_with(kind)?)
+            }
+            S_FRAMEPROC => SymbolData::FrameProcedure(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1880,6 +1890,163 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeRegisterRelativeSymbol {
         for _ in 0..gap_count {
             symbol.gaps.push(buf.parse()?);
         }
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L3573
+/// BP-Relative variable
+///
+/// Symbol type `S_BPREL32`, `S_BPREL32_ST`, `S_BPREL16`, `S_BPREL32_16t`
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BasePointerRelativeSymbol<'t> {
+    /// BP-relative offset
+    pub offset: u32,
+    /// Type index or Metadata token
+    pub type_index: TypeIndex,
+    /// Length-prefixed name
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for BasePointerRelativeSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = match kind {
+            S_BPREL32 | S_BPREL32_ST => Self {
+                offset: buf.parse()?,
+                type_index: buf.parse()?,
+                name: parse_symbol_name(&mut buf, kind)?,
+            },
+            S_BPREL32_16t => Self {
+                offset: buf.parse()?,
+                type_index: TypeIndex::from(buf.parse::<u16>()? as u32),
+                name: parse_symbol_name(&mut buf, kind)?,
+            },
+            _ => return Err(Error::UnimplementedSymbolKind(kind)),
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// Frame procedure flags declared in `FrameProcedureSymbol`
+#[non_exhaustive]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameProcedureFlags {
+    /// function uses `_alloca()`
+    has_alloca: bool,
+    /// function uses `setjmp()`
+    has_setjmp: bool,
+    /// function uses `longjmp()`
+    has_longjmp: bool,
+    /// function uses inline asm
+    has_inline_asm: bool,
+    /// function has EH states
+    has_eh: bool,
+    /// function was speced as inline
+    inline_spec: bool,
+    /// function has `SEH`
+    has_seh: bool,
+    /// function is `__declspec(naked)`
+    naked: bool,
+    /// function has buffer security check introduced by `/GS`.
+    security_checks: bool,
+    /// function compiled with `/EHa`
+    async_eh: bool,
+    /// function has `/GS` buffer checks, but stack ordering couldn't be done
+    gs_no_stack_ordering: bool,
+    /// function was inlined within another function
+    was_inlined: bool,
+    /// function is `__declspec(strict_gs_check)`
+    gs_check: bool,
+    /// function is `__declspec(safebuffers)`
+    safe_buffers: bool,
+    /// record function's local pointer explicitly.
+    encoded_local_base_pointer: u8,
+    /// record function's parameter pointer explicitly.
+    encoded_param_base_pointer: u8,
+    /// function was compiled with `PGO/PGU`
+    pogo_on: bool,
+    /// Do we have valid Pogo counts?
+    valid_counts: bool,
+    /// Did we optimize for speed?
+    opt_speed: bool,
+    /// function contains CFG checks (and no write checks)
+    guard_cf: bool,
+    /// function contains CFW checks and/or instrumentation
+    guard_cfw: bool,
+}
+
+impl<'t> TryFromCtx<'t, Endian> for FrameProcedureFlags {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], le: Endian) -> Result<(Self, usize)> {
+        let raw = this.pread_with::<u32>(0, le)?;
+        let flags = Self {
+            has_alloca: raw & 1 != 0,
+            has_setjmp: (raw >> 1) & 1 != 0,
+            has_longjmp: (raw >> 2) & 1 != 0,
+            has_inline_asm: (raw >> 3) & 1 != 0,
+            has_eh: (raw >> 4) & 1 != 0,
+            inline_spec: (raw >> 5) & 1 != 0,
+            has_seh: (raw >> 6) & 1 != 0,
+            naked: (raw >> 7) & 1 != 0,
+            security_checks: (raw >> 8) & 1 != 0,
+            async_eh: (raw >> 9) & 1 != 0,
+            gs_no_stack_ordering: (raw >> 10) & 1 != 0,
+            was_inlined: (raw >> 11) & 1 != 0,
+            gs_check: (raw >> 12) & 1 != 0,
+            safe_buffers: (raw >> 13) & 1 != 0,
+            encoded_local_base_pointer: (raw >> 14) as u8 & 3,
+            encoded_param_base_pointer: (raw >> 16) as u8 & 3,
+            pogo_on: (raw >> 18) & 1 != 0,
+            valid_counts: (raw >> 19) & 1 != 0,
+            opt_speed: (raw >> 20) & 1 != 0,
+            guard_cf: (raw >> 21) & 1 != 0,
+            guard_cfw: (raw >> 22) & 1 != 0,
+        };
+
+        Ok((flags, 4))
+    }
+}
+
+// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4069
+/// Extra frame and proc information
+///
+/// Symbol type `S_FRAMEPROC`
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FrameProcedureSymbol {
+    /// count of bytes of total frame of procedure
+    pub frame_byte_count: u32,
+    /// count of bytes of padding in the frame
+    pub padding_byte_count: u32,
+    /// offset (relative to frame pointer) to where padding starts
+    pub offset_padding: u32,
+    /// count of bytes of callee save registers
+    pub callee_save_registers_byte_count: u32,
+    /// offset of exception handler
+    pub exception_handler_offset: PdbInternalSectionOffset,
+    pub flags: FrameProcedureFlags,
+}
+
+impl TryFromCtx<'_, SymbolKind> for FrameProcedureSymbol {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'_ [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = FrameProcedureSymbol {
+            frame_byte_count: buf.parse()?,
+            padding_byte_count: buf.parse()?,
+            offset_padding: buf.parse()?,
+            callee_save_registers_byte_count: buf.parse()?,
+            exception_handler_offset: buf.parse()?,
+            flags: buf.parse_with(LE)?,
+        };
 
         Ok((symbol, buf.pos()))
     }
