@@ -239,6 +239,8 @@ pub enum SymbolData<'t> {
     BasePointerRelative(BasePointerRelativeSymbol<'t>),
     /// Extra frame and proc information.
     FrameProcedure(FrameProcedureSymbol),
+    /// Indirect call site information.
+    CallSiteInfo(CallSiteInfoSymbol),
 }
 
 impl<'t> SymbolData<'t> {
@@ -281,6 +283,7 @@ impl<'t> SymbolData<'t> {
             Self::DefRangeRegisterRelative(_) => None,
             Self::BasePointerRelative(data) => Some(data.name),
             Self::FrameProcedure(_) => None,
+            Self::CallSiteInfo(_) => None,
         }
     }
 }
@@ -351,6 +354,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
                 SymbolData::BasePointerRelative(buf.parse_with(kind)?)
             }
             S_FRAMEPROC => SymbolData::FrameProcedure(buf.parse_with(kind)?),
+            S_CALLSITEINFO => SymbolData::CallSiteInfo(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1696,7 +1700,7 @@ impl<'t> TryFromCtx<'t, Endian> for RangeFlags {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefRangeRegisterSymbol {
     /// Register to hold the value of the symbol
-    pub register: u16,
+    pub register: Register,
     /// Attribute of the register range.
     pub flags: RangeFlags,
     /// Range of addresses where this program is valid
@@ -1799,7 +1803,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeFramePointerRelativeFullScopeSymbol 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefRangeSubFieldRegisterSymbol {
     /// Register to hold the value of the symbol
-    pub register: u16,
+    pub register: Register,
     /// Attribute of the register range.
     pub flags: RangeFlags,
     /// Offset in parent variable.
@@ -1822,7 +1826,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeSubFieldRegisterSymbol {
                 - 20 /* sizeof(DEFRANGESYMSUBFIELD) */
         ) / 4 /* sizeof(CV_LVAR_ADDR_GAP) */;
 
-        let register: u16 = buf.parse()?;
+        let register: Register = buf.parse()?;
         let flags: RangeFlags = buf.parse()?;
         let offset_padding: u32 = buf.parse()?;
         let offset = offset_padding & 0xFFFu32;
@@ -1849,7 +1853,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeSubFieldRegisterSymbol {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefRangeRegisterRelativeSymbol {
     /// Register to hold the base pointer of the symbol
-    pub base_register: u16,
+    pub base_register: Register,
     /// Spilled member for s.i.
     pub spilled_udt_member: u16,
     /// Offset in parent variable.
@@ -1874,7 +1878,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeRegisterRelativeSymbol {
                 - 20 /* sizeof(DEFRANGESYMSUBFIELD) */
         ) / 4 /* sizeof(CV_LVAR_ADDR_GAP) */;
 
-        let base_register: u16 = buf.parse()?;
+        let base_register: Register = buf.parse()?;
         let bitfield: u16 = buf.parse()?;
         let spilled_udt_member = bitfield & 0x1;
         let offset_parent = (bitfield >> 4) & 0xFFF;
@@ -2047,6 +2051,33 @@ impl TryFromCtx<'_, SymbolKind> for FrameProcedureSymbol {
             exception_handler_offset: buf.parse()?,
             flags: buf.parse_with(LE)?,
         };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+// https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4491
+/// Indirect call site information
+///
+/// Symbol type `S_CALLSITEINFO`
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CallSiteInfoSymbol {
+    /// offset of call site
+    pub offset: PdbInternalSectionOffset,
+    /// type index describing function signature
+    pub type_index: TypeIndex,
+}
+
+impl TryFromCtx<'_, SymbolKind> for CallSiteInfoSymbol {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'_ [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let offset: PdbInternalSectionOffset = buf.parse()?;
+        let _padding = buf.parse::<u16>()?;
+        let type_index: TypeIndex = buf.parse()?;
+        let symbol = Self { offset, type_index };
 
         Ok((symbol, buf.pos()))
     }
