@@ -56,6 +56,7 @@ mod omap;
 mod pdb;
 mod pdbi;
 mod pe;
+pub mod register;
 mod source;
 mod strings;
 mod symbol;

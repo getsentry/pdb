@@ -108,6 +108,9 @@ pub enum Error {
 
     /// An unknown binary annotation was encountered.
     UnknownBinaryAnnotation(u32),
+
+    /// An unknown register index was encountered.
+    UnknownRegister(u16),
 }
 
 impl std::error::Error for Error {
