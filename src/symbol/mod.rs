@@ -1741,7 +1741,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeRegisterSymbol {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefRangeFramePointerRelativeSymbol {
     /// offset to frame pointer
-    pub offset: u32,
+    pub offset: i32,
     /// Range of addresses where this program is valid
     pub range: AddressRange,
     /// The value is not available in following gaps
@@ -1779,7 +1779,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeFramePointerRelativeSymbol {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct DefRangeFramePointerRelativeFullScopeSymbol {
     /// offset to frame pointer
-    pub offset: u32,
+    pub offset: i32,
 }
 
 impl TryFromCtx<'_, SymbolKind> for DefRangeFramePointerRelativeFullScopeSymbol {
@@ -1859,7 +1859,7 @@ pub struct DefRangeRegisterRelativeSymbol {
     /// Offset in parent variable.
     pub offset_parent: u16,
     /// offset to register
-    pub offset_base_pointer: u32,
+    pub offset_base_pointer: i32,
     /// Range of addresses where this program is valid
     pub range: AddressRange,
     /// The value is not available in following gaps
@@ -1906,7 +1906,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeRegisterRelativeSymbol {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BasePointerRelativeSymbol<'t> {
     /// BP-relative offset
-    pub offset: u32,
+    pub offset: i32,
     /// Type index or Metadata token
     pub type_index: TypeIndex,
     /// Length-prefixed name
@@ -2895,7 +2895,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::DefRangeRegister(DefRangeRegisterSymbol {
-                    register: 17,
+                    register: Register(17),
                     flags: RangeFlags { maybe: false },
                     range: AddressRange {
                         offset: PdbInternalSectionOffset {
@@ -2921,7 +2921,7 @@ mod tests {
             assert_eq!(
                 symbol.parse().expect("parse"),
                 SymbolData::DefRangeRegister(DefRangeRegisterSymbol {
-                    register: 0x13,
+                    register: Register(0x13),
                     flags: RangeFlags { maybe: true },
                     range: AddressRange {
                         offset: PdbInternalSectionOffset {
