@@ -95,9 +95,14 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
         }
 
         // https://github.com/microsoft/microsoft-pdb/issues/50#issuecomment-737890766
-        LF_STRUCTURE19 => {
+        LF_CLASS19 | LF_STRUCTURE19 | LF_INTERFACE19 => {
             let mut class = ClassType {
-                kind: ClassKind::Struct,
+                kind: match leaf {
+                    LF_CLASS19 => ClassKind::Class,
+                    LF_STRUCTURE19 => ClassKind::Struct,
+                    LF_INTERFACE19 => ClassKind::Interface,
+                    _ => unreachable!(),
+                },
                 properties: TypeProperties(buf.parse_u32()? as u16),
                 fields: parse_optional_type_index(buf)?,
                 derived_from: parse_optional_type_index(buf)?,
@@ -326,6 +331,24 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
                 count: buf.parse_u16()?,
                 properties: TypeProperties(buf.parse_u16()?),
                 fields: buf.parse()?,
+                size: parse_unsigned(buf)?,
+                name: parse_string(leaf, buf)?,
+                unique_name: None,
+            };
+
+            if union.properties.has_unique_name() {
+                union.unique_name = Some(parse_string(leaf, buf)?);
+            }
+
+            Ok(TypeData::Union(union))
+        }
+
+        // https://github.com/microsoft/microsoft-pdb/issues/50#issuecomment-737890766
+        LF_UNION19 => {
+            let mut union = UnionType {
+                properties: TypeProperties(buf.parse_u32()? as u16),
+                fields: buf.parse()?,
+                count: buf.parse_u16()?,
                 size: parse_unsigned(buf)?,
                 name: parse_string(leaf, buf)?,
                 unique_name: None,
