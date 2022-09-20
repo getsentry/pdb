@@ -373,6 +373,8 @@ pub struct RegisterVariableSymbol<'t> {
     pub register: Register,
     /// Name of the variable.
     pub name: RawString<'t>,
+    /// Parameter slot
+    pub slot: Option<i32>,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for RegisterVariableSymbol<'t> {
@@ -381,13 +383,29 @@ impl<'t> TryFromCtx<'t, SymbolKind> for RegisterVariableSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let symbol = RegisterVariableSymbol {
-            type_index: buf.parse()?,
-            register: buf.parse()?,
-            name: parse_symbol_name(&mut buf, kind)?,
+        let type_index: TypeIndex = buf.parse()?;
+        let register: Register = buf.parse()?;
+        let name: RawString<'t> = parse_symbol_name(&mut buf, kind)?;
+
+        let slot: Option<i32> = if (this.len() as i64 - name.len() as i64 - 8i64) >= 6 {
+            if this[name.len() + 0xb] == 0x24 {
+                Some(ParseBuffer::from(&this[(name.len() + 0xc)..]).parse()?)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
-        Ok((symbol, buf.pos()))
+        Ok((
+            Self {
+                type_index,
+                register,
+                name,
+                slot,
+            },
+            buf.pos(),
+        ))
     }
 }
 
@@ -1199,6 +1217,8 @@ pub struct LocalSymbol<'t> {
     pub flags: LocalVariableFlags,
     /// Name of the symbol.
     pub name: RawString<'t>,
+    /// Parameter slot
+    pub slot: Option<i32>,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
@@ -1207,13 +1227,29 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let symbol = LocalSymbol {
-            type_index: buf.parse()?,
-            flags: buf.parse()?,
-            name: parse_symbol_name(&mut buf, kind)?,
+        let type_index: TypeIndex = buf.parse()?;
+        let flags: LocalVariableFlags = buf.parse()?;
+        let name: RawString<'t> = parse_symbol_name(&mut buf, kind)?;
+
+        let slot: Option<i32> = if (this.len() as i64 - name.len() as i64 - 8i64) >= 6 {
+            if this[name.len() + 0xb] == 0x24 {
+                Some(ParseBuffer::from(&this[(name.len() + 0xc)..]).parse()?)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
-        Ok((symbol, buf.pos()))
+        Ok((
+            Self {
+                type_index,
+                flags,
+                name,
+                slot,
+            },
+            buf.pos(),
+        ))
     }
 }
 
@@ -1363,6 +1399,8 @@ pub struct RegisterRelativeSymbol<'t> {
     pub register: Register,
     /// The variable name.
     pub name: RawString<'t>,
+    /// Parameter slot
+    pub slot: Option<i32>,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for RegisterRelativeSymbol<'t> {
@@ -1371,14 +1409,31 @@ impl<'t> TryFromCtx<'t, SymbolKind> for RegisterRelativeSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let symbol = RegisterRelativeSymbol {
-            offset: buf.parse()?,
-            type_index: buf.parse()?,
-            register: buf.parse()?,
-            name: parse_symbol_name(&mut buf, kind)?,
+        let offset: i32 = buf.parse()?;
+        let type_index: TypeIndex = buf.parse()?;
+        let register: Register = buf.parse()?;
+        let name: RawString<'t> = parse_symbol_name(&mut buf, kind)?;
+
+        let slot: Option<i32> = if (this.len() as i64 - name.len() as i64 - 0xci64) >= 6 {
+            if this[name.len() + 0xf] == 0x24 {
+                Some(ParseBuffer::from(&this[(name.len() + 0x10)..]).parse()?)
+            } else {
+                None
+            }
+        } else {
+            None
         };
 
-        Ok((symbol, buf.pos()))
+        Ok((
+            Self {
+                offset,
+                type_index,
+                register,
+                name,
+                slot,
+            },
+            buf.pos(),
+        ))
     }
 }
 
@@ -1911,6 +1966,8 @@ pub struct BasePointerRelativeSymbol<'t> {
     pub type_index: TypeIndex,
     /// Length-prefixed name
     pub name: RawString<'t>,
+    /// Parameter slot
+    pub slot: Option<i32>,
 }
 
 impl<'t> TryFromCtx<'t, SymbolKind> for BasePointerRelativeSymbol<'t> {
@@ -1919,21 +1976,33 @@ impl<'t> TryFromCtx<'t, SymbolKind> for BasePointerRelativeSymbol<'t> {
     fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let symbol = match kind {
-            S_BPREL32 | S_BPREL32_ST => Self {
-                offset: buf.parse()?,
-                type_index: buf.parse()?,
-                name: parse_symbol_name(&mut buf, kind)?,
-            },
-            S_BPREL32_16t => Self {
-                offset: buf.parse()?,
-                type_index: TypeIndex::from(buf.parse::<u16>()? as u32),
-                name: parse_symbol_name(&mut buf, kind)?,
-            },
+        let offset: i32 = buf.parse()?;
+        let type_index = match kind {
+            S_BPREL32 | S_BPREL32_ST => buf.parse()?,
+            S_BPREL32_16t => TypeIndex::from(buf.parse::<u16>()? as u32),
             _ => return Err(Error::UnimplementedSymbolKind(kind)),
         };
+        let name: RawString<'t> = parse_symbol_name(&mut buf, kind)?;
 
-        Ok((symbol, buf.pos()))
+        let slot: Option<i32> = if (this.len() as i64 - name.len() as i64 - 0xai64) >= 6 {
+            if this[name.len() + 0xd] == 0x24 {
+                Some(ParseBuffer::from(&this[(name.len() + 0xe)..]).parse()?)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        Ok((
+            Self {
+                offset,
+                type_index,
+                name,
+                slot,
+            },
+            buf.pos(),
+        ))
     }
 }
 

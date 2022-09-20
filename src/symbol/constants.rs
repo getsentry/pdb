@@ -144,6 +144,7 @@ pub const S_CONSTANT: u16 = 0x1107; // constant symbol
 pub const S_UDT: u16 = 0x1108; // User defined type
 pub const S_COBOLUDT: u16 = 0x1109; // special UDT for cobol that does not symbol pack
 pub const S_MANYREG: u16 = 0x110a; // multiple register variable
+pub const S_STATICLOCAL: u16 = 0x110a; // ???
 pub const S_BPREL32: u16 = 0x110b; // BP-relative
 pub const S_LDATA32: u16 = 0x110c; // Module-local symbol
 pub const S_GDATA32: u16 = 0x110d; // Global data symbol
@@ -270,6 +271,14 @@ pub const S_LDATA_HLSL32_EX: u16 = 0x1165;
 
 pub const S_FASTLINK: u16 = 0x1167; // generated at link time for /DEBUG:FASTLINK
 pub const S_INLINEES: u16 = 0x1168;
+
+pub const S_BPREL32_INDIR: u16 = 0x1170;
+pub const S_REGREL32_INDIR: u16 = 0x1171;
+
+pub const S_GPROC32EX: u16 = 0x1172;
+pub const S_LPROC32EX: u16 = 0x1173;
+pub const S_GPROC32EX_ID: u16 = 0x1174;
+pub const S_LPROC32EX_ID: u16 = 0x1175;
 
 /// These values correspond to the CV_CPU_TYPE_e enumeration, and are documented
 /// [on MSDN](https://msdn.microsoft.com/en-us/library/b2fc64ek.aspx).
