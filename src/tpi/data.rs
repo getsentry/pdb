@@ -95,12 +95,12 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
         }
 
         // https://github.com/microsoft/microsoft-pdb/issues/50#issuecomment-737890766
-        LF_CLASS19 | LF_STRUCTURE19 | LF_INTERFACE19 => {
+        LF_CLASS2 | LF_STRUCTURE2 | LF_INTERFACE2 => {
             let mut class = ClassType {
                 kind: match leaf {
-                    LF_CLASS19 => ClassKind::Class,
-                    LF_STRUCTURE19 => ClassKind::Struct,
-                    LF_INTERFACE19 => ClassKind::Interface,
+                    LF_CLASS2 => ClassKind::Class,
+                    LF_STRUCTURE2 => ClassKind::Struct,
+                    LF_INTERFACE2 => ClassKind::Interface,
                     _ => unreachable!(),
                 },
                 properties: TypeProperties(buf.parse_u32()? as u16),
@@ -344,7 +344,7 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
         }
 
         // https://github.com/microsoft/microsoft-pdb/issues/50#issuecomment-737890766
-        LF_UNION19 => {
+        LF_UNION2 => {
             let mut union = UnionType {
                 properties: TypeProperties(buf.parse_u32()? as u16),
                 fields: buf.parse()?,
