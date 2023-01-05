@@ -1843,7 +1843,7 @@ impl TryFromCtx<'_, SymbolKind> for DefRangeFramePointerRelativeFullScopeSymbol 
     fn try_from_ctx(this: &'_ [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
-        let mut symbol = Self {
+        let symbol = Self {
             offset: buf.parse()?,
         };
 
@@ -2109,7 +2109,7 @@ pub struct FrameProcedureSymbol {
 impl TryFromCtx<'_, SymbolKind> for FrameProcedureSymbol {
     type Error = Error;
 
-    fn try_from_ctx(this: &'_ [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+    fn try_from_ctx(this: &'_ [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = FrameProcedureSymbol {
@@ -2140,7 +2140,7 @@ pub struct CallSiteInfoSymbol {
 impl TryFromCtx<'_, SymbolKind> for CallSiteInfoSymbol {
     type Error = Error;
 
-    fn try_from_ctx(this: &'_ [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+    fn try_from_ctx(this: &'_ [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
         let mut buf = ParseBuffer::from(this);
 
         let offset: PdbInternalSectionOffset = buf.parse()?;

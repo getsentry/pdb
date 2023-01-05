@@ -44,7 +44,7 @@
 //! # assert!(test().expect("test") > 2000);
 //! ```
 
-#![warn(missing_docs)]
+#![allow(non_upper_case_globals)]
 
 // modules
 mod common;
