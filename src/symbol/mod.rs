@@ -185,6 +185,8 @@ pub enum SymbolData<'t> {
     Public(PublicSymbol<'t>),
     /// A procedure, such as a function or method.
     Procedure(ProcedureSymbol<'t>),
+    /// A managed procedure, such as a function or method.
+    ManagedProcedure(ManagedProcedureSymbol<'t>),
     /// A thread local variable.
     ThreadStorage(ThreadStorageSymbol<'t>),
     /// Flags used to compile a module.
@@ -197,6 +199,8 @@ pub enum SymbolData<'t> {
     DataReference(DataReferenceSymbol<'t>),
     /// Reference to an annotation.
     AnnotationReference(AnnotationReferenceSymbol<'t>),
+    /// Reference to a managed procedure.
+    TokenReference(TokenReferenceSymbol<'t>),
     /// Trampoline thunk.
     Trampoline(TrampolineSymbol),
     /// An exported symbol.
@@ -236,12 +240,14 @@ impl<'t> SymbolData<'t> {
             Self::Data(data) => Some(data.name),
             Self::Public(data) => Some(data.name),
             Self::Procedure(data) => Some(data.name),
+            Self::ManagedProcedure(data) => data.name,
             Self::ThreadStorage(data) => Some(data.name),
             Self::CompileFlags(_) => None,
             Self::UsingNamespace(data) => Some(data.name),
             Self::ProcedureReference(data) => data.name,
             Self::DataReference(data) => data.name,
             Self::AnnotationReference(data) => Some(data.name),
+            Self::TokenReference(data) => Some(data.name),
             Self::Trampoline(_) => None,
             Self::Export(data) => Some(data.name),
             Self::Local(data) => Some(data.name),
@@ -283,6 +289,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
             S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
             | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
+            S_LMANPROC | S_GMANPROC => SymbolData::ManagedProcedure(buf.parse_with(kind)?),
             S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
                 SymbolData::ThreadStorage(buf.parse_with(kind)?)
             }
@@ -296,6 +303,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_TRAMPOLINE => Self::Trampoline(buf.parse_with(kind)?),
             S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
             S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
+            S_TOKENREF => SymbolData::TokenReference(buf.parse_with(kind)?),
             S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
             S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
             S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
@@ -575,6 +583,41 @@ impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
     }
 }
 
+/// Reference to a managed procedure symbol (`S_LMANPROC` or `S_GMANPROC`).
+///
+/// Symbol kind `S_TOKENREF`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TokenReferenceSymbol<'t> {
+    /// SUC of the name.
+    pub sum_name: u32,
+    /// Symbol index of the referenced [`ManagedProcedureSymbol`].
+    ///
+    /// Note that this symbol might be located in a different module.
+    pub symbol_index: SymbolIndex,
+    /// Index of the module in [`DebugInformation::modules`](crate::DebugInformation::modules)
+    /// containing the actual symbol.
+    pub module: Option<usize>,
+    /// Name of the procedure reference.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for TokenReferenceSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = TokenReferenceSymbol {
+            sum_name: buf.parse()?,
+            symbol_index: buf.parse()?,
+            module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 /// Subtype of [`TrampolineSymbol`].
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -834,6 +877,66 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
             offset: buf.parse()?,
             flags: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A managed procedure, such as a function or method.
+/// 
+/// Symbol kinds:
+/// - `S_GMANPROC`, `S_GMANPROCIA64` for global procedures
+/// - `S_LMANPROC`, `S_LMANPROCIA64` for local procedures
+/// 
+/// `S_GMANPROCIA64` and `S_LMANPROCIA64` are only mentioned, there is no available source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ManagedProcedureSymbol<'t> {
+    /// Whether this is a global or local procedure.
+    pub global: bool,
+    /// The parent scope that this procedure is nested in.
+    pub parent: Option<SymbolIndex>,
+    /// The end symbol of this procedure.
+    pub end: SymbolIndex,
+    /// The next procedure symbol.
+    pub next: Option<SymbolIndex>,
+    /// The length of the code block covered by this procedure.
+    pub len: u32,
+    /// Start offset of the procedure's body code, which marks the end of the prologue.
+    pub dbg_start_offset: u32,
+    /// End offset of the procedure's body code, which marks the start of the epilogue.
+    pub dbg_end_offset: u32,
+    /// COM+ metadata token
+    pub token: COMToken,
+    /// Code offset of the start of this procedure.
+    pub offset: PdbInternalSectionOffset,
+    /// Detailed flags of this procedure.
+    pub flags: ProcedureFlags,
+    /// Register return value is in (may not be used for all archs).
+    pub return_register: u16,
+    /// Optional name of the procedure.
+    pub name: Option<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ManagedProcedureSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ManagedProcedureSymbol {
+            global: matches!(kind, S_GMANPROC),
+            parent: parse_optional_index(&mut buf)?,
+            end: buf.parse()?,
+            next: parse_optional_index(&mut buf)?,
+            len: buf.parse()?,
+            dbg_start_offset: buf.parse()?,
+            dbg_end_offset: buf.parse()?,
+            token: buf.parse()?,
+            offset: buf.parse()?,
+            flags: buf.parse()?,
+            return_register: buf.parse()?,
+            name: parse_optional_name(&mut buf, kind)?,
         };
 
         Ok((symbol, buf.pos()))
