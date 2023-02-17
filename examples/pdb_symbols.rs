@@ -32,6 +32,9 @@ fn print_symbol(symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
                 Some(name) => print_row(data.offset, "function", name),
             }
         }
+        pdb::SymbolData::ManagedSlot(data) => {
+            print_row(data.offset, "data", data.name);
+        }
         _ => {
             // ignore everything else
         }

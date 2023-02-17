@@ -207,6 +207,8 @@ pub enum SymbolData<'t> {
     Export(ExportSymbol<'t>),
     /// A local symbol in optimized code.
     Local(LocalSymbol<'t>),
+    /// A managed local variable slot.
+    ManagedSlot(ManagedSlotSymbol<'t>),
     /// Reference to build information.
     BuildInfo(BuildInfoSymbol),
     /// The callsite of an inlined function.
@@ -253,6 +255,7 @@ impl<'t> SymbolData<'t> {
             Self::Trampoline(_) => None,
             Self::Export(data) => Some(data.name),
             Self::Local(data) => Some(data.name),
+            Self::ManagedSlot(data) => Some(data.name),
             Self::InlineSite(_) => None,
             Self::BuildInfo(_) => None,
             Self::InlineSiteEnd => None,
@@ -309,6 +312,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_TOKENREF => SymbolData::TokenReference(buf.parse_with(kind)?),
             S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
             S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
+            S_MANSLOT | S_MANSLOT_ST => SymbolData::ManagedSlot(buf.parse_with(kind)?),
             S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
             S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
@@ -1268,6 +1272,41 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
 
         let symbol = LocalSymbol {
             type_index: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A managed local variable slot.
+/// 
+/// Symbol kind `S_MANSLOT`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ManagedSlotSymbol<'t> {
+    /// Slot index.
+    pub slot: u32,
+    /// Type index or metadata token.
+    pub type_index: TypeIndex,
+    /// First code address where var is live.
+    pub offset: PdbInternalSectionOffset,
+    /// Local variable flags.
+    pub flags: LocalVariableFlags,
+    /// Length-prefixed name of the variable.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ManagedSlotSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ManagedSlotSymbol {
+            slot: buf.parse()?,
+            type_index: buf.parse()?,
+            offset: buf.parse()?,
             flags: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?,
         };
