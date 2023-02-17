@@ -225,6 +225,8 @@ pub enum SymbolData<'t> {
     Thunk(ThunkSymbol<'t>),
     /// A block of separated code.
     SeparatedCode(SeparatedCodeSymbol),
+    /// OEM information.
+    OEM(OemSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -260,6 +262,7 @@ impl<'t> SymbolData<'t> {
             Self::RegisterRelative(data) => Some(data.name),
             Self::Thunk(data) => Some(data.name),
             Self::SeparatedCode(_) => None,
+            Self::OEM(_) => None,
         }
     }
 }
@@ -315,6 +318,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_REGREL32 => SymbolData::RegisterRelative(buf.parse_with(kind)?),
             S_THUNK32 | S_THUNK32_ST => SymbolData::Thunk(buf.parse_with(kind)?),
             S_SEPCODE => SymbolData::SeparatedCode(buf.parse_with(kind)?),
+            S_OEM => SymbolData::OEM(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1596,6 +1600,37 @@ impl<'t> TryFromCtx<'t, SymbolKind> for SeparatedCodeSymbol {
                 offset: parent_offset,
                 section: parent_section,
             },
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// An OEM symbol.
+/// 
+/// Symbol kind `S_OEM`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OemSymbol<'t> {
+    /// OEM's identifier (16B GUID).
+    pub id_oem: RawString<'t>,
+    /// Type index.
+    pub type_index: TypeIndex,
+    /// User data with forced 4B-alignment.
+    /// 
+    /// An array of variable size, currently only the first 4B are parsed.
+    pub rgl: u32,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for OemSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = OemSymbol {
+            id_oem: buf.parse_cstring()?,
+            type_index: buf.parse()?,
+            rgl: buf.parse()?,
         };
 
         Ok((symbol, buf.pos()))
