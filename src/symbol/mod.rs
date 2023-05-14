@@ -229,6 +229,8 @@ pub enum SymbolData<'t> {
     SeparatedCode(SeparatedCodeSymbol),
     /// OEM information.
     OEM(OemSymbol<'t>),
+    /// Environment block split off from S_COMPILE2.
+    EnvBlock(EnvBlockSymbol<'t>)
 }
 
 impl<'t> SymbolData<'t> {
@@ -266,6 +268,7 @@ impl<'t> SymbolData<'t> {
             Self::Thunk(data) => Some(data.name),
             Self::SeparatedCode(_) => None,
             Self::OEM(_) => None,
+            Self::EnvBlock(_) => None,
         }
     }
 }
@@ -323,6 +326,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_THUNK32 | S_THUNK32_ST => SymbolData::Thunk(buf.parse_with(kind)?),
             S_SEPCODE => SymbolData::SeparatedCode(buf.parse_with(kind)?),
             S_OEM => SymbolData::OEM(buf.parse_with(kind)?),
+            S_ENVBLOCK => SymbolData::EnvBlock(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1670,6 +1674,39 @@ impl<'t> TryFromCtx<'t, SymbolKind> for OemSymbol<'t> {
             id_oem: buf.parse_cstring()?,
             type_index: buf.parse()?,
             rgl: buf.parse()?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// Environment block split off from `S_COMPILE2`.
+///
+/// Symbol kind `S_ENVBLOCK`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EnvBlockSymbol<'t> {
+    /// EC flag (previously called `rev`).
+    pub edit_and_continue: bool,
+    /// Sequence of zero-terminated command strings.
+    pub rgsz: Vec<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for EnvBlockSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+        let flags: u8 = buf.parse()?;
+
+        let mut strings: Vec<RawString<'t>> = Vec::new();
+
+        while !buf.is_empty() {
+            strings.push(parse_symbol_name(&mut buf, kind)?);
+        }
+
+        let symbol = EnvBlockSymbol {
+            edit_and_continue: flags & 1 != 0,
+            rgsz: strings,
         };
 
         Ok((symbol, buf.pos()))
