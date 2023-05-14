@@ -233,6 +233,8 @@ pub enum SymbolData<'t> {
     EnvBlock(EnvBlockSymbol<'t>),
     /// A COFF section in a PE executable.
     Section(SectionSymbol<'t>),
+    /// A COFF group.
+    CoffGroup(CoffGroupSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -272,6 +274,7 @@ impl<'t> SymbolData<'t> {
             Self::OEM(_) => None,
             Self::EnvBlock(_) => None,
             Self::Section(data) => Some(data.name),
+            Self::CoffGroup(data) => Some(data.name),
         }
     }
 }
@@ -331,6 +334,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_OEM => SymbolData::OEM(buf.parse_with(kind)?),
             S_ENVBLOCK => SymbolData::EnvBlock(buf.parse_with(kind)?),
             S_SECTION => SymbolData::Section(buf.parse_with(kind)?),
+            S_COFFGROUP => SymbolData::CoffGroup(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1752,6 +1756,42 @@ impl<'t> TryFromCtx<'t, SymbolKind> for SectionSymbol <'t> {
             rva: buf.parse()?,
             cb: buf.parse()?,
             characteristics: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A COFF section in a PE executable.
+///
+/// Symbol kind `S_SECTION`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CoffGroupSymbol<'t> {
+    /// COFF group's CB.
+    pub cb: u32,
+    /// COFF group characteristics.
+    pub characteristics: u32,
+    /// Symbol offset.
+    pub offset: PdbInternalSectionOffset,
+    /// Symbol segment.
+    pub segment: u16,    
+    /// COFF group name.
+    pub name: RawString<'t>
+
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for CoffGroupSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = CoffGroupSymbol {
+            cb: buf.parse()?,
+            characteristics: buf.parse()?,
+            offset: buf.parse()?,
+            segment: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?
         };
 
