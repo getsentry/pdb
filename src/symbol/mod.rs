@@ -230,7 +230,9 @@ pub enum SymbolData<'t> {
     /// OEM information.
     OEM(OemSymbol<'t>),
     /// Environment block split off from S_COMPILE2.
-    EnvBlock(EnvBlockSymbol<'t>)
+    EnvBlock(EnvBlockSymbol<'t>),
+    /// A COFF section in a PE executable.
+    Section(SectionSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -269,6 +271,7 @@ impl<'t> SymbolData<'t> {
             Self::SeparatedCode(_) => None,
             Self::OEM(_) => None,
             Self::EnvBlock(_) => None,
+            Self::Section(data) => Some(data.name),
         }
     }
 }
@@ -327,6 +330,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_SEPCODE => SymbolData::SeparatedCode(buf.parse_with(kind)?),
             S_OEM => SymbolData::OEM(buf.parse_with(kind)?),
             S_ENVBLOCK => SymbolData::EnvBlock(buf.parse_with(kind)?),
+            S_SECTION => SymbolData::Section(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -1707,6 +1711,48 @@ impl<'t> TryFromCtx<'t, SymbolKind> for EnvBlockSymbol <'t> {
         let symbol = EnvBlockSymbol {
             edit_and_continue: flags & 1 != 0,
             rgsz: strings,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A COFF section in a PE executable.
+///
+/// Symbol kind `S_SECTION`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SectionSymbol<'t> {
+    /// Section number.
+    pub isec: u16,
+    ///  Alignment of this section (power of 2).
+    pub align: u8,
+    /// Reserved.  Must be zero.
+    pub reserved: u8,
+    /// Section's RVA.
+    pub rva: u32,
+    /// Section's CB.
+    pub cb: u32,
+    /// Section characteristics.
+    pub characteristics: u32,
+    /// Section name.
+    pub name: RawString<'t>
+
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for SectionSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = SectionSymbol {
+            isec: buf.parse()?,
+            align: buf.parse()?,
+            reserved: buf.parse()?,
+            rva: buf.parse()?,
+            cb: buf.parse()?,
+            characteristics: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?
         };
 
         Ok((symbol, buf.pos()))
