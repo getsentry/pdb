@@ -34,7 +34,7 @@ const IPI_STREAM: u32 = 4;
 #[derive(Debug)]
 pub struct PDB<'s, S> {
     /// `msf` provides access to the underlying data streams
-    msf: Box<dyn Msf<'s, S> + 's>,
+    msf: Box<dyn Msf<'s, S> + Send + 's>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<DBIHeader>,
@@ -42,6 +42,14 @@ pub struct PDB<'s, S> {
     /// Memoize the `dbi::DBIExtraStreams`, since it too contains stream numbers we sometimes need
     dbi_extra_streams: Option<DBIExtraStreams>,
 }
+
+// Assert that the PDB type is Send.
+const _: fn() = || {
+    fn assert<T: ?Sized + Send>() {}
+    // Use a dummy *const () for `S` as that will be !Send and !Sync.
+    // In practice (e.g. to make a PDB) `S` will need to be Send, but it doesn't matter here.
+    assert::<PDB<*const ()>>();
+};
 
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// Create a new `PDB` for a `Source`.
@@ -56,7 +64,10 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::UnrecognizedFileFormat` if the `Source` does not appear to be a PDB file
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange`, `Error::InvalidPageSize` if the PDB file seems corrupt
-    pub fn open(source: S) -> Result<PDB<'s, S>> {
+    pub fn open(source: S) -> Result<PDB<'s, S>>
+    where
+        S: Send,
+    {
         Ok(PDB {
             msf: msf::open_msf(source)?,
             dbi_header: None,
