@@ -268,8 +268,8 @@ where
 /// populated by calling [`ItemFinder::update`] while iterating. There are two typedefs for easier
 /// use:
 ///
-///  - [`TypeFinder`] for finding [`Type`]s in a [`TypeInformation`](crate::TypeInformation) (TPI stream).
-///  - [`IdFinder`] for finding [`Id`]s in a [`IdInformation`](crate::IdInformation) (IPI stream).
+///  - [`TypeFinder`] for finding [`Type`]s in a [`TypeInformation`] (TPI stream).
+///  - [`IdFinder`] for finding [`Id`]s in a [`IdInformation`] (IPI stream).
 ///
 /// `ItemFinder` allocates all the memory it needs when it is first created. The footprint is
 /// directly proportional to the total number of types; see [`ItemInformation::len`].
@@ -434,8 +434,7 @@ where
     }
 }
 
-/// An iterator over items in [`TypeInformation`](crate::TypeInformation) or
-/// [`IdInformation`](crate::IdInformation).
+/// An iterator over items in [`TypeInformation`] or [`IdInformation`].
 ///
 /// The TPI and IPI streams are represented internally as a series of records, each of which have a
 /// length, a kind, and a type-specific field layout. Iteration performance is therefore similar to

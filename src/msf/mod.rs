@@ -293,7 +293,7 @@ mod big {
                 let _ = stream_table.take((stream_count - stream_number - 1) as usize * 4)?;
 
                 // skip the preceding streams' page numbers
-                let _ = stream_table.take((page_numbers_to_skip as usize) * 4)?;
+                let _ = stream_table.take(page_numbers_to_skip * 4)?;
 
                 // we're now at the list of pages for our stream
                 // accumulate them into a PageList

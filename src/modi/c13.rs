@@ -6,8 +6,8 @@ use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
 use crate::modi::{
-    constants, CrossModuleExport, CrossModuleRef, FileChecksum, FileIndex, FileInfo, LineInfo,
-    LineInfoKind, ModuleRef,
+    constants, CrossModuleExport, CrossModuleRef, FileChecksum, FileInfo, LineInfo, LineInfoKind,
+    ModuleRef,
 };
 use crate::symbol::{BinaryAnnotation, BinaryAnnotationsIter, InlineSiteSymbol};
 use crate::FallibleIterator;
@@ -345,6 +345,7 @@ enum LineEntry {
     /// Declares a source line number.
     Number(LineNumberEntry),
     /// Declares a debugging marker.
+    #[allow(dead_code)] // reason = "the inner `LineMarkerEntry` is not (yet) accessed"
     Marker(LineMarkerEntry),
 }
 
@@ -1417,8 +1418,6 @@ impl<'a> LineProgram<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::mem;
 
     use crate::symbol::BinaryAnnotations;
 

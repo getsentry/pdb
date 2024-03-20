@@ -99,7 +99,6 @@ impl PageList {
 #[cfg(test)]
 mod tests {
     use crate::msf::page_list::*;
-    use crate::source::SourceSlice;
 
     #[test]
     fn test_push() {
