@@ -5,8 +5,8 @@ use pdb::FallibleIterator;
 
 type TypeSet = BTreeSet<pdb::TypeIndex>;
 
-pub fn type_name<'p>(
-    type_finder: &pdb::TypeFinder<'p>,
+pub fn type_name(
+    type_finder: &pdb::TypeFinder<'_>,
     type_index: pdb::TypeIndex,
     needed_types: &mut TypeSet,
 ) -> pdb::Result<String> {
@@ -357,8 +357,8 @@ impl<'p> Method<'p> {
     }
 }
 
-fn argument_list<'p>(
-    type_finder: &pdb::TypeFinder<'p>,
+fn argument_list(
+    type_finder: &pdb::TypeFinder<'_>,
     type_index: pdb::TypeIndex,
     needed_types: &mut TypeSet,
 ) -> pdb::Result<Vec<String>> {

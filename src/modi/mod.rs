@@ -49,7 +49,7 @@ impl<'s> ModuleInfo<'s> {
     }
 
     fn lines_data(&self, size: usize) -> &[u8] {
-        let start = self.symbols_size as usize;
+        let start = self.symbols_size;
         &self.stream[start..start + size]
     }
 

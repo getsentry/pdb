@@ -77,7 +77,7 @@ impl fmt::Debug for OMAPRecord {
 impl PartialOrd for OMAPRecord {
     #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.source_address().partial_cmp(&other.source_address())
+        Some(self.cmp(other))
     }
 }
 
@@ -576,8 +576,6 @@ impl PdbInternalSectionOffset {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::mem;
 
     #[test]
     fn test_omap_record() {

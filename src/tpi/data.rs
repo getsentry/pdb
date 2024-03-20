@@ -166,7 +166,7 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
                 attributes: attr,
                 method_type: buf.parse()?,
                 vtable_offset: if attr.is_intro_virtual() {
-                    Some(buf.parse_u32()? as u32)
+                    Some(buf.parse_u32()?)
                 } else {
                     // yes, this is variable length
                     None

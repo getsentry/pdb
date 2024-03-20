@@ -14,7 +14,7 @@ use std::result;
 use std::slice;
 
 use scroll::ctx::TryFromCtx;
-use scroll::{self, Endian, Pread, LE};
+use scroll::{Endian, Pread, LE};
 
 use crate::tpi::constants;
 
@@ -581,7 +581,7 @@ pub trait ItemIndex:
     ///     [`ModuleInfo`](crate::ModuleInfo).  Note that this comparison needs to be done
     ///     case-insensitively as the name in the DBI stream and name table are known to not
     ///     have matching cases.
-    ///  4. Resolve the [`Local`](crate::Local) index into a global one using
+    ///  4. Resolve the [`Local`] index into a global one using
     ///     [`CrossModuleExports`](crate::CrossModuleExports).
     ///
     /// Cross module references are specially formatted indexes with the most significant bit set to
