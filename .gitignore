@@ -1,5 +1,6 @@
 target
 *.iml
 .idea
+.DS_Store
 
 fixtures/symbol_server/*

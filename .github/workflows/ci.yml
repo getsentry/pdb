@@ -2,69 +2,76 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches:
+      - master
+      - "release/**"
   pull_request:
-    branches: [master]
 
 env:
-  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -Dwarnings
 
 jobs:
-  lint:
-    name: Lint
+  lints:
+    name: Style/Linting
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          profile: minimal
-          components: clippy, rustfmt, rust-docs
-          override: true
+      - run: rustup toolchain install stable --profile minimal --component rustfmt --component clippy --no-self-update
+      - uses: Swatinem/rust-cache@v2
 
-      - uses: swatinem/rust-cache@v1
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-features --workspace --tests --examples -- -D clippy::all
 
-      - name: Run Rustfmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+  doc-comments:
+    name: Documentation
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -Dwarnings
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Run Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
-          args: --all-targets --all-features -- -D warnings
+      - run: rustup toolchain install stable --profile minimal --component rust-docs --no-self-update
+      - uses: Swatinem/rust-cache@v2
 
-      - name: Rust Doc Comments
-        uses: actions-rs/cargo@v1
-        env:
-          RUSTDOCFLAGS: -Dwarnings
-        with:
-          command: doc
-          args: --no-deps --document-private-items
+      - run: cargo doc --workspace --all-features --document-private-items --no-deps
 
   test:
-    name: Test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    name: Tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup toolchain install stable --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+
+      - run: scripts/download
+
+      - run: cargo test --workspace --all-features --all-targets
+      - run: cargo test --workspace --all-features --doc
+
+  codecov:
+    name: Code Coverage
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      - uses: actions-rs/toolchain@v1
+      - run: rustup toolchain install stable --profile minimal --component llvm-tools-preview --no-self-update
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      - run: scripts/download
+
+      - run: cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
+
+      - uses: codecov/codecov-action@v3
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
-
-      - uses: swatinem/rust-cache@v1
-
-      - name: Download Fixtures
-        run: scripts/download
-
-      - name: Run Cargo Tests
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
+          files: lcov.info
