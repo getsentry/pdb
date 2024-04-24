@@ -605,6 +605,14 @@ impl_pread!(TypeIndex);
 
 impl ItemIndex for TypeIndex {}
 
+/// COM+ metadata token for managed procedures (`CV_tkn_t`).
+#[derive(Clone, Copy, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct COMToken(pub u32);
+
+impl_convert!(COMToken, u32);
+impl_hex_fmt!(COMToken);
+impl_pread!(COMToken);
+
 /// Index of an [`Id`](crate::Id) in [`IdInformation`](crate::IdInformation) stream.
 ///
 /// If this index is a [cross module reference](ItemIndex::is_cross_module), it must be resolved
