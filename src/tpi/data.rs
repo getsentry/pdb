@@ -619,7 +619,7 @@ impl FieldAttributes {
 
     #[inline]
     pub fn is_pure_virtual(self) -> bool {
-        self.method_properties() == 0x05
+        matches!(self.method_properties(), 0x05 | 0x06)
     }
 
     #[inline]
