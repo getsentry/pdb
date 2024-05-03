@@ -81,13 +81,13 @@ pub enum PrimitiveKind {
     /// Signed 32-bit integer
     Long,
 
-    /// Unsigned 32-bit inteer
+    /// Unsigned 32-bit integer
     ULong,
 
     /// Signed 32-bit integer
     I32,
 
-    /// Unsigned 32-bit inteer
+    /// Unsigned 32-bit integer
     U32,
 
     /// Signed 64-bit integer
