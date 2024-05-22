@@ -5,7 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::common::*;
+use fallible_iterator::FallibleIterator;
+
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
 use crate::framedata::FrameTable;
 use crate::modi::ModuleInfo;
@@ -17,6 +18,7 @@ use crate::source::Source;
 use crate::strings::StringTable;
 use crate::symbol::SymbolTable;
 use crate::tpi::{IdInformation, TypeInformation};
+use crate::{common::*, SectionCharacteristics};
 
 // Some streams have a fixed stream index.
 // http://llvm.org/docs/PDB/index.html
@@ -242,7 +244,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let index = self.extra_streams()?.section_headers;
         let stream = match self.raw_stream(index)? {
             Some(stream) => stream,
-            None => return Ok(None),
+            None => return self.maybe_synthesize_section(),
         };
 
         let mut buf = stream.parse_buffer();
@@ -252,6 +254,67 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         }
 
         Ok(Some(headers))
+    }
+
+    // If there are no section_headers in the file, attempt to synthesize sections
+    // based on the section map. This seems to be necessary to handle NGEN-generated PDB
+    // files (.ni.pdb from Crossgen2).
+    fn maybe_synthesize_section(&mut self) -> Result<Option<Vec<ImageSectionHeader>>> {
+        // If we have OMAP From data, I don't believe we can do this, because the RVAs
+        // won't map. But I'm not 100% sure of that, be conservative.
+        if self.omap_from_src()?.is_some() {
+            return Ok(None);
+        }
+
+        let debug_info = self.debug_information()?;
+        let sec_map = debug_info.section_map()?;
+        if sec_map.sec_count != sec_map.sec_count_log {
+            return Ok(None);
+        }
+        let sec_map = sec_map.collect::<Vec<_>>()?;
+
+        let mut rva = 0x1000u32; // in the absence of explicit section data, this starts at 0x1000
+        let sections = sec_map.into_iter()
+        .filter(|sm| {
+            // the section with a bogus section length also doesn't have any rwx flags,
+            // and has section_type == 2
+            sm.section_type == 1 && // "SEL" section, not ABS (0x2) or GROUP (0x10)
+            sm.section_length != u32::MAX // shouldn't happen, but just in case
+        })
+        .map(|sm| {
+            let mut characteristics = 0u32;
+            if sm.flags & 0x1 != 0 { // R
+                characteristics |= 0x40000000; // IMAGE_SCN_MEM_READ
+            }
+            if sm.flags & 0x2 != 0 { // W
+                characteristics |= 0x80000000; // IMAGE_SCN_MEM_WRITE
+            }
+            if sm.flags & 0x4 != 0 { // X
+                characteristics |= 0x20000000; // IMAGE_SCN_MEM_EXECUTE
+                characteristics |= 0x20; // IMAGE_SCN_CNT_CODE
+            }
+
+            if sm.rva_offset != 0 {
+                eprintln!("pdb: synthesizing section with rva_offset != 0, might not be correct! {:?}", sm);
+            }
+
+            let this_rva = rva + sm.rva_offset;
+            rva = this_rva + sm.section_length;
+            ImageSectionHeader {
+                name: [0; 8],
+                virtual_size: sm.section_length,
+                virtual_address: this_rva,
+                size_of_raw_data: sm.section_length,
+                pointer_to_raw_data: 0,
+                pointer_to_relocations: 0,
+                pointer_to_line_numbers: 0,
+                number_of_relocations: 0,
+                number_of_line_numbers: 0,
+                characteristics: SectionCharacteristics(characteristics),
+            }
+        }).collect::<Vec<_>>();
+
+        Ok(Some(sections))
     }
 
     /// Retrieve the global frame data table.
