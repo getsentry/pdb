@@ -107,6 +107,19 @@ impl<'s> DebugInformation<'s> {
         let contributions_buf = buf.take(self.header.section_contribution_size as usize)?;
         DBISectionContributionIter::parse(contributions_buf.into())
     }
+
+    /// Returns an iterator that can traverse the section map in sequential order. Also known as the "OMF Segment map".
+    pub fn section_map(&self) -> Result<DBISectionMapIter<'_>> {
+        let mut buf = self.stream.parse_buffer();
+        // drop the header, modules list, and section contributions list
+        let offset = self.header_len
+            + self.header.module_list_size as usize
+            + self.header.section_contribution_size as usize;
+
+        buf.take(offset)?;
+        let section_map_buf = buf.take(self.header.section_map_size as usize)?;
+        DBISectionMapIter::parse(section_map_buf.into())
+    }
 }
 
 /// The version of the PDB format.
@@ -581,6 +594,86 @@ impl<'c> FallibleIterator for DBISectionContributionIter<'c> {
             self.buf.parse_u32()?;
         }
         Ok(Some(contribution))
+    }
+}
+
+/// See https://github.com/google/syzygy/blob/8164b24ebde9c5649c9a09e88a7fc0b0fcbd1bc5/syzygy/pdb/pdb_data.h#L172
+/// Also see https://www.virtualbox.org/browser/vbox/trunk/include/iprt/formats/codeview.h?rev=93115#L272
+/// This is also known as OMF Segment Map. In the OMF SegmentMap structure, flags and section_type
+/// are a single 16-bit value.
+#[derive(Debug, Copy, Clone)]
+pub struct DBISectionMapItem {
+    /// flags: 0x1 read, 0x2 write, 0x4 execute, 0x8 32-bit
+    pub flags: u8,
+    /// section_type: 0x1 = SEL, 0x2 = ABS, 0x10 = GROUP
+    pub section_type: u8,
+    /// Overlay number
+    pub overlay: u16,
+    /// group index, 0 if not relevant
+    pub group: u16,
+    /// Technically "frame" in OMF SegmentMap, which is complicated
+    pub section_number: u16,
+    /// Index into name table, or 0xffff
+    pub seg_name_index: u16,
+    /// Index into name table, or 0xffff
+    pub class_name_index: u16,
+    /// RVA offset of this section
+    pub rva_offset: u32,
+    /// Length of this section
+    pub section_length: u32,
+}
+
+impl DBISectionMapItem {
+    fn parse(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+        Ok(Self {
+            flags: buf.parse_u8()?,
+            section_type: buf.parse_u8()?,
+            overlay: buf.parse_u16()?,
+            group: buf.parse_u16()?,
+            section_number: buf.parse_u16()?,
+            seg_name_index: buf.parse_u16()?,
+            class_name_index: buf.parse_u16()?,
+            rva_offset: buf.parse_u32()?,
+            section_length: buf.parse_u32()?,
+        })
+    }
+}
+
+/// A `DBISectionMapIter` iterates over the section map in the DBI section, producing `DBISectionMap`s.
+#[derive(Debug)]
+pub struct DBISectionMapIter<'c> {
+    /// The section count.
+    pub sec_count: u16,
+    /// The logical section count. Typically equals sec_count, if no groups are in use. (?)
+    pub sec_count_log: u16,
+    buf: ParseBuffer<'c>,
+}
+
+impl<'c> DBISectionMapIter<'c> {
+    fn parse(mut buf: ParseBuffer<'c>) -> Result<Self> {
+        let sec_count = buf.parse_u16()?;
+        let sec_count_log = buf.parse_u16()?;
+
+        Ok(Self {
+            buf,
+            sec_count,
+            sec_count_log,
+        })
+    }
+}
+
+impl<'c> FallibleIterator for DBISectionMapIter<'c> {
+    type Item = DBISectionMapItem;
+    type Error = Error;
+
+    fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
+        // see if we're at EOF
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+
+        let segmap = Self::Item::parse(&mut self.buf)?;
+        Ok(Some(segmap))
     }
 }
 
