@@ -345,6 +345,7 @@ enum LineEntry {
     /// Declares a source line number.
     Number(LineNumberEntry),
     /// Declares a debugging marker.
+    #[allow(dead_code)] // reason = "the inner `LineMarkerEntry` is not (yet) accessed"
     Marker(LineMarkerEntry),
 }
 
