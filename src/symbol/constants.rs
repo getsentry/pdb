@@ -483,7 +483,7 @@ impl<'a> TryFromCtx<'a, Endian> for CPUType {
 }
 
 /// These values correspond to the CV_CFL_LANG enumeration, and are documented
-/// [on MSDN](https://msdn.microsoft.com/en-us/library/bw3aekw6.aspx).
+/// [on MSDN](https://learn.microsoft.com/en-us/visualstudio/debugger/debug-interface-access/cv-cfl-lang?view=vs-2022).
 #[non_exhaustive]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SourceLanguage {
