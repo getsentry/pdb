@@ -537,8 +537,6 @@ pub enum SourceLanguage {
     Rust = 0x15,
     /// Application language is Go.
     Go = 0x16,
-
-
     /// The DMD compiler emits 'D' for the CV source language. Microsoft doesn't
     /// have an enumerator for it yet.
     D = 0x44,
@@ -546,32 +544,34 @@ pub enum SourceLanguage {
 
 impl fmt::Display for SourceLanguage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::C => write!(f, "C"),
-            Self::Cpp => write!(f, "Cpp"),
-            Self::Fortran => write!(f, "Fortran"),
-            Self::Masm => write!(f, "Masm"),
-            Self::Pascal => write!(f, "Pascal"),
-            Self::Basic => write!(f, "Basic"),
-            Self::Cobol => write!(f, "Cobol"),
-            Self::Link => write!(f, "Link"),
-            Self::Cvtres => write!(f, "Cvtres"),
-            Self::Cvtpgd => write!(f, "Cvtpgd"),
-            Self::CSharp => write!(f, "CSharp"),
-            Self::VB => write!(f, "VB"),
-            Self::ILAsm => write!(f, "ILAsm"),
-            Self::Java => write!(f, "Java"),
-            Self::JScript => write!(f, "JScript"),
-            Self::MSIL => write!(f, "MSIL"),
-            Self::HLSL => write!(f, "HLSL"),
-            Self::ObjC => write!(f, "ObjC"),
-            Self::ObjCXX => write!(f, "ObjCXX"),
-            Self::Swift => write!(f, "Swift"),
-            Self::AliasObj => write!(f, "AliasObj"),
-            Self::Rust => write!(f, "Rust"),
-            Self::Go => write!(f, "Go"),
-            Self::D => write!(f, "D"),
-        }
+        let str_repr = match self {
+            Self::C => "C",
+            Self::Cpp => "Cpp",
+            Self::Fortran => "Fortran",
+            Self::Masm => "Masm",
+            Self::Pascal => "Pascal",
+            Self::Basic => "Basic",
+            Self::Cobol => "Cobol",
+            Self::Link => "Link",
+            Self::Cvtres => "Cvtres",
+            Self::Cvtpgd => "Cvtpgd",
+            Self::CSharp => "CSharp",
+            Self::VB => "VB",
+            Self::ILAsm => "ILAsm",
+            Self::Java => "Java",
+            Self::JScript => "JScript",
+            Self::MSIL => "MSIL",
+            Self::HLSL => "HLSL",
+            Self::ObjC => "ObjC",
+            Self::ObjCXX => "ObjCXX",
+            Self::Swift => "Swift",
+            Self::AliasObj => "AliasObj",
+            Self::Rust => "Rust",
+            Self::Go => "Go",
+            Self::D => "D",
+        };
+
+        write!(f, "{str_repr}")
     }
 }
 
