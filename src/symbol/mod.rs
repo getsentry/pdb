@@ -185,6 +185,8 @@ pub enum SymbolData<'t> {
     Public(PublicSymbol<'t>),
     /// A procedure, such as a function or method.
     Procedure(ProcedureSymbol<'t>),
+    /// A managed procedure, such as a function or method.
+    ManagedProcedure(ManagedProcedureSymbol<'t>),
     /// A thread local variable.
     ThreadStorage(ThreadStorageSymbol<'t>),
     /// Flags used to compile a module.
@@ -197,12 +199,16 @@ pub enum SymbolData<'t> {
     DataReference(DataReferenceSymbol<'t>),
     /// Reference to an annotation.
     AnnotationReference(AnnotationReferenceSymbol<'t>),
+    /// Reference to a managed procedure.
+    TokenReference(TokenReferenceSymbol<'t>),
     /// Trampoline thunk.
     Trampoline(TrampolineSymbol),
     /// An exported symbol.
     Export(ExportSymbol<'t>),
     /// A local symbol in optimized code.
     Local(LocalSymbol<'t>),
+    /// A managed local variable slot.
+    ManagedSlot(ManagedSlotSymbol<'t>),
     /// Reference to build information.
     BuildInfo(BuildInfoSymbol),
     /// The callsite of an inlined function.
@@ -221,6 +227,14 @@ pub enum SymbolData<'t> {
     Thunk(ThunkSymbol<'t>),
     /// A block of separated code.
     SeparatedCode(SeparatedCodeSymbol),
+    /// OEM information.
+    OEM(OemSymbol<'t>),
+    /// Environment block split off from S_COMPILE2.
+    EnvBlock(EnvBlockSymbol<'t>),
+    /// A COFF section in a PE executable.
+    Section(SectionSymbol<'t>),
+    /// A COFF group.
+    CoffGroup(CoffGroupSymbol<'t>),
 }
 
 impl<'t> SymbolData<'t> {
@@ -236,15 +250,18 @@ impl<'t> SymbolData<'t> {
             Self::Data(data) => Some(data.name),
             Self::Public(data) => Some(data.name),
             Self::Procedure(data) => Some(data.name),
+            Self::ManagedProcedure(data) => data.name,
             Self::ThreadStorage(data) => Some(data.name),
             Self::CompileFlags(_) => None,
             Self::UsingNamespace(data) => Some(data.name),
             Self::ProcedureReference(data) => data.name,
             Self::DataReference(data) => data.name,
             Self::AnnotationReference(data) => Some(data.name),
+            Self::TokenReference(data) => Some(data.name),
             Self::Trampoline(_) => None,
             Self::Export(data) => Some(data.name),
             Self::Local(data) => Some(data.name),
+            Self::ManagedSlot(data) => Some(data.name),
             Self::InlineSite(_) => None,
             Self::BuildInfo(_) => None,
             Self::InlineSiteEnd => None,
@@ -254,6 +271,10 @@ impl<'t> SymbolData<'t> {
             Self::RegisterRelative(data) => Some(data.name),
             Self::Thunk(data) => Some(data.name),
             Self::SeparatedCode(_) => None,
+            Self::OEM(_) => None,
+            Self::EnvBlock(_) => None,
+            Self::Section(data) => Some(data.name),
+            Self::CoffGroup(data) => Some(data.name),
         }
     }
 }
@@ -283,6 +304,7 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_PUB32 | S_PUB32_ST => SymbolData::Public(buf.parse_with(kind)?),
             S_LPROC32 | S_LPROC32_ST | S_GPROC32 | S_GPROC32_ST | S_LPROC32_ID | S_GPROC32_ID
             | S_LPROC32_DPC | S_LPROC32_DPC_ID => SymbolData::Procedure(buf.parse_with(kind)?),
+            S_LMANPROC | S_GMANPROC => SymbolData::ManagedProcedure(buf.parse_with(kind)?),
             S_LTHREAD32 | S_LTHREAD32_ST | S_GTHREAD32 | S_GTHREAD32_ST => {
                 SymbolData::ThreadStorage(buf.parse_with(kind)?)
             }
@@ -296,8 +318,10 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_TRAMPOLINE => Self::Trampoline(buf.parse_with(kind)?),
             S_DATAREF | S_DATAREF_ST => SymbolData::DataReference(buf.parse_with(kind)?),
             S_ANNOTATIONREF => SymbolData::AnnotationReference(buf.parse_with(kind)?),
+            S_TOKENREF => SymbolData::TokenReference(buf.parse_with(kind)?),
             S_EXPORT => SymbolData::Export(buf.parse_with(kind)?),
             S_LOCAL => SymbolData::Local(buf.parse_with(kind)?),
+            S_MANSLOT | S_MANSLOT_ST => SymbolData::ManagedSlot(buf.parse_with(kind)?),
             S_BUILDINFO => SymbolData::BuildInfo(buf.parse_with(kind)?),
             S_INLINESITE | S_INLINESITE2 => SymbolData::InlineSite(buf.parse_with(kind)?),
             S_INLINESITE_END => SymbolData::InlineSiteEnd,
@@ -307,6 +331,10 @@ impl<'t> TryFromCtx<'t> for SymbolData<'t> {
             S_REGREL32 => SymbolData::RegisterRelative(buf.parse_with(kind)?),
             S_THUNK32 | S_THUNK32_ST => SymbolData::Thunk(buf.parse_with(kind)?),
             S_SEPCODE => SymbolData::SeparatedCode(buf.parse_with(kind)?),
+            S_OEM => SymbolData::OEM(buf.parse_with(kind)?),
+            S_ENVBLOCK => SymbolData::EnvBlock(buf.parse_with(kind)?),
+            S_SECTION => SymbolData::Section(buf.parse_with(kind)?),
+            S_COFFGROUP => SymbolData::CoffGroup(buf.parse_with(kind)?),
             other => return Err(Error::UnimplementedSymbolKind(other)),
         };
 
@@ -565,6 +593,41 @@ impl<'t> TryFromCtx<'t, SymbolKind> for AnnotationReferenceSymbol<'t> {
         let mut buf = ParseBuffer::from(this);
 
         let symbol = AnnotationReferenceSymbol {
+            sum_name: buf.parse()?,
+            symbol_index: buf.parse()?,
+            module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// Reference to a managed procedure symbol (`S_LMANPROC` or `S_GMANPROC`).
+///
+/// Symbol kind `S_TOKENREF`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TokenReferenceSymbol<'t> {
+    /// SUC of the name.
+    pub sum_name: u32,
+    /// Symbol index of the referenced [`ManagedProcedureSymbol`].
+    ///
+    /// Note that this symbol might be located in a different module.
+    pub symbol_index: SymbolIndex,
+    /// Index of the module in [`DebugInformation::modules`](crate::DebugInformation::modules)
+    /// containing the actual symbol.
+    pub module: Option<usize>,
+    /// Name of the procedure reference.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for TokenReferenceSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = TokenReferenceSymbol {
             sum_name: buf.parse()?,
             symbol_index: buf.parse()?,
             module: buf.parse::<u16>()?.checked_sub(1).map(usize::from),
@@ -834,6 +897,66 @@ impl<'t> TryFromCtx<'t, SymbolKind> for ProcedureSymbol<'t> {
             offset: buf.parse()?,
             flags: buf.parse()?,
             name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A managed procedure, such as a function or method.
+/// 
+/// Symbol kinds:
+/// - `S_GMANPROC`, `S_GMANPROCIA64` for global procedures
+/// - `S_LMANPROC`, `S_LMANPROCIA64` for local procedures
+/// 
+/// `S_GMANPROCIA64` and `S_LMANPROCIA64` are only mentioned, there is no available source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ManagedProcedureSymbol<'t> {
+    /// Whether this is a global or local procedure.
+    pub global: bool,
+    /// The parent scope that this procedure is nested in.
+    pub parent: Option<SymbolIndex>,
+    /// The end symbol of this procedure.
+    pub end: SymbolIndex,
+    /// The next procedure symbol.
+    pub next: Option<SymbolIndex>,
+    /// The length of the code block covered by this procedure.
+    pub len: u32,
+    /// Start offset of the procedure's body code, which marks the end of the prologue.
+    pub dbg_start_offset: u32,
+    /// End offset of the procedure's body code, which marks the start of the epilogue.
+    pub dbg_end_offset: u32,
+    /// COM+ metadata token
+    pub token: COMToken,
+    /// Code offset of the start of this procedure.
+    pub offset: PdbInternalSectionOffset,
+    /// Detailed flags of this procedure.
+    pub flags: ProcedureFlags,
+    /// Register return value is in (may not be used for all archs).
+    pub return_register: u16,
+    /// Optional name of the procedure.
+    pub name: Option<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ManagedProcedureSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ManagedProcedureSymbol {
+            global: matches!(kind, S_GMANPROC),
+            parent: parse_optional_index(&mut buf)?,
+            end: buf.parse()?,
+            next: parse_optional_index(&mut buf)?,
+            len: buf.parse()?,
+            dbg_start_offset: buf.parse()?,
+            dbg_end_offset: buf.parse()?,
+            token: buf.parse()?,
+            offset: buf.parse()?,
+            flags: buf.parse()?,
+            return_register: buf.parse()?,
+            name: parse_optional_name(&mut buf, kind)?,
         };
 
         Ok((symbol, buf.pos()))
@@ -1169,6 +1292,41 @@ impl<'t> TryFromCtx<'t, SymbolKind> for LocalSymbol<'t> {
     }
 }
 
+/// A managed local variable slot.
+/// 
+/// Symbol kind `S_MANSLOT`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ManagedSlotSymbol<'t> {
+    /// Slot index.
+    pub slot: u32,
+    /// Type index or metadata token.
+    pub type_index: TypeIndex,
+    /// First code address where var is live.
+    pub offset: PdbInternalSectionOffset,
+    /// Local variable flags.
+    pub flags: LocalVariableFlags,
+    /// Length-prefixed name of the variable.
+    pub name: RawString<'t>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for ManagedSlotSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = ManagedSlotSymbol {
+            slot: buf.parse()?,
+            type_index: buf.parse()?,
+            offset: buf.parse()?,
+            flags: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
 // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4456
 /// Flags of an [`ExportSymbol`].
 #[non_exhaustive]
@@ -1493,6 +1651,148 @@ impl<'t> TryFromCtx<'t, SymbolKind> for SeparatedCodeSymbol {
                 offset: parent_offset,
                 section: parent_section,
             },
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// An OEM symbol.
+/// 
+/// Symbol kind `S_OEM`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OemSymbol<'t> {
+    /// OEM's identifier (16B GUID).
+    pub id_oem: RawString<'t>,
+    /// Type index.
+    pub type_index: TypeIndex,
+    /// User data with forced 4B-alignment.
+    /// 
+    /// An array of variable size, currently only the first 4B are parsed.
+    pub rgl: u32,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for OemSymbol<'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], _kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = OemSymbol {
+            id_oem: buf.parse_cstring()?,
+            type_index: buf.parse()?,
+            rgl: buf.parse()?,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// Environment block split off from `S_COMPILE2`.
+///
+/// Symbol kind `S_ENVBLOCK`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EnvBlockSymbol<'t> {
+    /// EC flag (previously called `rev`).
+    pub edit_and_continue: bool,
+    /// Sequence of zero-terminated command strings.
+    pub rgsz: Vec<RawString<'t>>,
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for EnvBlockSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+        let flags: u8 = buf.parse()?;
+
+        let mut strings: Vec<RawString<'t>> = Vec::new();
+
+        while !buf.is_empty() {
+            strings.push(parse_symbol_name(&mut buf, kind)?);
+        }
+
+        let symbol = EnvBlockSymbol {
+            edit_and_continue: flags & 1 != 0,
+            rgsz: strings,
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A COFF section in a PE executable.
+///
+/// Symbol kind `S_SECTION`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SectionSymbol<'t> {
+    /// Section number.
+    pub isec: u16,
+    ///  Alignment of this section (power of 2).
+    pub align: u8,
+    /// Reserved.  Must be zero.
+    pub reserved: u8,
+    /// Section's RVA.
+    pub rva: u32,
+    /// Section's CB.
+    pub cb: u32,
+    /// Section characteristics.
+    pub characteristics: u32,
+    /// Section name.
+    pub name: RawString<'t>
+
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for SectionSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = SectionSymbol {
+            isec: buf.parse()?,
+            align: buf.parse()?,
+            reserved: buf.parse()?,
+            rva: buf.parse()?,
+            cb: buf.parse()?,
+            characteristics: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?
+        };
+
+        Ok((symbol, buf.pos()))
+    }
+}
+
+/// A COFF section in a PE executable.
+///
+/// Symbol kind `S_SECTION`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CoffGroupSymbol<'t> {
+    /// COFF group's CB.
+    pub cb: u32,
+    /// COFF group characteristics.
+    pub characteristics: u32,
+    /// Symbol offset.
+    pub offset: PdbInternalSectionOffset,
+    /// Symbol segment.
+    pub segment: u16,    
+    /// COFF group name.
+    pub name: RawString<'t>
+
+}
+
+impl<'t> TryFromCtx<'t, SymbolKind> for CoffGroupSymbol <'t> {
+    type Error = Error;
+
+    fn try_from_ctx(this: &'t [u8], kind: SymbolKind) -> Result<(Self, usize)> {
+        let mut buf = ParseBuffer::from(this);
+
+        let symbol = CoffGroupSymbol {
+            cb: buf.parse()?,
+            characteristics: buf.parse()?,
+            offset: buf.parse()?,
+            segment: buf.parse()?,
+            name: parse_symbol_name(&mut buf, kind)?
         };
 
         Ok((symbol, buf.pos()))

@@ -1,7 +1,7 @@
 use std::env;
 
 use getopts::Options;
-use pdb::{FallibleIterator, PdbInternalSectionOffset};
+use pdb::{FallibleIterator, PdbInternalSectionOffset, RawString};
 
 fn print_usage(program: &str, opts: Options) {
     let brief = format!("Usage: {} input.pdb", program);
@@ -25,6 +25,15 @@ fn print_symbol(symbol: &pdb::Symbol<'_>) -> pdb::Result<()> {
         }
         pdb::SymbolData::Procedure(data) => {
             print_row(data.offset, "function", data.name);
+        }
+        pdb::SymbolData::ManagedProcedure(data) => {
+            match data.name {
+                None => print_row(data.offset, "function", RawString::from(&b"<empty>"[..])),
+                Some(name) => print_row(data.offset, "function", name),
+            }
+        }
+        pdb::SymbolData::ManagedSlot(data) => {
+            print_row(data.offset, "data", data.name);
         }
         _ => {
             // ignore everything else
