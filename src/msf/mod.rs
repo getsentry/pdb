@@ -338,8 +338,201 @@ mod big {
 }
 
 mod small {
-    pub const MAGIC: &[u8] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47";
-    // TODO: implement SmallMSF
+    use super::*;
+
+    pub const MAGIC: &[u8; 44] = b"Microsoft C/C++ program database 2.00\r\n\x1a\x4a\x47\x00\x00";
+
+    /// The PDB header as stored on disk.
+    ///
+    /// See the Microsoft code for reference: <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/msf/msf.cpp#L933>
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    struct RawHeader {
+        magic: [u8; 44],
+        page_size: u32,
+        free_page_map: u16,
+        pages_used: u16,
+        directory_size: u32,
+        _reserved: u32,
+    }
+
+    impl<'t> TryFromCtx<'t, Endian> for RawHeader {
+        type Error = scroll::Error;
+
+        fn try_from_ctx(
+            this: &'t [u8],
+            le: Endian,
+        ) -> std::result::Result<(Self, usize), Self::Error> {
+            let mut offset = 0;
+            let data = Self {
+                magic: {
+                    let mut tmp = [0; 44];
+                    this.gread_inout_with(&mut offset, &mut tmp, le)?;
+                    tmp
+                },
+                page_size: this.gread_with(&mut offset, le)?,
+                free_page_map: this.gread_with(&mut offset, le)?,
+                pages_used: this.gread_with(&mut offset, le)?,
+                directory_size: this.gread_with(&mut offset, le)?,
+                _reserved: this.gread_with(&mut offset, le)?,
+            };
+            Ok((data, offset))
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SmallMSF<'s, S> {
+        header: Header,
+        source: S,
+        stream_table: StreamTable<'s>,
+    }
+
+    impl<'s, S: Source<'s>> SmallMSF<'s, S> {
+        pub fn new(mut source: S, header_view: Box<dyn SourceView<'_>>) -> Result<SmallMSF<'s, S>> {
+            let mut buf = ParseBuffer::from(header_view.as_slice());
+
+            let header: RawHeader = buf.parse()?;
+
+            if &header.magic != MAGIC {
+                return Err(Error::UnrecognizedFileFormat);
+            }
+
+            // TODO: check if this is correct for small MSF
+            if header.page_size.count_ones() != 1
+                || header.page_size < 0x100
+                || header.page_size > (128 * 0x10000)
+            {
+                return Err(Error::InvalidPageSize(header.page_size as _));
+            }
+
+            let header_object = Header {
+                page_size: header.page_size as _,
+                maximum_valid_page_number: header.pages_used as _,
+            };
+
+            // build the stream table page list
+            let mut stream_table_page_list = PageList::new(header_object.page_size);
+            let mut i = 0;
+
+            while i < header.directory_size {
+                let n = buf.parse_u16()? as u32;
+                stream_table_page_list.push(header_object.validate_page_number(n)?);
+                i += header.page_size;
+            }
+
+            // truncate the stream table page list to the correct size
+            stream_table_page_list.truncate(header.directory_size as _);
+
+            let stream_table_view = view(&mut source, &stream_table_page_list)?;
+
+            Ok(SmallMSF {
+                header: header_object,
+                source,
+                stream_table: StreamTable::Available { stream_table_view },
+            })
+        }
+
+        fn look_up_stream(&mut self, stream_number: u32) -> Result<PageList> {
+            // ensure the stream table is available
+            let StreamTable::Available {
+                ref stream_table_view,
+            } = self.stream_table else {
+                unreachable!()
+            };
+        
+            let stream_table_slice = stream_table_view.as_slice();
+            let mut stream_table = ParseBuffer::from(stream_table_slice);
+
+            // the stream table is structured as:
+            //     stream_count: u16
+            //     reserved: u16
+            //     for _ in 0..stream_count:
+            //         size of stream in bytes: u32 (0xffffffff indicating "stream does not exist")
+            //         reserved: u32
+            //     stream 0: PageNumber: u16
+            //     stream 1: PageNumber: u16, PageNumber: u16
+            //     stream 2: PageNumber: u16, PageNumber: u16, PageNumber; u16, PageNumber: u16, PageNumber: u16
+            //     stream 3: PageNumber: u16, PageNumber: u16, PageNumber; u16, PageNumber: u16
+            //     (number of pages determined by number of bytes)
+
+            let stream_count = stream_table.parse_u16()? as u32;
+            let _reserved = stream_table.parse_u16()?;
+
+            // check if we've already outworn our welcome
+            if stream_number >= stream_count {
+                return Err(Error::StreamNotFound(stream_number));
+            }
+
+            // we now have {stream_count} u32s describing the length of each stream
+
+            // walk over the streams before the requested stream
+            // we need to pay attention to how big each one is, since their page numbers come
+            // before our page numbers in the stream table
+            let mut page_numbers_to_skip: usize = 0;
+
+            for _ in 0..stream_number {
+                let bytes = stream_table.parse_u32()?;
+                let _reserved = stream_table.parse_u32()?;
+
+                if bytes == u32::max_value() {
+                    // stream is not present, ergo nothing to skip
+                } else {
+                    page_numbers_to_skip += self.header.pages_needed_to_store(bytes as usize);
+                }
+            }
+
+            // read our stream's size
+            let bytes_in_stream = stream_table.parse_u32()?;
+            let _reserved = stream_table.parse_u32()?;
+
+            if bytes_in_stream == u32::max_value() {
+                return Err(Error::StreamNotFound(stream_number));
+            }
+
+            let pages_in_stream = self.header.pages_needed_to_store(bytes_in_stream as usize);
+
+            // skip the remaining streams' byte counts
+            let _ = stream_table.take((stream_count - stream_number - 1) as usize * 8)?;
+
+            // skip the preceding streams' page numbers
+            let _ = stream_table.take(page_numbers_to_skip * 2)?;
+
+            // we're now at the list of pages for our stream
+            // accumulate them into a PageList
+            let mut page_list = PageList::new(self.header.page_size);
+
+            for _ in 0..pages_in_stream {
+                let page_number = stream_table.parse_u16()? as u32;
+                page_list.push(self.header.validate_page_number(page_number)?);
+            }
+
+            // truncate to the size of the stream
+            page_list.truncate(bytes_in_stream as usize);
+
+            // done!
+            Ok(page_list)
+        }
+    }
+
+    impl<'s, S: Source<'s>> Msf<'s, S> for SmallMSF<'s, S> {
+        fn get(&mut self, stream_number: u32, limit: Option<usize>) -> Result<Stream<'s>> {
+            // look up the stream
+            let mut page_list = self.look_up_stream(stream_number)?;
+
+            // apply any limits we have
+            if let Some(limit) = limit {
+                page_list.truncate(limit);
+            }
+
+            // now that we know where this stream lives, we can view it
+            let view = view(&mut self.source, &page_list)?;
+
+            // pack it into a Stream
+            let stream = Stream { source_view: view };
+
+            Ok(stream)
+        }
+    }
 }
 
 /// Represents a single Stream within the multi-stream file.
@@ -406,8 +599,9 @@ pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn Msf<'s,
     }
 
     if header_matches(header_view.as_slice(), small::MAGIC) {
-        // sorry
-        return Err(Error::UnimplementedFeature("small MSF file format"));
+        // claimed!
+        let smallmsf = small::SmallMSF::new(source, header_view)?;
+        return Ok(Box::new(smallmsf));
     }
 
     Err(Error::UnrecognizedFileFormat)
