@@ -51,7 +51,10 @@ pub trait Source<'s>: fmt::Debug {
     ///
     /// Note that the SourceView's as_slice() method cannot fail, so `view()` is the time to raise
     /// IO errors.
-    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<dyn SourceView<'s>>, io::Error>;
+    fn view(
+        &mut self,
+        slices: &[SourceSlice],
+    ) -> Result<Box<dyn SourceView<'s> + Send + Sync>, io::Error>;
 }
 
 /// An owned, droppable, read-only view of the source file which can be referenced as a byte slice.
@@ -81,7 +84,10 @@ impl<'s, T> Source<'s> for T
 where
     T: io::Read + io::Seek + fmt::Debug + 's,
 {
-    fn view(&mut self, slices: &[SourceSlice]) -> Result<Box<dyn SourceView<'s>>, io::Error> {
+    fn view(
+        &mut self,
+        slices: &[SourceSlice],
+    ) -> Result<Box<dyn SourceView<'s> + Send + Sync>, io::Error> {
         let len = slices.iter().fold(0, |acc, s| acc + s.size);
 
         let mut v = ReadView {
