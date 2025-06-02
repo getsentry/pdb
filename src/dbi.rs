@@ -88,6 +88,17 @@ impl<'s> DebugInformation<'s> {
         }
     }
 
+    /// Returns whether or not this PDB has been marked as stripped. Stripped PDBs do not contain
+    /// type information, line number information, or per-object CV symbols.
+    /// 
+    /// This flag is set when a PDB is written with [/PDBSTRIPPED] by MSVC.
+    /// 
+    /// [/PDBSTRIPPED]: https://learn.microsoft.com/en-us/cpp/build/reference/pdbstripped-strip-private-symbols?view=msvc-170
+    pub fn is_stripped(&self) -> bool {
+        // flags.fStripped
+        (self.header.flags & 0x2) != 0
+    }
+
     /// Returns an iterator that can traverse the modules list in sequential order.
     pub fn modules(&self) -> Result<ModuleIter<'_>> {
         let mut buf = self.stream.parse_buffer();
