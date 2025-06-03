@@ -55,11 +55,14 @@ enum StreamTable<'s> {
 
     // Given the table location, we can access the stream table itself
     Available {
-        stream_table_view: Box<dyn SourceView<'s>>,
+        stream_table_view: Box<dyn SourceView<'s> + Send>,
     },
 }
 
-fn view<'s>(source: &mut dyn Source<'s>, page_list: &PageList) -> Result<Box<dyn SourceView<'s>>> {
+fn view<'s>(
+    source: &mut dyn Source<'s>,
+    page_list: &PageList,
+) -> Result<Box<dyn SourceView<'s> + Send + Sync>> {
     // view it
     let view = source.view(page_list.source_slices())?;
 
@@ -120,7 +123,10 @@ mod big {
     }
 
     impl<'s, S: Source<'s>> BigMSF<'s, S> {
-        pub fn new(source: S, header_view: Box<dyn SourceView<'_>>) -> Result<BigMSF<'s, S>> {
+        pub fn new(
+            source: S,
+            header_view: Box<dyn SourceView<'_> + Send>,
+        ) -> Result<BigMSF<'s, S>> {
             let mut buf = ParseBuffer::from(header_view.as_slice());
             let header: RawHeader = buf.parse()?;
 
@@ -345,7 +351,7 @@ mod small {
 /// Represents a single Stream within the multi-stream file.
 #[derive(Debug)]
 pub struct Stream<'s> {
-    source_view: Box<dyn SourceView<'s>>,
+    source_view: Box<dyn SourceView<'s> + Send + Sync>,
 }
 
 impl<'s> Stream<'s> {
@@ -380,7 +386,9 @@ fn header_matches(actual: &[u8], expected: &[u8]) -> bool {
     actual.len() >= expected.len() && &actual[0..expected.len()] == expected
 }
 
-pub fn open_msf<'s, S: Source<'s> + 's>(mut source: S) -> Result<Box<dyn Msf<'s, S> + 's>> {
+pub fn open_msf<'s, S: Source<'s> + Send + 's>(
+    mut source: S,
+) -> Result<Box<dyn Msf<'s, S> + Send + 's>> {
     // map the header
     let mut header_location = PageList::new(4096);
     header_location.push(0);
