@@ -626,6 +626,31 @@ impl FieldAttributes {
     pub fn is_intro_virtual(self) -> bool {
         matches!(self.method_properties(), 0x04 | 0x06)
     }
+    
+    #[inline]
+    pub fn is_pseudo(self) -> bool {
+        self.0 & 0x0020 != 0
+    }
+    
+    #[inline]
+    pub fn noinherit(self) -> bool {
+        self.0 & 0x0040 != 0
+    }
+    
+    #[inline]
+    pub fn noconstruct(self) -> bool {
+        self.0 & 0x0080 != 0
+    }
+    
+    #[inline]
+    pub fn is_compgenx(self) -> bool {
+        self.0 & 0x0100 != 0
+    }
+    
+    #[inline]
+    pub fn sealed(self) -> bool {
+        self.0 & 0x0200 != 0
+    }
 
     // TODO
 }
