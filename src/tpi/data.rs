@@ -33,6 +33,7 @@ pub enum TypeData<'t> {
     Enumerate(EnumerateType<'t>),
     Array(ArrayType),
     Union(UnionType<'t>),
+    Alias(AliasType<'t>),
     Bitfield(BitfieldType),
     FieldList(FieldList<'t>),
     ArgumentList(ArgumentList),
@@ -50,7 +51,8 @@ impl<'t> TypeData<'t> {
             | Self::Nested(NestedType { ref name, .. })
             | Self::Enumeration(EnumerationType { ref name, .. })
             | Self::Enumerate(EnumerateType { ref name, .. })
-            | Self::Union(UnionType { ref name, .. }) => name,
+            | Self::Union(UnionType { ref name, .. })
+            | Self::Alias(AliasType { ref name, .. }) => name,
             _ => return None,
         };
 
@@ -335,6 +337,12 @@ pub(crate) fn parse_type_data<'t>(buf: &mut ParseBuffer<'t>) -> Result<TypeData<
 
             Ok(TypeData::Union(union))
         }
+
+        // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L1669-L1673
+        LF_ALIAS | LF_ALIAS_ST => Ok(TypeData::Alias(AliasType {
+            underlying_type: buf.parse()?,
+            name: parse_string(leaf, buf)?,
+        })),
 
         // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L2164-L2170
         LF_BITFIELD => Ok(TypeData::Bitfield(BitfieldType {
@@ -1021,6 +1029,13 @@ pub struct UnionType<'t> {
     pub size: u64,
     pub name: RawString<'t>,
     pub unique_name: Option<RawString<'t>>,
+}
+
+/// The information parsed from a type record with kind `LF_ALIAS` or `LF_ALIAS_ST`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AliasType<'t> {
+    pub underlying_type: TypeIndex,
+    pub name: RawString<'t>,
 }
 
 /// The information parsed from a type record with kind `LF_BITFIELD`.
