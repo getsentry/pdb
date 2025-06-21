@@ -60,6 +60,9 @@ pub enum PrimitiveKind {
     /// "Really a 32-bit char"
     RChar32,
 
+    /// UTF-8 character
+    Char8,
+
     /// Signed 8-bit integer
     I8,
 
@@ -225,6 +228,7 @@ pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
         0x71 => PrimitiveKind::WChar,
         0x7a => PrimitiveKind::RChar16,
         0x7b => PrimitiveKind::RChar32,
+        0x7c => PrimitiveKind::Char8,
 
         0x11 => PrimitiveKind::Short,
         0x21 => PrimitiveKind::UShort,
