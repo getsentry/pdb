@@ -1,0 +1,7 @@
+[package]
+name = "big-msf-rust-fixture"
+version = "0.1.0"
+
+[dependencies]
+ms-pdb-msf = "0.1.7"
+anyhow = "1.0.104"

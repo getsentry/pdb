@@ -50,7 +50,7 @@ fn main() -> pdb::Result<()> {
         match symbol.parse() {
             Ok(pdb::SymbolData::Public(data)) if data.function => {
                 // we found the location of a function!
-                let rva = data.offset.to_rva(&address_map).unwrap_or_default
+                let rva = data.offset.to_rva(&address_map).unwrap_or_default();
                 println!("{} is {}", rva, data.name);
             }
             _ => {}

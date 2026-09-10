@@ -1,14 +1,19 @@
-#[test]
-fn pdb_info() {
-    let file = std::fs::File::open("fixtures/self/foo.pdb").expect("opening file");
+use pdb::{PDBSignature, Result};
+use uuid::Uuid;
 
-    let mut pdb = pdb::PDB::open(file).expect("opening pdb");
-    let pdb_info = pdb.pdb_information().expect("pdb information");
+#[test]
+fn pdb_info() -> Result<()> {
+    let file = std::fs::File::open("fixtures/self/foo.pdb")?;
+    let mut pdb = pdb::PDB::open(file)?;
+    let pdb_info = pdb.pdb_information()?;
 
     assert_eq!(pdb_info.age, 2);
     assert_eq!(
-        pdb_info.guid,
-        "2B3C3FA5-5A2E-44B8-8BBA-C3300FF69F62".parse().unwrap(),
+        pdb_info.guid.unwrap(),
+        "2B3C3FA5-5A2E-44B8-8BBA-C3300FF69F62".parse::<Uuid>().unwrap(),
     );
-    assert_eq!(pdb_info.signature, 0x587B_A621);
+
+    assert_eq!(pdb_info.signature.to_rfc3339().unwrap(), "2017-01-15T16:41:05+00:00");
+
+    Ok(())
 }

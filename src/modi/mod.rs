@@ -1,8 +1,13 @@
-use std::fmt;
+use core::fmt;
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::dbi::Module;
+
+#[cfg(feature = "alloc")]
 use crate::msf::Stream;
+
 use crate::symbol::SymbolIter;
 use crate::FallibleIterator;
 

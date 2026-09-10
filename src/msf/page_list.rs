@@ -1,26 +1,37 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 use crate::msf::PageNumber;
 use crate::source::SourceSlice;
 
-/// Represents a list of `PageNumbers`, which are likely (but not certainly) sequential, and which
-/// will be presented as a slice of `SourceSlice`s.
+/// A list of page numbers that will be presented as a slice of `SourceSlice`s.
+///
+/// `PageList` is used to track which pages in the MSF (Multi-Stream File)
+/// container belong to a particular stream or data block.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct PageList {
+    /// Size of each page in bytes (e.g., 4096)
     page_size: usize,
+    /// The list of contiguous data ranges to read
     source_slices: Vec<SourceSlice>,
+    /// The last page added, used to detect sequential runs
     last_page: Option<PageNumber>,
+    /// Whether this list has been truncated (no more pages can be added)
     truncated: bool,
 }
 
+#[cfg(feature = "alloc")]
 impl PageList {
     /// Create a new PageList for a given page size.
-    pub fn new(page_size: usize) -> Self {
+    pub const fn new(page_size: usize) -> Self {
         Self {
             page_size,
             source_slices: Vec::new(),
@@ -45,13 +56,21 @@ impl PageList {
             let last_slice = self.source_slices.last_mut().unwrap();
             last_slice.size += self.page_size;
         } else {
-            self.source_slices.push(SourceSlice {
+            let slice = SourceSlice {
                 offset: (self.page_size as u64) * u64::from(page),
                 size: self.page_size,
-            });
+            };
+            self.source_slices.push(slice);
         }
 
         self.last_page = Some(page);
+    }
+
+    /// Extend the PageList with multiple pages.
+    pub fn extend(&mut self, pages: impl IntoIterator<Item = PageNumber>) {
+        for page in pages {
+            self.push(page);
+        }
     }
 
     /// Truncate the `PageList` to request only a certain number of bytes, regardless of how many
@@ -61,8 +80,8 @@ impl PageList {
         let mut bytes = bytes;
         let mut new_slices: Vec<SourceSlice> = Vec::new();
 
-        for slice in &self.source_slices {
-            let mut slice: SourceSlice = *slice;
+        for slice in self.source_slices.iter().copied() {
+            let mut slice: SourceSlice = slice;
             if bytes > 0 {
                 // we need something from this slice
                 // restrict this slice to the number of bytes remaining
@@ -70,13 +89,9 @@ impl PageList {
                     slice.size = bytes;
                 }
 
-                // keep it
                 new_slices.push(slice);
-
-                // subtract the number of bytes in this slice
                 bytes -= slice.size;
             } else {
-                // we're done
                 break;
             }
         }
@@ -91,13 +106,14 @@ impl PageList {
     }
 
     /// Return a slice of SourceSlices.
-    pub fn source_slices(&self) -> &[SourceSlice] {
+    pub const fn source_slices(&self) -> &[SourceSlice] {
         self.source_slices.as_slice()
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
+    use alloc::vec;
     use crate::msf::page_list::*;
 
     #[test]
@@ -176,15 +192,9 @@ mod tests {
     #[test]
     fn test_truncate() {
         let mut list = PageList::new(4096);
-        list.push(0);
-        list.push(1);
-        list.push(4);
-        list.push(5);
-        list.push(2);
-        list.push(2);
+        list.extend([0, 1, 4, 5, 2, 2]);
         assert_eq!(list.len(), 24576);
 
-        // truncation should do nothing when it's truncating more than is described
         list.truncate(25000);
         let expected = vec![
             SourceSlice {
@@ -207,7 +217,6 @@ mod tests {
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 24576);
 
-        // it's usually employed to reduce the size of the last slice...
         list.truncate(24000);
         let expected = vec![
             SourceSlice {
@@ -230,7 +239,6 @@ mod tests {
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 24000);
 
-        // ...but it should be able to lop off entire slices too
         list.truncate(10000);
         let expected = vec![
             SourceSlice {
@@ -260,7 +268,6 @@ mod tests {
         assert_eq!(list.source_slices(), expected.as_slice());
         assert_eq!(list.len(), 10000);
 
-        // finally, we should be able to truncate the entire PageList down to nothing
         list.truncate(0);
         assert_eq!(list.source_slices().len(), 0);
         assert_eq!(list.len(), 0);

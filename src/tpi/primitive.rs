@@ -1,4 +1,4 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -6,6 +6,8 @@
 // copied, modified, or distributed except according to those terms.
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::tpi::data::TypeData;
 
 // References for primitive types:
@@ -188,6 +190,7 @@ pub enum Indirection {
     Near128,
 }
 
+#[cfg(feature = "alloc")]
 pub fn type_data_for_primitive(index: TypeIndex) -> Result<TypeData<'static>> {
     // https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L326-L750
 

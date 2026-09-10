@@ -7,14 +7,21 @@
 
 //! Utilities for translating addresses between PDB offsets and _Relative Virtual Addresses_ (RVAs).
 
-use std::cmp::{self, Ordering};
-use std::fmt;
-use std::iter::FusedIterator;
-use std::mem;
-use std::ops::Range;
+use core::cmp::{self, Ordering};
+use core::fmt;
+use core::iter::FusedIterator;
+use core::mem;
+use core::ops::Range;
+use core::slice::Iter;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::msf::Stream;
+
 use crate::pe::ImageSectionHeader;
 
 /// A address translation record from an `OMAPTable`.
@@ -118,14 +125,12 @@ impl Ord for OMAPRecord {
 /// binary search implementation seems appropriate.
 ///
 /// [module level documentation]: self
-pub(crate) struct OMAPTable<'s> {
-    stream: Stream<'s>,
-}
+pub(crate) struct OMAPTable<'s>(Stream<'s>);
 
 impl<'s> OMAPTable<'s> {
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         match cast_aligned::<OMAPRecord>(stream.as_slice()) {
-            Some(_) => Ok(OMAPTable { stream }),
+            Some(_) => Ok(OMAPTable(stream)),
             None => Err(Error::InvalidStreamLength("OMAP")),
         }
     }
@@ -134,7 +139,7 @@ impl<'s> OMAPTable<'s> {
     #[inline]
     pub fn records(&self) -> &[OMAPRecord] {
         // alignment is checked during parsing, unwrap is safe.
-        cast_aligned(self.stream.as_slice()).unwrap()
+        cast_aligned(self.0.as_slice()).unwrap()
     }
 
     /// Look up `source_address` to yield a target address.
@@ -193,7 +198,7 @@ impl fmt::Debug for OMAPTable<'_> {
 /// An iterator over mapped target ranges in an OMAP.
 pub(crate) struct RangeIter<'t> {
     /// Iterator over subsequent OMAP records.
-    records: std::slice::Iter<'t, OMAPRecord>,
+    records: Iter<'t, OMAPRecord>,
     /// The record that spans the current start address.
     record: OMAPRecord,
     /// The start address of the current subrange.
@@ -387,6 +392,7 @@ impl FusedIterator for PdbInternalRvaRangeIter<'_> {}
 /// [Vulcan research project]: https://research.microsoft.com/pubs/69850/tr-2001-50.pdf
 /// [Microsoft Binary Technologies Projects]: https://microsoft.com/windows/cse/bit_projects.mspx
 /// [1997 reference material]: https://www.microsoft.com/msj/0597/hood0597.aspx
+#[cfg(feature = "alloc")]
 #[derive(Debug, Default)]
 pub struct AddressMap<'s> {
     pub(crate) original_sections: Vec<ImageSectionHeader>,
@@ -395,6 +401,7 @@ pub struct AddressMap<'s> {
     pub(crate) original_to_transformed: Option<OMAPTable<'s>>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'s> AddressMap<'s> {
     /// Resolves actual ranges in the executable's address space.
     ///
@@ -443,6 +450,7 @@ fn get_virtual_address(sections: &[ImageSectionHeader], section: u16, offset: u3
         .map(|section| section.virtual_address + offset)
 }
 
+#[cfg(feature = "alloc")]
 impl Rva {
     /// Resolves a PDB-internal Relative Virtual Address.
     ///
@@ -481,6 +489,7 @@ impl Rva {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl PdbInternalRva {
     /// Resolves an actual Relative Virtual Address in the executable's address space.
     pub fn to_rva(self, translator: &AddressMap<'_>) -> Option<Rva> {
@@ -511,6 +520,7 @@ impl PdbInternalRva {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl SectionOffset {
     /// Resolves an actual Relative Virtual Address in the executable's address space.
     pub fn to_rva(self, translator: &AddressMap<'_>) -> Option<Rva> {
@@ -546,6 +556,7 @@ impl SectionOffset {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl PdbInternalSectionOffset {
     /// Resolves an actual Relative Virtual Address in the executable's address space.
     pub fn to_rva(self, translator: &AddressMap<'_>) -> Option<Rva> {
@@ -573,9 +584,10 @@ impl PdbInternalSectionOffset {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
+    use alloc::vec;
 
     #[test]
     fn test_omap_record() {

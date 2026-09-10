@@ -9,7 +9,7 @@
 
 // PDBs contain PE section headers in one or two streams. `pdb::pe` is responsible for parsing them.
 
-use std::fmt;
+use core::fmt;
 
 use scroll::ctx::TryFromCtx;
 use scroll::Endian;
@@ -346,16 +346,7 @@ impl ImageSectionHeader {
         let name_bytes = parse_buffer.take(8)?;
 
         Ok(Self {
-            name: [
-                name_bytes[0],
-                name_bytes[1],
-                name_bytes[2],
-                name_bytes[3],
-                name_bytes[4],
-                name_bytes[5],
-                name_bytes[6],
-                name_bytes[7],
-            ],
+            name: core::array::from_fn(|i| name_bytes[i]),
             virtual_size: parse_buffer.parse_u32()?,
             virtual_address: parse_buffer.parse_u32()?,
             size_of_raw_data: parse_buffer.parse_u32()?,
@@ -378,7 +369,7 @@ impl ImageSectionHeader {
 
         // The spec guarantees that the name is a proper UTF-8 string.
         // TODO: Look up long names from the string table.
-        std::str::from_utf8(&self.name[0..end]).unwrap_or("")
+        core::str::from_utf8(&self.name[0..end]).unwrap_or("")
     }
 }
 
@@ -411,10 +402,12 @@ impl fmt::Debug for ImageSectionHeader {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
-
+    use alloc::vec::Vec;
+    use alloc::vec;
+    
     #[test]
     fn test_section_characteristics() {
         let bytes: Vec<u8> = vec![0x40, 0x00, 0x00, 0xC8];

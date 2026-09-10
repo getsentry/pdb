@@ -7,11 +7,14 @@
 
 //! Facilities for parsing legacy FPO and FrameData streams.
 
-use std::cmp::Ordering;
-use std::fmt;
+use core::cmp::Ordering;
+use core::fmt;
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::msf::Stream;
+
 use crate::FallibleIterator;
 
 /// A compiler specific frame type.
@@ -83,16 +86,25 @@ impl fmt::Display for FrameType {
 ///
 /// [`struct tagFRAMEDATA`]: https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/include/cvinfo.h#L4635
 #[repr(C)]
-struct NewFrameData {
-    code_start: u32,
-    code_size: u32,
-    locals_size: u32,
-    params_size: u32,
-    max_stack_size: u32,
-    frame_func: u32,
-    prolog_size: u16,
-    saved_regs_size: u16,
-    flags: u32,
+pub struct NewFrameData {
+    /// Starting RVA of the function
+    pub code_start: u32,
+    /// Size of the function code in bytes
+    pub code_size: u32,
+    /// Size of local variables in bytes
+    pub locals_size: u32,
+    /// Size of parameters in bytes
+    pub params_size: u32,
+    /// Maximum stack size used by the function
+    pub max_stack_size: u32,
+    /// Frame function index
+    pub frame_func: u32,
+    /// Size of prolog in bytes
+    pub prolog_size: u16,
+    /// Size of saved registers area
+    pub saved_regs_size: u16,
+    /// Flags (has SEH, has EH, is function start)
+    pub flags: u32,
 }
 
 impl NewFrameData {
@@ -100,47 +112,47 @@ impl NewFrameData {
         PdbInternalRva(u32::from_le(self.code_start))
     }
 
-    pub fn code_size(&self) -> u32 {
+    pub const fn code_size(&self) -> u32 {
         u32::from_le(self.code_size)
     }
 
-    pub fn locals_size(&self) -> u32 {
+    pub const fn locals_size(&self) -> u32 {
         u32::from_le(self.locals_size)
     }
 
-    pub fn params_size(&self) -> u32 {
+    pub const fn params_size(&self) -> u32 {
         u32::from_le(self.params_size)
     }
 
-    pub fn max_stack_size(&self) -> u32 {
+    pub const fn max_stack_size(&self) -> u32 {
         u32::from_le(self.max_stack_size)
     }
 
-    pub fn frame_func(&self) -> StringRef {
+    pub const fn frame_func(&self) -> StringRef {
         StringRef(u32::from_le(self.frame_func))
     }
 
-    pub fn prolog_size(&self) -> u16 {
+    pub const fn prolog_size(&self) -> u16 {
         u16::from_le(self.prolog_size)
     }
 
-    pub fn saved_regs_size(&self) -> u16 {
+    pub const fn saved_regs_size(&self) -> u16 {
         u16::from_le(self.saved_regs_size)
     }
 
-    pub fn has_seh(&self) -> bool {
+    pub const fn has_seh(&self) -> bool {
         self.flags() & 1 != 0
     }
 
-    pub fn has_eh(&self) -> bool {
+    pub const fn has_eh(&self) -> bool {
         self.flags() & 2 != 0
     }
 
-    pub fn is_function_start(&self) -> bool {
+    pub const fn is_function_start(&self) -> bool {
         self.flags() & 4 != 0
     }
 
-    fn flags(&self) -> u32 {
+    const fn flags(&self) -> u32 {
         u32::from_le(self.flags)
     }
 }
@@ -583,7 +595,7 @@ impl<'s> FrameTable<'s> {
 mod tests {
     use super::*;
 
-    use std::mem;
+    use core::mem;
 
     #[test]
     fn test_new_frame_data() {

@@ -1,6 +1,12 @@
-use std::fmt;
-use std::mem;
-use std::slice;
+use core::fmt;
+use core::mem;
+use core::mem::replace;
+use core::mem::transmute;
+use core::slice;
+use core::slice::Iter;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 use scroll::{ctx::TryFromCtx, Endian, Pread};
 
@@ -38,7 +44,7 @@ enum DebugSubsectionKind {
 impl DebugSubsectionKind {
     fn parse(value: u32) -> Result<Option<Self>> {
         if (0xf1..=0xfd).contains(&value) {
-            Ok(Some(unsafe { std::mem::transmute(value) }))
+            Ok(Some(unsafe { transmute(value) }))
         } else if value == constants::DEBUG_S_IGNORE {
             Ok(None)
         } else {
@@ -164,7 +170,7 @@ impl<'a> TryFromCtx<'a, DebugInlineeLinesHeader> for InlineeSourceLine<'a> {
 
         let extra_files = if header.has_extra_files() {
             let file_count = buf.parse::<u32>()? as usize;
-            buf.take(file_count * std::mem::size_of::<u32>())?
+            buf.take(file_count * size_of::<u32>())?
         } else {
             &[]
         };
@@ -491,18 +497,18 @@ impl<'t> TryFromCtx<'t, Endian> for DebugLinesBlockHeader {
 impl DebugLinesBlockHeader {
     /// The byte size of all line and column records combined.
     fn data_size(&self) -> usize {
-        self.block_size as usize - std::mem::size_of::<Self>()
+        self.block_size as usize - size_of::<Self>()
     }
 
     /// The byte size of all line number entries combined.
     fn line_size(&self) -> usize {
-        self.num_lines as usize * std::mem::size_of::<LineNumberHeader>()
+        self.num_lines as usize * size_of::<LineNumberHeader>()
     }
 
     /// The byte size of all column number entries combined.
     fn column_size(&self, subsection: DebugLinesHeader) -> usize {
         if subsection.has_columns() {
-            self.num_lines as usize * std::mem::size_of::<ColumnNumberEntry>()
+            self.num_lines as usize * size_of::<ColumnNumberEntry>()
         } else {
             0
         }
@@ -588,7 +594,7 @@ impl FileChecksumKind {
     /// Parses the checksum kind from its raw value.
     fn parse(value: u8) -> Result<Self> {
         if value <= 3 {
-            Ok(unsafe { std::mem::transmute(value) })
+            Ok(unsafe { transmute(value) })
         } else {
             Err(Error::UnimplementedFileChecksumKind(value))
         }
@@ -751,11 +757,13 @@ impl<'a> DebugCrossScopeImportsSubsection<'a> {
 ///
 /// This can be used to resolve cross module references. See [`ItemIndex::is_cross_module`] for more
 /// information.
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug, Default)]
 pub struct CrossModuleImports<'a> {
     modules: Vec<CrossScopeImportModule<'a>>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> CrossModuleImports<'a> {
     /// Creates `CrossModuleImports` from the imports debug subsection.
     fn from_section(section: DebugCrossScopeImportsSubsection<'a>) -> Result<Self> {
@@ -921,11 +929,13 @@ impl<'a> FallibleIterator for CrossModuleExportIter<'a> {
 ///
 /// Other modules can import types and ids from this module by using [cross module
 /// references](ItemIndex::is_cross_module).
+#[cfg(feature = "alloc")]
 #[derive(Clone, Debug, Default)]
 pub struct CrossModuleExports {
     raw_exports: Vec<RawCrossScopeExport>,
 }
 
+#[cfg(feature = "alloc")]
 impl CrossModuleExports {
     fn from_section(section: DebugCrossScopeExportsSubsection<'_>) -> Result<Self> {
         let raw_exports = section.exports().collect()?;
@@ -985,7 +995,7 @@ impl CrossModuleExports {
 #[derive(Clone)]
 pub struct LineIterator<'a> {
     /// Iterator over all subsections in the current module.
-    sections: std::slice::Iter<'a, DebugLinesSubsection<'a>>,
+    sections: Iter<'a, DebugLinesSubsection<'a>>,
     /// Iterator over all blocks in the current lines subsection.
     blocks: DebugLinesBlockIterator<'a>,
     /// Iterator over lines in the current block.
@@ -1033,7 +1043,7 @@ impl<'a> FallibleIterator for LineIterator<'a> {
                     kind: line_entry.kind,
                 };
 
-                let mut last_info = match std::mem::replace(&mut self.last_info, Some(line_info)) {
+                let mut last_info = match replace(&mut self.last_info, Some(line_info)) {
                     Some(last_info) => last_info,
                     None => continue,
                 };
@@ -1223,7 +1233,7 @@ impl<'a> FallibleIterator for InlineeLineIterator<'a> {
 
             // Finish the previous record and emit it. The current record is stored so that the
             // length can be inferred from subsequent operators or the next line info.
-            if let Some(last_info) = std::mem::replace(&mut self.last_info, Some(line_info)) {
+            if let Some(last_info) = replace(&mut self.last_info, Some(line_info)) {
                 return Ok(Some(last_info));
             }
         }
@@ -1313,11 +1323,13 @@ impl<'a> FallibleIterator for FileIterator<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
 pub struct LineProgram<'a> {
     file_checksums: DebugFileChecksumsSubsection<'a>,
     line_sections: Vec<DebugLinesSubsection<'a>>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> LineProgram<'a> {
     pub(crate) fn parse(data: &'a [u8]) -> Result<Self> {
         let mut file_checksums = DebugFileChecksumsSubsection::default();
@@ -1415,7 +1427,7 @@ impl<'a> LineProgram<'a> {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use super::*;
 

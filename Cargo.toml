@@ -13,12 +13,20 @@ exclude = [
 ]
 
 [dependencies]
-fallible-iterator = "0.2.0"
-scroll = "0.11.0"
-uuid = "1.0.0"
+fallible-iterator = "0.3.0"
+scroll = "0.13.0"
+uuid = "1.26.0"
+memchr = { version = "2", default-features = false }
+chrono = { version = "0.4.45", default-features = false, optional = true }
+
+[features]
+default = ["std", "chrono"]
+chrono = ["dep:chrono"]
+alloc = ["chrono?/alloc"]
+std = ["alloc"]
+nightly = []
 
 [dev-dependencies]
-# for examples/
 getopts = "0.2.21"
 
 [package.metadata.release]
