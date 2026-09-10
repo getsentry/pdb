@@ -1,4 +1,4 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -43,36 +43,77 @@
 //! # }
 //! # assert!(test().expect("test") > 2000);
 //! ```
-
+#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(feature = "nightly", feature(core_io))]
+#![cfg_attr(feature = "nightly", feature(alloc_io))]
 #![warn(missing_docs)]
+#![allow(unused)]
 
-// modules
+#[cfg(feature = "alloc")]
+extern crate alloc;
+
+// #[cfg(not(feature = "alloc"))]
+pub mod noalloc;
+
+mod constants;
 mod common;
+
+#[cfg(not(feature = "nightly"))]
+mod io;
+
+#[cfg(feature = "nightly")]
+mod io {
+    pub use core::io::*;
+    pub use core::io::Error as IoError;
+    pub use alloc::io::Read;
+}
+
 mod dbi;
+
+#[cfg(feature = "alloc")]
 mod framedata;
+
+#[cfg(feature = "alloc")]
 mod modi;
+
 mod msf;
+
+#[cfg(feature = "alloc")]
 mod omap;
+
 mod pdb;
 mod pdbi;
 mod pe;
 mod source;
 mod strings;
 mod symbol;
+
 mod tpi;
 
-// exports
+#[cfg(feature = "alloc")]
+pub use crate::msf::*;
+
+pub use crate::constants::*;
 pub use crate::common::*;
+
 pub use crate::dbi::*;
+
+#[cfg(feature = "alloc")]
 pub use crate::framedata::*;
+
+#[cfg(feature = "alloc")]
 pub use crate::modi::*;
+
+#[cfg(feature = "alloc")]
 pub use crate::omap::*;
+
 pub use crate::pdb::*;
 pub use crate::pdbi::*;
 pub use crate::pe::*;
 pub use crate::source::*;
 pub use crate::strings::*;
 pub use crate::symbol::*;
+
 pub use crate::tpi::*;
 
 // re-export FallibleIterator for convenience

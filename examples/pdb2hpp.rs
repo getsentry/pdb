@@ -184,13 +184,13 @@ impl<'p> Class<'p> {
                 // find the method list
                 match type_finder.find(data.method_list)?.parse()? {
                     pdb::TypeData::MethodList(method_list) => {
-                        for pdb::MethodListEntry {
+                        for &pdb::MethodListEntry {
                             attributes,
                             method_type,
                             ..
-                        } in method_list.methods
+                        } in method_list.iter()
                         {
-                            // hooray
+    
                             let method = Method::find(
                                 data.name,
                                 attributes,
@@ -365,7 +365,7 @@ fn argument_list(
     match type_finder.find(type_index)?.parse()? {
         pdb::TypeData::ArgumentList(data) => {
             let mut args: Vec<String> = Vec::new();
-            for arg_type in data.arguments {
+            for &arg_type in data.iter() {
                 args.push(type_name(type_finder, arg_type, needed_types)?);
             }
             Ok(args)

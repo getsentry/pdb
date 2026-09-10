@@ -1,40 +1,71 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use crate::common::*;
+use crate::{PdbHeaderVersion, common::*};
 
-// OFFCB:
+/// A slice descriptor referencing a portion of a stream.
+///
+/// Contains an offset and size pair used to locate data within the TPI stream.
+/// The offset is stored as a signed 32-bit value (matching the original PDB
+/// implementation's "long" type), while the size is unsigned.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Slice {
-    pub offset: i32, // technically a "long", but... 32 bits for life?
+    /// Offset into the stream (signed 32-bit, from the original PDB code)
+    pub offset: i32,
+    /// Size of the slice in bytes
     pub size: u32,
 }
 
-// HDR:
-//   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/tpi.h#L45
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Header {
-    pub version: u32,
-    pub header_size: u32,
-    pub minimum_index: u32,
-    pub maximum_index: u32,
-    pub gprec_size: u32,
-    pub tpi_hash_stream: u16,
-    pub tpi_hash_pad_stream: u16,
-    pub hash_key_size: u32,
-    pub hash_bucket_size: u32,
-    pub hash_values: Slice,
-    pub ti_off: Slice,
-    pub hash_adj: Slice, // "offcb of hash head list, maps (hashval,ti), where ti is the head of the hashval chain."
+impl Slice {
+    pub const fn default() -> Self {
+        Self { offset: 0, size: 0 }
+    }
 }
 
-impl Header {
-    pub(crate) fn empty() -> Self {
-        let empty_slice = Slice { offset: 0, size: 0 };
+/// TPI (Type Provider Index) stream header.
+///
+/// Contains metadata about the type information stream, including version
+/// information, type index ranges, and hash table layout for fast type lookup.
+///
+/// # Reference
+///
+/// Based on the Microsoft PDB implementation:
+/// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/tpi.h#L45>
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct TPIHeader {
+     /// TPI stream version number
+    pub version: u32,
+    /// Size of this header in bytes
+    pub header_size: u32,
+    /// First valid type index
+    pub minimum_index: u32,
+    /// Last valid type index
+    pub maximum_index: u32,
+    /// Size of the global type record buffer
+    pub gprec_size: u32,
+    /// Stream containing the type hash table
+    pub tpi_hash_stream: u16,
+    /// Stream containing hash table padding
+    pub tpi_hash_pad_stream: u16,
+    /// Size of hash keys in bytes
+    pub hash_key_size: u32,
+    /// Number of buckets in the hash table
+    pub hash_bucket_size: u32,
+    /// Hash values array
+    pub hash_values: Slice,
+    /// Type index offset table
+    pub ti_off: Slice,
+    /// Hash chain heads: maps (hash value, type index) to the head of each hash chain
+    pub hash_adj: Slice,
+}
+
+impl TPIHeader {
+    pub(crate) const fn empty() -> Self {
+        let empty_slice = Slice::default();
 
         Self {
             version: 0,
@@ -62,8 +93,19 @@ impl Header {
             return Ok(Self::empty());
         }
 
+        let version: u32 = buf.parse()?;
+
+        // Reject streams whose first 4 bytes aren't a recognized PDB stream version.
+        // This catches things like VC6's stream 4 (a hash table, not an IPI stream)
+        // which would otherwise be mis-parsed as a TPI header.
+        if matches!(PdbHeaderVersion::from(version), PdbHeaderVersion::OtherValue(_)) {
+            return Err(Error::InvalidTypeInformationHeader(
+                "unrecognized type information stream version",
+            ));
+        }
+
         let header = Self {
-            version: buf.parse()?,
+            version,
             header_size: buf.parse()?,
             minimum_index: buf.parse()?,
             maximum_index: buf.parse()?,
@@ -86,8 +128,6 @@ impl Header {
             },
         };
 
-        // we read 56 bytes
-        // make sure that's okay
         let bytes_read = buf.pos() as u32;
         if header.header_size < bytes_read {
             return Err(Error::InvalidTypeInformationHeader(
@@ -99,10 +139,8 @@ impl Header {
             ));
         }
 
-        // consume anything else the header says belongs to the header
         buf.take((header.header_size - bytes_read) as usize)?;
 
-        // do some final validations
         if header.minimum_index < 4096 {
             return Err(Error::InvalidTypeInformationHeader(
                 "minimum type index is < 4096",
@@ -114,7 +152,6 @@ impl Header {
             ));
         }
 
-        // success
         Ok(header)
     }
 }

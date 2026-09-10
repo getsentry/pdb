@@ -1,3 +1,10 @@
+
+#[cfg(feature = "alloc")]
+use alloc::vec;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 use crate::common::*;
 use crate::FallibleIterator;
 
@@ -109,7 +116,7 @@ pub enum BinaryAnnotation {
 
 impl BinaryAnnotation {
     /// Does this annotation emit a line info?
-    pub fn emits_line_info(self) -> bool {
+    pub const fn emits_line_info(self) -> bool {
         matches!(
             self,
             BinaryAnnotation::ChangeCodeOffset(..)
@@ -121,30 +128,29 @@ impl BinaryAnnotation {
 
 /// An iterator over binary annotations used by `S_INLINESITE`.
 #[derive(Clone, Debug, Default)]
-pub struct BinaryAnnotationsIter<'t> {
-    buffer: ParseBuffer<'t>,
-}
+pub struct BinaryAnnotationsIter<'t>(ParseBuffer<'t>);
 
 impl<'t> BinaryAnnotationsIter<'t> {
     /// Parse a compact version of an unsigned integer.
     ///
     /// This implements `CVUncompressData`, which can decode numbers no larger than 0x1FFFFFFF. It
     /// seems that values compressed this way are only used for binary annotations at this point.
+    #[inline]
     fn uncompress_next(&mut self) -> Result<u32> {
-        let b1 = u32::from(self.buffer.parse::<u8>()?);
+        let b1 = u32::from(self.0.parse::<u8>()?);
         if (b1 & 0x80) == 0x00 {
             let value = b1;
             return Ok(value);
         }
 
-        let b2 = u32::from(self.buffer.parse::<u8>()?);
+        let b2 = u32::from(self.0.parse::<u8>()?);
         if (b1 & 0xc0) == 0x80 {
             let value = (b1 & 0x3f) << 8 | b2;
             return Ok(value);
         }
 
-        let b3 = u32::from(self.buffer.parse::<u8>()?);
-        let b4 = u32::from(self.buffer.parse::<u8>()?);
+        let b3 = u32::from(self.0.parse::<u8>()?);
+        let b4 = u32::from(self.0.parse::<u8>()?);
         if (b1 & 0xe0) == 0xc0 {
             let value = ((b1 & 0x1f) << 24) | (b2 << 16) | (b3 << 8) | b4;
             return Ok(value);
@@ -155,7 +161,7 @@ impl<'t> BinaryAnnotationsIter<'t> {
 }
 
 /// Resembles `DecodeSignedInt32`.
-fn decode_signed_operand(value: u32) -> i32 {
+const fn decode_signed_operand(value: u32) -> i32 {
     if value & 1 != 0 {
         -((value >> 1) as i32)
     } else {
@@ -168,7 +174,7 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
     type Error = Error;
 
     fn next(&mut self) -> Result<Option<Self::Item>> {
-        if self.buffer.is_empty() {
+        if self.0.is_empty() {
             return Ok(None);
         }
 
@@ -176,7 +182,7 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
         let annotation = match BinaryAnnotationOpcode::parse(op)? {
             BinaryAnnotationOpcode::Eof => {
                 // This makes the end of the stream
-                self.buffer = ParseBuffer::default();
+                self.0 = ParseBuffer::default();
                 return Ok(None);
             }
             BinaryAnnotationOpcode::CodeOffset => {
@@ -200,12 +206,8 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
             BinaryAnnotationOpcode::ChangeLineEndDelta => {
                 BinaryAnnotation::ChangeLineEndDelta(self.uncompress_next()?)
             }
-            BinaryAnnotationOpcode::ChangeRangeKind => {
-                BinaryAnnotation::ChangeRangeKind(self.uncompress_next()?)
-            }
-            BinaryAnnotationOpcode::ChangeColumnStart => {
-                BinaryAnnotation::ChangeColumnStart(self.uncompress_next()?)
-            }
+            BinaryAnnotationOpcode::ChangeRangeKind => BinaryAnnotation::ChangeRangeKind(self.uncompress_next()?),
+            BinaryAnnotationOpcode::ChangeColumnStart => BinaryAnnotation::ChangeColumnStart(self.uncompress_next()?),
             BinaryAnnotationOpcode::ChangeColumnEndDelta => BinaryAnnotation::ChangeColumnEndDelta(
                 decode_signed_operand(self.uncompress_next()?),
             ),
@@ -222,9 +224,7 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
                     self.uncompress_next()?,
                 )
             }
-            BinaryAnnotationOpcode::ChangeColumnEnd => {
-                BinaryAnnotation::ChangeColumnEnd(self.uncompress_next()?)
-            }
+            BinaryAnnotationOpcode::ChangeColumnEnd => BinaryAnnotation::ChangeColumnEnd(self.uncompress_next()?)
         };
 
         Ok(Some(annotation))
@@ -238,75 +238,78 @@ impl<'t> FallibleIterator for BinaryAnnotationsIter<'t> {
 ///
 /// Binary annotations are primarily used as line programs for inline function calls.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct BinaryAnnotations<'t> {
-    data: &'t [u8],
-}
+pub struct BinaryAnnotations<'t>(&'t [u8]);
 
 impl<'t> BinaryAnnotations<'t> {
     /// Creates a new instance of binary annotations.
-    pub(crate) fn new(data: &'t [u8]) -> Self {
-        BinaryAnnotations { data }
+    pub(crate) const fn new(data: &'t [u8]) -> Self {
+        BinaryAnnotations(data)
     }
 
     /// Iterates through binary annotations.
     pub fn iter(&self) -> BinaryAnnotationsIter<'t> {
-        BinaryAnnotationsIter {
-            buffer: ParseBuffer::from(self.data),
-        }
+        BinaryAnnotationsIter(ParseBuffer::from(self.0))
     }
 }
 
-#[test]
-fn test_binary_annotation_iter() {
-    let inp = b"\x0b\x03\x06\n\x03\x08\x06\x06\x03-\x06\x08\x03\x07\x0br\x06\x06\x0c\x03\x07\x06\x0f\x0c\x06\x05\x00\x00";
-    let annotations = BinaryAnnotations::new(inp)
-        .iter()
-        .collect::<Vec<_>>()
-        .unwrap();
+#[cfg(all(test, feature = "alloc"))]
+mod tests {
+    use fallible_iterator::FallibleIterator;
+    use crate::*;
 
-    assert_eq!(
-        annotations,
-        vec![
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 0),
-            BinaryAnnotation::ChangeLineOffset(5),
-            BinaryAnnotation::ChangeCodeOffset(8),
-            BinaryAnnotation::ChangeLineOffset(3),
-            BinaryAnnotation::ChangeCodeOffset(45),
-            BinaryAnnotation::ChangeLineOffset(4),
-            BinaryAnnotation::ChangeCodeOffset(7),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(2, -3),
-            BinaryAnnotation::ChangeLineOffset(3),
-            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(3, 7),
-            BinaryAnnotation::ChangeLineOffset(-7),
-            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(6, 5)
-        ]
-    );
+    #[test]
+    fn test_binary_annotation_iter() {
+        let inp = b"\x0b\x03\x06\n\x03\x08\x06\x06\x03-\x06\x08\x03\x07\x0br\x06\x06\x0c\x03\x07\x06\x0f\x0c\x06\x05\x00\x00";
+        let annotations = BinaryAnnotations::new(inp)
+            .iter()
+            .collect::<Vec<_>>()
+            .unwrap();
 
-    let inp = b"\x03P\x06\x0e\x03\x0c\x06\x04\x032\x06\x06\x03T\x0b#\x0b\\\x0bC\x0b/\x06\x04\x0c-\t\x03;\x06\x1d\x0c\x05\x06\x00\x00";
-    let annotations = BinaryAnnotations::new(inp)
-        .iter()
-        .collect::<Vec<_>>()
-        .unwrap();
+        assert_eq!(
+            annotations,
+            vec![
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 0),
+                BinaryAnnotation::ChangeLineOffset(5),
+                BinaryAnnotation::ChangeCodeOffset(8),
+                BinaryAnnotation::ChangeLineOffset(3),
+                BinaryAnnotation::ChangeCodeOffset(45),
+                BinaryAnnotation::ChangeLineOffset(4),
+                BinaryAnnotation::ChangeCodeOffset(7),
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(2, -3),
+                BinaryAnnotation::ChangeLineOffset(3),
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(3, 7),
+                BinaryAnnotation::ChangeLineOffset(-7),
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(6, 5)
+            ]
+        );
 
-    assert_eq!(
-        annotations,
-        vec![
-            BinaryAnnotation::ChangeCodeOffset(80),
-            BinaryAnnotation::ChangeLineOffset(7),
-            BinaryAnnotation::ChangeCodeOffset(12),
-            BinaryAnnotation::ChangeLineOffset(2),
-            BinaryAnnotation::ChangeCodeOffset(50),
-            BinaryAnnotation::ChangeLineOffset(3),
-            BinaryAnnotation::ChangeCodeOffset(84),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 1),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(12, -2),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 2),
-            BinaryAnnotation::ChangeCodeOffsetAndLineOffset(15, 1),
-            BinaryAnnotation::ChangeLineOffset(2),
-            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(45, 9),
-            BinaryAnnotation::ChangeCodeOffset(59),
-            BinaryAnnotation::ChangeLineOffset(-14),
-            BinaryAnnotation::ChangeCodeLengthAndCodeOffset(5, 6),
-        ]
-    );
+        let inp = b"\x03P\x06\x0e\x03\x0c\x06\x04\x032\x06\x06\x03T\x0b#\x0b\\\x0bC\x0b/\x06\x04\x0c-\t\x03;\x06\x1d\x0c\x05\x06\x00\x00";
+        let annotations = BinaryAnnotations::new(inp)
+            .iter()
+            .collect::<Vec<_>>()
+            .unwrap();
+
+        assert_eq!(
+            annotations,
+            vec![
+                BinaryAnnotation::ChangeCodeOffset(80),
+                BinaryAnnotation::ChangeLineOffset(7),
+                BinaryAnnotation::ChangeCodeOffset(12),
+                BinaryAnnotation::ChangeLineOffset(2),
+                BinaryAnnotation::ChangeCodeOffset(50),
+                BinaryAnnotation::ChangeLineOffset(3),
+                BinaryAnnotation::ChangeCodeOffset(84),
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 1),
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(12, -2),
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(3, 2),
+                BinaryAnnotation::ChangeCodeOffsetAndLineOffset(15, 1),
+                BinaryAnnotation::ChangeLineOffset(2),
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(45, 9),
+                BinaryAnnotation::ChangeCodeOffset(59),
+                BinaryAnnotation::ChangeLineOffset(-14),
+                BinaryAnnotation::ChangeCodeLengthAndCodeOffset(5, 6),
+            ]
+        );
+    }
+
 }

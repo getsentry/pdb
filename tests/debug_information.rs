@@ -1,12 +1,16 @@
-#[test]
-fn pdb_info() {
-    let file = std::fs::File::open("fixtures/self/foo.pdb").expect("opening file");
+use pdb::Result;
 
-    let mut pdb = pdb::PDB::open(file).expect("opening pdb");
-    let pdb_info = pdb.debug_information().expect("pdb information");
+#[test]
+fn should_parse_big_msf_pdb_debug_info() -> Result<()> {
+    let file = std::fs::File::open("fixtures/cpp/foo.pdb")?;
+
+    let mut pdb = pdb::PDB::open(file)?;
+    let pdb_info = pdb.debug_information()?;
 
     assert_eq!(
-        pdb_info.machine_type().expect("machien type"),
+        pdb_info.machine_type()?,
         pdb::MachineType::Amd64
     );
+
+    Ok(())
 }

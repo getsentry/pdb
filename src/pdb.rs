@@ -1,40 +1,62 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
+#[cfg(feature = "alloc")]
+use alloc::boxed::Box;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 use crate::common::*;
+
+use crate::constants::*;
+
+#[cfg(feature = "alloc")]
 use crate::dbi::{DBIExtraStreams, DBIHeader, DebugInformation, Module};
+
+#[cfg(feature = "alloc")]
 use crate::framedata::FrameTable;
+
+#[cfg(feature = "alloc")]
 use crate::modi::ModuleInfo;
-use crate::msf::{self, Msf, Stream};
+
+#[cfg(feature = "alloc")]
+use crate::msf::{self, Msf, MsfImpl, MsfKind, Stream};
+
+#[cfg(feature = "alloc")]
 use crate::omap::{AddressMap, OMAPTable};
+
+#[cfg(feature = "alloc")]
 use crate::pdbi::PDBInformation;
+
 use crate::pe::ImageSectionHeader;
+
+#[cfg(feature = "alloc")]
 use crate::source::Source;
+
+#[cfg(feature = "alloc")]
 use crate::strings::StringTable;
+
+#[cfg(feature = "alloc")]
 use crate::symbol::SymbolTable;
+
+#[cfg(feature = "alloc")]
 use crate::tpi::{IdInformation, TypeInformation};
-
-// Some streams have a fixed stream index.
-// http://llvm.org/docs/PDB/index.html
-
-const PDB_STREAM: u32 = 1;
-const TPI_STREAM: u32 = 2;
-const DBI_STREAM: u32 = 3;
-const IPI_STREAM: u32 = 4;
 
 /// `PDB` provides access to the data within a PDB file.
 ///
 /// A PDB file is internally a Multi-Stream File (MSF), composed of multiple independent
 /// (and usually discontiguous) data streams on-disk. `PDB` provides lazy access to these data
 /// structures, which means the `PDB` accessor methods usually cause disk accesses.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
-pub struct PDB<'s, S> {
+pub struct PDB<'s, S: Source<'s>> {
     /// `msf` provides access to the underlying data streams
-    msf: Box<dyn Msf<'s, S> + 's>,
+    msf: Msf<'s, S>,
 
     /// Memoize the `dbi::Header`, since it contains stream numbers we sometimes need
     dbi_header: Option<DBIHeader>,
@@ -43,6 +65,7 @@ pub struct PDB<'s, S> {
     dbi_extra_streams: Option<DBIExtraStreams>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// Create a new `PDB` for a `Source`.
     ///
@@ -58,10 +81,53 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange`, `Error::InvalidPageSize` if the PDB file seems corrupt
     pub fn open(source: S) -> Result<PDB<'s, S>> {
         Ok(PDB {
-            msf: msf::open_msf(source)?,
+            msf: Msf::open(source)?,
             dbi_header: None,
             dbi_extra_streams: None,
         })
+    }
+
+    /// Opens a PDB file and eagerly parses the DBI stream.
+    ///
+    /// This is a convenience wrapper around [`Self::open`] that additionally
+    /// reads and parses the Debug Information (DBI) stream and caches the
+    /// [`DBIHeader`] and [`DBIExtraStreams`] immediately.
+    pub fn open_eager(source: S) -> Result<PDB<'s, S>> {
+        let mut msf = Msf::open(source)?;
+        let stream = msf.get(DBI_STREAM, None)?;
+        let (dbi_header, dbi_extra_streams) = match DebugInformation::parse(stream) {
+            Ok(debug_info) => {
+                let dbi_header = Some(debug_info.header());
+                let dbi_extra_streams = DBIExtraStreams::new(&debug_info).ok();
+                (dbi_header, dbi_extra_streams)
+            },
+            Err(_) => (None, None),
+        };
+        
+        Ok(PDB {
+            msf,
+            dbi_header,
+            dbi_extra_streams,
+        })
+    }
+
+    /// Returns the MSF format kind (Big or Small).
+    pub fn msf_kind(&self) -> MsfKind {
+        self.msf.kind()
+    }
+
+    /// Returns the total number of streams in this PDB, including nil streams.
+    ///
+    /// Stream 0 is the old stream directory (unused in Big MSF). Streams 1-4 are
+    /// reserved by the PDB format itself (see [`PDB_STREAM`], [`TPI_STREAM`],
+    /// [`DBI_STREAM`], [`IPI_STREAM`]). Streams 5+ are named streams.
+    pub fn stream_count(&mut self) -> Result<u32> {
+        self.msf.stream_count()
+    }
+
+    /// Returns `true` if the stream exists and is not a nil stream.
+    pub fn has_stream(&mut self, stream_number: u32) -> Result<bool> {
+        self.msf.has_stream(stream_number)
     }
 
     /// Retrieve the `PDBInformation` for this PDB.
@@ -91,6 +157,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::InvalidTypeInformationHeader` if the type information stream header was not
     ///   understood
+    #[cfg(feature = "alloc")]
     pub fn type_information(&mut self) -> Result<TypeInformation<'s>> {
         let stream = self.msf.get(TPI_STREAM, None)?;
         TypeInformation::parse(stream)
@@ -126,7 +193,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         let stream = self.msf.get(DBI_STREAM, None)?;
         let debug_info = DebugInformation::parse(stream)?;
 
-        // Grab its header, since we need that for unrelated operations
         self.dbi_header = Some(debug_info.header());
         Ok(debug_info)
     }
@@ -137,7 +203,6 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
             return Ok(*h);
         }
 
-        // get just the first little bit of the DBI stream
         let stream = self.msf.get(DBI_STREAM, Some(1024))?;
         let header = DBIHeader::parse(stream)?;
 
@@ -384,7 +449,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// ```
     pub fn address_map(&mut self) -> Result<AddressMap<'s>> {
         let sections = self.sections()?.unwrap_or_default();
-        Ok(match self.original_sections()? {
+        let address_map = match self.original_sections()? {
             Some(original_sections) => {
                 let omap_from_src = self.omap_from_src()?.ok_or(Error::AddressMapNotFound)?;
                 let omap_to_src = self.omap_to_src()?.ok_or(Error::AddressMapNotFound)?;
@@ -402,7 +467,8 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
                 original_to_transformed: None,
                 transformed_to_original: None,
             },
-        })
+        };
+        Ok(address_map)
     }
 
     /// Retrieve the global string table of this PDB.
@@ -443,6 +509,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
     /// * `Error::UnexpectedEof` if the string table ends prematurely
+    #[cfg(feature = "alloc")]
     pub fn string_table(&mut self) -> Result<StringTable<'s>> {
         let stream = self.named_stream(b"/names")?;
         StringTable::parse(stream)
@@ -483,6 +550,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     /// * `Error::StreamNotFound` if the PDB does not contain the stream referred to
     /// * `Error::IoError` if returned by the `Source`
     /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    #[cfg(feature = "alloc")]
     pub fn named_stream(&mut self, name: &[u8]) -> Result<Stream<'s>> {
         let info = self.pdb_information()?;
         let names = info.stream_names()?;
@@ -516,6 +584,7 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl StreamIndex {
     /// Load the raw data of this stream from the PDB.
     ///

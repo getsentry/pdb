@@ -1,29 +1,51 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
 // http://opensource.org/licenses/MIT>, at your option. This file may not be
 // copied, modified, or distributed except according to those terms.
 
-use std::fmt;
-use std::marker::PhantomData;
-use std::result;
+use core::fmt;
+use core::marker::PhantomData;
+use core::result;
+
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::msf::Stream;
+
 use crate::FallibleIterator;
 
 pub(crate) mod constants;
+
+#[cfg(feature = "alloc")]
 mod data;
+
+mod utils;
+mod types;
 mod header;
+
+#[cfg(feature = "alloc")]
 mod id;
+
 mod primitive;
 
+pub use self::types::*;
+
 use self::header::*;
+
+#[cfg(feature = "alloc")]
 use self::primitive::type_data_for_primitive;
 
+#[cfg(feature = "alloc")]
 pub use self::data::*;
+
+#[cfg(feature = "alloc")]
 pub use self::id::*;
+
 pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 
 /// Zero-copy access to a PDB type or id stream.
@@ -124,13 +146,15 @@ pub use self::primitive::{Indirection, PrimitiveKind, PrimitiveType};
 /// # }
 /// # assert!(test().expect("test") > 8000);
 /// ```
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct ItemInformation<'s, I> {
     stream: Stream<'s>,
-    header: Header,
+    header: TPIHeader,
     _ph: PhantomData<&'s I>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'s, I> ItemInformation<'s, I>
 where
     I: ItemIndex,
@@ -138,7 +162,7 @@ where
     /// Parses `TypeInformation` from raw stream data.
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         let mut buf = stream.parse_buffer();
-        let header = Header::parse(&mut buf)?;
+        let header = TPIHeader::parse(&mut buf)?;
         let _ph = PhantomData;
         Ok(Self {
             stream,
@@ -218,22 +242,32 @@ where
     /// Returns this item's index.
     ///
     /// Depending on the stream, either a [`TypeIndex`] or [`IdIndex`].
-    pub fn index(&self) -> I {
+    pub const fn index(&self) -> I {
         self.index
     }
 
     /// Returns the the binary data length in the on-disk format.
     ///
     /// Items are prefixed by a 16-bit length number, which is not included in this length.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.data.len()
     }
 
     /// Returns whether this items's data is empty.
     ///
     /// Items are prefixed by a 16-bit length number, which is not included in this operation.
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.data.is_empty()
+    }
+
+    /// Returns the parsed leaf kind of this item.
+    ///
+    /// This is a typed view of [`Self::raw_kind`]. Unrecognized leaves are
+    /// preserved as [`LeafKind::Unknown`] rather than being discarded, so this
+    /// method never fails.
+    #[inline]
+    pub fn kind(&self) -> LeafKind {
+        LeafKind::from(self.raw_kind())
     }
 
     /// Returns the identifier of the kind of data stored by this this `Item`.
@@ -309,6 +343,7 @@ where
 /// A `shift` of 2 or 3 is likely appropriate for most workloads. 500K items would require 1 MB or
 /// 500 KB of memory respectively, and lookups -- though indirect -- would still usually need only
 /// one or two 64-byte cache lines.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct ItemFinder<'t, I> {
     buffer: ParseBuffer<'t>,
@@ -319,6 +354,7 @@ pub struct ItemFinder<'t, I> {
     _ph: PhantomData<&'t I>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'t, I> ItemFinder<'t, I>
 where
     I: ItemIndex,
@@ -381,7 +417,7 @@ where
         let (vec_index, iteration_count) = self.resolve(iterator.index);
         if iteration_count == 0 && vec_index == self.positions.len() {
             let pos = iterator.buf.pos();
-            assert!(pos < u32::max_value() as usize);
+            assert!(pos < u32::MAX as usize);
             self.positions.push(pos as u32);
         }
     }
@@ -459,22 +495,17 @@ where
             return Ok(None);
         }
 
-        // read the length of the next type
         let length = self.buf.parse_u16()? as usize;
 
-        // validate
         if length < 2 {
             // this can't be correct
             return Err(Error::TypeTooShort);
         }
 
-        // grab the type itself
         let type_buf = self.buf.take(length)?;
         let index = self.index;
-
         self.index += 1;
 
-        // Done
         Ok(Some(Item {
             index: I::from(index),
             data: type_buf,
@@ -486,12 +517,14 @@ where
 ///
 /// This stream exposes types, the variants of which are enumerated by [`TypeData`]. See
 /// [`ItemInformation`] for more information on accessing types.
+#[cfg(feature = "alloc")]
 pub type TypeInformation<'s> = ItemInformation<'s, TypeIndex>;
 
 /// In-memory index for efficient random-access of [`Type`]s by index.
 ///
 /// `TypeFinder` can be obtained via [`TypeInformation::finder`](ItemInformation::finder). See
 /// [`ItemFinder`] for more information.
+#[cfg(feature = "alloc")]
 pub type TypeFinder<'t> = ItemFinder<'t, TypeIndex>;
 
 /// An iterator over [`Type`]s returned by [`TypeInformation::iter`](ItemInformation::iter).
@@ -500,6 +533,7 @@ pub type TypeIter<'t> = ItemIter<'t, TypeIndex>;
 /// Information on a primitive type, class, or procedure.
 pub type Type<'t> = Item<'t, TypeIndex>;
 
+#[cfg(feature = "alloc")]
 impl<'t> Item<'t, TypeIndex> {
     /// Parse this `Type` into `TypeData`.
     ///
@@ -514,7 +548,7 @@ impl<'t> Item<'t, TypeIndex> {
             type_data_for_primitive(self.index)
         } else {
             let mut buf = ParseBuffer::from(self.data);
-            parse_type_data(&mut buf)
+            TypeData::parse(&mut buf)
         }
     }
 }
@@ -523,12 +557,14 @@ impl<'t> Item<'t, TypeIndex> {
 ///
 /// This stream exposes types, the variants of which are enumerated by [`IdData`]. See
 /// [`ItemInformation`] for more information on accessing types.
+#[cfg(feature = "alloc")]
 pub type IdInformation<'s> = ItemInformation<'s, IdIndex>;
 
 /// In-memory index for efficient random-access of [`Id`]s by index.
 ///
 /// `IdFinder` can be obtained via [`IdInformation::finder`](ItemInformation::finder). See
 /// [`ItemFinder`] for more information.
+#[cfg(feature = "alloc")]
 pub type IdFinder<'t> = ItemFinder<'t, IdIndex>;
 
 /// An iterator over [`Id`]s returned by [`IdInformation::iter`](ItemInformation::iter).
@@ -537,6 +573,7 @@ pub type IdIter<'t> = ItemIter<'t, IdIndex>;
 /// Information on an inline function, build infos or source references.
 pub type Id<'t> = Item<'t, IdIndex>;
 
+#[cfg(feature = "alloc")]
 impl<'t> Item<'t, IdIndex> {
     /// Parse this `Id` into `IdData`.
     ///

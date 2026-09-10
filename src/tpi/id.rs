@@ -1,3 +1,6 @@
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
 use scroll::ctx::TryFromCtx;
 
 use crate::common::*;

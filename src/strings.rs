@@ -1,8 +1,13 @@
-use std::borrow::Cow;
+#[cfg(feature = "alloc")]
+use alloc::borrow::Cow;
 
+#[cfg(feature = "alloc")]
+use fallible_iterator::FallibleIterator;
 use scroll::{ctx::TryFromCtx, Endian, Pread};
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::msf::Stream;
 
 /// Magic bytes identifying the string name table.
@@ -64,7 +69,7 @@ impl<'t> TryFromCtx<'t, Endian> for StringTableHeader {
 impl StringTableHeader {
     /// Start index of the names buffer in the string table stream.
     fn names_start(self) -> usize {
-        std::mem::size_of::<Self>()
+        core::mem::size_of::<Self>()
     }
 
     /// End index of the names buffer in the string table stream.
@@ -80,6 +85,7 @@ impl StringTableHeader {
 /// The mapping from string to offset has not been implemented yet.
 ///
 /// Use [`PDB::string_table`](crate::PDB::string_table) to obtain an instance.
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct StringTable<'s> {
     header: StringTableHeader,
@@ -88,6 +94,7 @@ pub struct StringTable<'s> {
     stream: Stream<'s>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'s> StringTable<'s> {
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         let mut buf = stream.parse_buffer();
@@ -121,8 +128,22 @@ impl<'s> StringTable<'s> {
             stream,
         })
     }
+
+    /// Returns an iterator over all strings in the table.
+    ///
+    /// Each item is `(StringRef, RawString)`: the offset of the string within
+    /// the names buffer, and the string itself.
+    pub fn iter(&self) -> Result<StringTableIter<'_>> {
+        let names = &self.stream.as_slice()
+            [self.header.names_start()..self.header.names_end()];
+        Ok(StringTableIter {
+            buf: ParseBuffer::from(names),
+            offset: 0,
+        })
+    }
 }
 
+#[cfg(feature = "alloc")]
 impl<'s> StringTable<'s> {
     /// Resolves a string value from this string table.
     ///
@@ -138,6 +159,7 @@ impl<'s> StringTable<'s> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl StringRef {
     /// Resolves the raw string value of this reference.
     ///
@@ -151,8 +173,43 @@ impl StringRef {
     ///
     /// This method errors if the offset is out of bounds of the string table. Use
     /// [`PDB::string_table`](crate::PDB::string_table) to obtain an instance of the string table.
+    #[cfg(feature = "alloc")]
     pub fn to_string_lossy<'s>(self, strings: &'s StringTable<'_>) -> Result<Cow<'s, str>> {
         strings.get(self).map(|r| r.to_string())
+    }
+}
+
+/// A lazy iterator over the strings in a [`StringTable`].
+///
+/// The string table stores its names as a packed sequence of null-terminated
+/// C-strings with no explicit count, so iteration walks the names buffer from
+/// start to end. Strings are yielded in the order they appear, which is
+/// usually (but not guaranteed to be) the order they were first interned.
+///
+/// Each yielded item is paired with its [`StringRef`] offset, so callers can
+/// hold a reference for later lookup instead of just the string value.
+#[cfg(feature = "alloc")]
+#[derive(Debug)]
+pub struct StringTableIter<'s> {
+    /// Remaining bytes of the names buffer.
+    buf: ParseBuffer<'s>,
+    /// Offset of the next string, relative to the start of the names buffer.
+    offset: u32,
+}
+
+#[cfg(feature = "alloc")]
+impl<'s> FallibleIterator for StringTableIter<'s> {
+    type Item = (StringRef, RawString<'s>);
+    type Error = Error;
+
+    fn next(&mut self) -> Result<Option<Self::Item>> {
+        if self.buf.is_empty() {
+            return Ok(None);
+        }
+        let start = self.offset;
+        let name = self.buf.parse_cstring()?;
+        self.offset += name.len() as u32 + 1;
+        Ok(Some((StringRef(start), name)))
     }
 }
 
@@ -160,7 +217,7 @@ impl StringRef {
 mod tests {
     use super::*;
 
-    use std::mem;
+    use core::mem;
 
     #[test]
     fn test_string_table_header() {

@@ -1,10 +1,10 @@
 use std::collections::hash_map::{Entry, HashMap};
 
-use pdb::FallibleIterator;
+use pdb::{Result, FallibleIterator};
 
-fn setup<F>(func: F)
+fn setup<F>(func: F) -> Result<()>
 where
-    F: FnOnce(&pdb::SymbolTable<'_>, bool),
+    F: FnOnce(&pdb::SymbolTable<'_>, bool) -> Result<()>,
 {
     let (file, is_fixture) = if let Ok(filename) = std::env::var("PDB_FILE") {
         (std::fs::File::open(filename).expect("opening file"), false)
@@ -18,15 +18,16 @@ where
     let mut pdb = pdb::PDB::open(file).expect("opening pdb");
     let symbol_table = pdb.global_symbols().expect("global symbols");
 
-    func(&symbol_table, is_fixture);
+    func(&symbol_table, is_fixture)?;
+
+    Ok(())
 }
 
 #[test]
-fn count_symbols() {
-    setup(|global_symbols, is_fixture| {
+fn count_symbols() -> Result<()> {
+    setup(|global_symbols: &pdb::SymbolTable<'_>, is_fixture: bool| {
         let mut map: HashMap<u16, usize> = HashMap::new();
 
-        // walk the symbol table
         let mut iter = global_symbols.iter();
         while let Some(sym) = iter.next().expect("next symbol") {
             let kind = sym.raw_kind();
@@ -67,44 +68,34 @@ fn count_symbols() {
         assert!(*map.get(&0x110e).expect("0x110e") >= 3000);
         assert!(*map.get(&0x1125).expect("0x1125") >= 2000);
         assert!(*map.get(&0x1127).expect("0x1127") >= 500);
-    })
+
+        Ok(())
+    })?;
+
+    Ok(())
 }
 
 #[test]
-fn find_symbols() {
-    setup(|global_symbols, is_fixture| {
-        // can't do much if we don't know which PDB we're using
+fn find_symbols() -> Result<()> {
+    setup(|global_symbols: &pdb::SymbolTable<'_>, is_fixture: bool| {
         if !is_fixture {
-            return;
+            return Ok(());
         }
 
         let mut map: HashMap<&[u8], Option<pdb::SymbolData<'_>>> = HashMap::new();
 
-        // look for:
-        // main(), defined in the program
         map.insert(b"main", None);
-
-        // malloc(), defined in libc
         map.insert(b"memcpy", None);
-
-        // HeapAlloc(), defined... somewhere
         map.insert(b"HeapAlloc", None);
-
-        // Baz::static_f_public(), except MSVC-mangled
         map.insert(b"?static_f_public@Baz@@SAXXZ", None);
 
-        // walk the symbol table
         let mut iter = global_symbols.iter();
         while let Some(sym) = iter.next().expect("next symbol") {
-            // ensure we can parse all the symbols, even though we only want a few
+            
             let data = sym.parse().expect("symbol parsing");
-
-            // get symbol name
             let name = data.name().unwrap_or_default();
 
             if let Entry::Occupied(mut e) = map.entry(name.as_bytes()) {
-                // this is a symbol we wanted to find
-                // store our data
                 e.insert(Some(data));
             }
         }
@@ -119,5 +110,9 @@ fn find_symbols() {
                 }
             }
         }
-    })
+
+        Ok(())
+    })?;
+
+    Ok(())
 }

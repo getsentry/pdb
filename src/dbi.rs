@@ -1,4 +1,4 @@
-// Copyright 2017 pdb Developers
+// Copyright 2026 PDB Developers
 //
 // Licensed under the Apache License, Version 2.0, <LICENSE-APACHE or
 // http://apache.org/licenses/LICENSE-2.0> or the MIT license <LICENSE-MIT or
@@ -7,12 +7,17 @@
 
 // DBI = "Debug Information"
 
-use std::borrow::Cow;
-use std::fmt;
-use std::result;
+#[cfg(feature = "alloc")]
+use alloc::borrow::Cow;
+
+use core::fmt;
+use core::result;
 
 use crate::common::*;
+
+#[cfg(feature = "alloc")]
 use crate::msf::*;
+
 use crate::{FallibleIterator, SectionCharacteristics};
 
 /// Provides access to the "DBI" stream inside the PDB.
@@ -42,6 +47,7 @@ use crate::{FallibleIterator, SectionCharacteristics};
 /// # Ok(count)
 /// # }
 /// # assert!(test().expect("test") == 194);
+#[cfg(feature = "alloc")]
 #[derive(Debug)]
 pub struct DebugInformation<'s> {
     stream: Stream<'s>,
@@ -49,7 +55,9 @@ pub struct DebugInformation<'s> {
     header_len: usize,
 }
 
+#[cfg(feature = "alloc")]
 impl<'s> DebugInformation<'s> {
+    #[cfg(feature = "alloc")]
     pub(crate) fn parse(stream: Stream<'s>) -> Result<Self> {
         let mut buf = stream.parse_buffer();
         let header = DBIHeader::parse_buf(&mut buf)?;
@@ -62,7 +70,8 @@ impl<'s> DebugInformation<'s> {
         })
     }
 
-    pub(crate) fn header(&self) -> DBIHeader {
+    /// Returns a copy of the parsed DBI header.
+    pub(crate) const fn header(&self) -> DBIHeader {
         self.header
     }
 
@@ -81,7 +90,7 @@ impl<'s> DebugInformation<'s> {
     /// checked for matching the image.
     ///
     /// [`PDBInformation::age`]: crate::PDBInformation::age
-    pub fn age(&self) -> Option<u32> {
+    pub const fn age(&self) -> Option<u32> {
         match self.header.age {
             0 => None,
             age => Some(age),
@@ -94,9 +103,8 @@ impl<'s> DebugInformation<'s> {
         // drop the header
         buf.take(self.header_len)?;
         let modules_buf = buf.take(self.header.module_list_size as usize)?;
-        Ok(ModuleIter {
-            buf: modules_buf.into(),
-        })
+        
+        Ok(ModuleIter::new(modules_buf))
     }
 
     /// Returns an iterator that can traverse the section contributions list in sequential order.
@@ -109,108 +117,223 @@ impl<'s> DebugInformation<'s> {
     }
 }
 
-/// The version of the PDB format.
+/// Version of the DBI stream header.
 ///
-/// This version type is used in multiple locations: the DBI header, and the PDBI header.
+/// See: <https://llvm.org/docs/PDB/DbiStream.html>
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[non_exhaustive]
-#[derive(Debug, Copy, Clone)]
 #[allow(missing_docs)]
-pub enum HeaderVersion {
+pub enum DbiVersion {
     V41,
     V50,
     V60,
     V70,
+    V80,
     V110,
+    V140,
     OtherValue(u32),
 }
 
-impl From<u32> for HeaderVersion {
+impl From<u32> for DbiVersion {
     #[allow(clippy::inconsistent_digit_grouping)]
     fn from(v: u32) -> Self {
         match v {
-            93_08_03 => Self::V41,
-            1996_03_07 => Self::V50,
-            1997_06_06 => Self::V60,
-            1999_09_03 => Self::V70,
-            2009_12_01 => Self::V110,
+            930_803     => Self::V41,
+            1996_0307   => Self::V50,
+            1997_0606   => Self::V60,
+            1999_0903   => Self::V70,
+            2003_0901   => Self::V80,
+            2009_1201   => Self::V110,
+            2014_0508   => Self::V140,
             _ => Self::OtherValue(v),
         }
     }
 }
 
-/// A DBI header -- `NewDBIHdr`, really -- parsed from a stream.
+/// The version of the PDB format.
 ///
-/// Reference:
+/// This version type is used in multiple locations: the DBI header and the PDBI header.
+///
+/// The numeric values are taken from LLVM's `PdbStreamVersion` enum.
+/// See: <https://llvm.org/docs/PDB/PdbStream.html#stream-header>
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[allow(missing_docs)]
+pub enum PdbHeaderVersion {
+    /// Visual C++ 2.0
+    Vc2,
+    /// Visual C++ 4.0
+    Vc4,
+    /// Visual C++ 4.1
+    Vc41,
+    /// Visual C++ 5.0
+    Vc50,
+    /// Visual C++ 6.0 / Visual Studio 98
+    Vc98,
+    /// Visual C++ 7.0, pre-release (deprecated)
+    Vc70Dep,
+    /// Visual C++ 7.0 / Visual Studio .NET (2002)
+    Vc70,
+    /// Visual C++ 8.0 / Visual Studio 2005
+    Vc80,
+    /// Visual C++ 11.0 / Visual Studio 2012
+    Vc110,
+    /// Visual C++ 14.0 / Visual Studio 2015
+    Vc140,
+    /// A version value not covered by the variants above.
+    OtherValue(u32),
+}
+
+impl fmt::Display for PdbHeaderVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Vc2 => f.write_str("VC2"),
+            Self::Vc4 => f.write_str("VC4"),
+            Self::Vc41 => f.write_str("VC4.1"),
+            Self::Vc50 => f.write_str("VC5"),
+            Self::Vc98 => f.write_str("VC6"),
+            Self::Vc70Dep => f.write_str("VC7 (pre-release)"),
+            Self::Vc70 => f.write_str("VC7"),
+            Self::Vc80 => f.write_str("VC8"),
+            Self::Vc110 => f.write_str("VC11"),
+            Self::Vc140 => f.write_str("VC14"),
+            Self::OtherValue(v) => write!(f, "Unknown (0x{v:08x})"),
+        }
+    }
+}
+
+impl PdbHeaderVersion {
+    /// Returns `true` if this version's info stream includes a GUID field.
+    ///
+    /// The GUID was introduced in VC7 (`20000404`). Earlier PDBs go
+    /// directly from `age` to `names_size`.
+    pub const fn has_guid(self) -> bool {
+        match self {
+            Self::Vc2 | Self::Vc4 | Self::Vc41 | Self::Vc50 | Self::Vc98 | Self::Vc70Dep => false,
+            Self::Vc70 | Self::Vc80 | Self::Vc110 | Self::Vc140 => true,
+            Self::OtherValue(v) => v >= 2000_0404,
+        }
+    }
+}
+
+impl From<u32> for PdbHeaderVersion {
+    #[allow(clippy::inconsistent_digit_grouping)]
+    fn from(v: u32) -> Self {
+        match v {
+            1994_1610 => Self::Vc2,
+            1995_0623 => Self::Vc4,
+            1995_0814 => Self::Vc41,
+            1996_0307 => Self::Vc50,
+            1997_0604 => Self::Vc98,
+            1999_0604 => Self::Vc70Dep,
+            2000_0404 => Self::Vc70,
+            2003_0901 => Self::Vc80,
+            2009_1201 => Self::Vc110,
+            2014_0508 => Self::Vc140,
+
+            1996_1031 => Self::Vc98,   // VC5/VC6 TPI
+            2004_0203 => Self::Vc80,   // VC8+ TPI
+
+            _ => Self::OtherValue(v),
+        }
+    }
+}
+
+/// DBI (Debug Information) stream header - `NewDBIHdr` format.
+///
+/// The DBI header appears at the start of the DBI stream (stream 3) and contains
+/// metadata about the debug information, including stream indices for symbols,
+/// module information, and various debug subsections.
+///
+/// # Reference
+///
+/// Based on the Microsoft PDB implementation:
 /// <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L124>
 #[derive(Debug, Copy, Clone)]
-#[allow(dead_code)] // reason = "unused fields added for completeness"
-pub(crate) struct DBIHeader {
+#[allow(dead_code)]
+pub struct DBIHeader {
+    /// DBI stream signature (should be `0xffffffff`)
     pub signature: u32,
-    pub version: HeaderVersion,
+
+    /// DBI format version (e.g., `VC70`, `VC80`, `VC110`)
+    pub version: DbiVersion,
+
+    /// DBI age (incremented when the PDB is modified)
     pub age: u32,
+
+    /// Stream index containing global symbols
     pub gs_symbols_stream: StreamIndex,
 
-    /*
-    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L143-L155:
-        union {
-        struct {
-            USHORT      usVerPdbDllMin : 8; // minor version and
-            USHORT      usVerPdbDllMaj : 7; // major version and
-            USHORT      fNewVerFmt     : 1; // flag telling us we have rbld stored elsewhere (high bit of original major version)
-        } vernew;                           // that built this pdb last.
-        struct {
-            USHORT      usVerPdbDllRbld: 4;
-            USHORT      usVerPdbDllMin : 7;
-            USHORT      usVerPdbDllMaj : 5;
-        } verold;
-        USHORT          usVerAll;
-    };
-    */
+    /// Internal version of the PDB DLL that last built this PDB.
+    ///
+    /// This is a packed field containing version information.
+    /// See the union in the reference for bit layout.
     pub internal_version: u16,
+
+    /// Stream index containing public symbols
     pub ps_symbols_stream: StreamIndex,
-    // "build version of the pdb dll that built this pdb last."
+
+    /// Build version of the PDB DLL that last built this PDB
     pub pdb_dll_build_version: u16,
 
+    /// Stream index containing symbol records
     pub symbol_records_stream: StreamIndex,
 
-    // "rbld version of the pdb dll that built this pdb last."
+    /// Rbld (rebuild) version of the PDB DLL that last built this PDB
     pub pdb_dll_rbld_version: u16,
+
+    /// Size of the module list substream (in bytes)
     pub module_list_size: u32,
+
+    /// Size of the section contribution substream (in bytes)
     pub section_contribution_size: u32,
+
+    /// Size of the section map substream (in bytes)
     pub section_map_size: u32,
+
+    /// Size of the file info substream (in bytes)
     pub file_info_size: u32,
 
-    // "size of the Type Server Map substream"
+    /// Size of the Type Server Map substream (in bytes)
     pub type_server_map_size: u32,
 
-    // "index of MFC type server"
+    /// Index of the MFC type server
     pub mfc_type_server_index: u32,
 
-    // "size of optional DbgHdr info appended to the end of the stream"
+    /// Size of optional DbgHdr info appended to the end of the stream (in bytes)
     pub debug_header_size: u32,
 
-    // "number of bytes in EC substream, or 0 if EC no EC enabled Mods"
+    /// Size of the EC (Edit & Continue) substream (in bytes)
+    ///
+    /// If 0, EC is not enabled for this module.
     pub ec_substream_size: u32,
 
-    /*
-    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L187-L192:
-        USHORT  fIncLink:1;     // true if linked incrmentally (really just if ilink thunks are present)
-        USHORT  fStripped:1;    // true if PDB::CopyTo stripped the private data out
-        USHORT  fCTypes:1;      // true if this PDB is using CTypes.
-        USHORT  unused:13;      // reserved, must be 0.
-    */
+    /// DBI flags.
+    ///
+    /// Bit layout:
+    /// - Bit 0: `fIncLink` - true if linked incrementally (ilink thunks present)
+    /// - Bit 1: `fStripped` - true if private data was stripped (via PDB::CopyTo)
+    /// - Bit 2: `fCTypes` - true if using CTypes
+    /// - Bits 3-15: Reserved (must be 0)
     pub flags: u16,
 
+    /// Target machine type (e.g., `IMAGE_FILE_MACHINE_AMD64`, `IMAGE_FILE_MACHINE_I386`)
     pub machine_type: u16,
+
+    /// Reserved field (should be 0)
     pub reserved: u32,
 }
 
 impl DBIHeader {
+    /// Parses a `DBIHeader` from a stream.
+    #[cfg(feature = "alloc")]
     pub fn parse(stream: Stream<'_>) -> Result<Self> {
         Self::parse_buf(&mut stream.parse_buffer())
     }
 
-    fn parse_buf(buf: &mut ParseBuffer<'_>) -> Result<Self> {
+    /// Parses a `DBIHeader` from a [`ParseBuffer`] positioned at the start of
+    /// the DBI stream.
+    pub fn parse_buf(buf: &mut ParseBuffer<'_>) -> Result<Self> {
         let header = Self {
             signature: buf.parse_u32()?,
             version: From::from(buf.parse_u32()?),
@@ -234,7 +357,7 @@ impl DBIHeader {
             reserved: buf.parse_u32()?,
         };
 
-        if header.signature != u32::max_value() {
+        if header.signature != u32::MAX {
             // this is likely a DBIHdr, not a NewDBIHdr
             // it could be promoted:
             //   https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.cpp#L291-L313
@@ -484,29 +607,53 @@ pub struct Module<'m> {
 
 impl<'m> Module<'m> {
     /// The `DBIModuleInfo` from the module info substream in the DBI stream.
-    pub(crate) fn info(&self) -> &DBIModuleInfo {
+    pub(crate) const fn info(&self) -> &DBIModuleInfo {
         &self.info
     }
-    /// The module name.
+
+    /// Returns the module name as a UTF-8 lossy string.
     ///
     /// Usually either a full path to an object file or a string of the form `Import:<dll name>`.
+    #[cfg(feature = "alloc")]
+    #[inline]
     pub fn module_name(&self) -> Cow<'m, str> {
         self.module_name.to_string()
     }
+
+    /// Returns the raw bytes of the module name.
+    #[inline]
+    pub fn module_name_bytes(&self) -> &[u8] {
+        self.module_name.as_bytes()
+    }
+
     /// The object file name.
     ///
     /// May be the same as `module_name` for object files passed directly
     /// to the linker. For modules from static libraries, this is usually
     /// the full path to the archive.
+    #[cfg(feature = "alloc")]
+    #[inline]
     pub fn object_file_name(&self) -> Cow<'m, str> {
         self.object_file_name.to_string()
+    }
+
+    /// Returns the raw bytes of the object file name.
+    #[inline]
+    pub fn object_file_name_bytes(&self) -> &[u8] {
+        self.object_file_name.as_bytes()
     }
 }
 
 /// A `ModuleIter` iterates over the modules in the DBI section, producing `Module`s.
 #[derive(Debug)]
-pub struct ModuleIter<'m> {
-    buf: ParseBuffer<'m>,
+pub struct ModuleIter<'m>(ParseBuffer<'m>);
+
+impl<'m> ModuleIter<'m> {
+
+    #[inline]
+    pub fn new(buffer: impl Into<ParseBuffer<'m>>) -> Self {
+        Self(buffer.into())
+    }
 }
 
 impl<'m> FallibleIterator for ModuleIter<'m> {
@@ -515,14 +662,15 @@ impl<'m> FallibleIterator for ModuleIter<'m> {
 
     fn next(&mut self) -> result::Result<Option<Self::Item>, Self::Error> {
         // see if we're at EOF
-        if self.buf.is_empty() {
+        if self.0.is_empty() {
             return Ok(None);
         }
 
-        let info = DBIModuleInfo::parse(&mut self.buf)?;
-        let module_name = self.buf.parse_cstring()?;
-        let object_file_name = self.buf.parse_cstring()?;
-        self.buf.align(4)?;
+        let info = DBIModuleInfo::parse(&mut self.0)?;
+        let module_name = self.0.parse_cstring()?;
+        let object_file_name = self.0.parse_cstring()?;
+        self.0.align(4)?;
+
         Ok(Some(Module {
             info,
             module_name,
@@ -584,34 +732,63 @@ impl<'c> FallibleIterator for DBISectionContributionIter<'c> {
     }
 }
 
-/// A `DbgDataHdr`, which contains a series of (optional) MSF stream numbers.
+/// Extra debug streams referenced by the DBI header.
+///
+/// This struct corresponds to the `DbgDataHdr` structure in the Microsoft PDB implementation.
+/// It contains optional stream indices for various debug data subsections.
+///
+/// Each field is a `StreamIndex` where `0xffff` indicates the stream is not present.
+///
+/// # Reference
+///
+/// - Struct definition:
+///   <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L250-L274>
+/// - Array indices:
+///   <https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L439-L449>
+///
+/// # Notes
+///
+/// This struct may be truncated in the PDB file. Missing fields are treated as
+/// `StreamIndex::none()` as long as the read stops on a `u16` boundary.
 #[derive(Debug, Copy, Clone)]
-#[allow(dead_code)] // reason = "unused fields added for completeness"
+#[allow(dead_code)]
 pub(crate) struct DBIExtraStreams {
-    // The struct itself is defined at:
-    //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/PDB/dbi/dbi.h#L250-L274
-    // It's just an array of stream numbers; `u16`s where 0xffff means "no stream".
-    //
-    // The array indices are:
-    //    https://github.com/Microsoft/microsoft-pdb/blob/082c5290e5aff028ae84e43affa8be717aa7af73/langapi/include/pdb.h#L439-L449
-    // We'll map those to fields.
-    //
-    // The struct itself can be truncated. This is an internal struct; we'll treat missing fields as
-    // StreamIndex::none() even if it's a short read, so long as the short read stops on a u16 boundary.
+    /// FPO (Frame Pointer Omission) debug data stream
     pub fpo: StreamIndex,
+
+    /// Exception handling data stream
     pub exception: StreamIndex,
+
+    /// Fixup data stream
     pub fixup: StreamIndex,
+
+    /// OMAP (Optimized Map) from source to destination addresses
     pub omap_to_src: StreamIndex,
+
+    /// OMAP from destination to source addresses
     pub omap_from_src: StreamIndex,
+
+    /// PE section headers stream
     pub section_headers: StreamIndex,
+
+    /// Token to RID (Record ID) mapping stream
     pub token_rid_map: StreamIndex,
+
+    /// XDATA (exception handling data) stream
     pub xdata: StreamIndex,
+
+    /// PDATA (procedure data) stream
     pub pdata: StreamIndex,
+
+    /// Frame data stream (stack frame information)
     pub framedata: StreamIndex,
+
+    /// Original PE section headers (before optimization)
     pub original_section_headers: StreamIndex,
 }
 
 impl DBIExtraStreams {
+    #[cfg(feature = "alloc")]
     pub(crate) fn new(debug_info: &DebugInformation<'_>) -> Result<Self> {
         // calculate the location of the extra stream information
         let header = debug_info.header;
@@ -623,14 +800,11 @@ impl DBIExtraStreams {
                 + header.type_server_map_size
                 + header.ec_substream_size) as usize;
 
-        // seek
         let mut buf = debug_info.stream.parse_buffer();
         buf.take(offset)?;
 
-        // grab that section as bytes
         let bytes = buf.take(header.debug_header_size as _)?;
 
-        // parse those bytes
         let mut extra_streams_buf = ParseBuffer::from(bytes);
         Self::parse(&mut extra_streams_buf)
     }
@@ -666,9 +840,10 @@ impl DBIExtraStreams {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "alloc"))]
 mod tests {
     use crate::dbi::*;
+    use alloc::vec;
 
     #[test]
     fn test_dbi_extra_streams() {
