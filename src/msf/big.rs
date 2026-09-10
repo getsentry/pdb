@@ -384,6 +384,33 @@ impl<'s, S: Source<'s>> MsfImpl<'s, S> for BigMSF<'s, S> {
             unreachable!()
         }
     }
+
+    #[inline]
+    fn stream_size(&mut self, stream_number: u32) -> Result<Option<u32>> {
+        self.make_stream_table_available()?;
+
+        if let StreamTable::Available { ref stream_table_view } = self.stream_table {
+            let stream_table_slice = stream_table_view.as_slice();
+            let mut stream_table = ParseBuffer::from(stream_table_slice);
+
+            let stream_count = stream_table.parse_u32()?;
+            if stream_number >= stream_count {
+                return Err(Error::StreamNotFound(stream_number));
+            }
+
+            // Skip preceding stream sizes (4 bytes each).
+            let _ = stream_table.take(stream_number as usize * 4)?;
+
+            let size = stream_table.parse_u32()?;
+            if size == u32::MAX {
+                Ok(None)
+            } else {
+                Ok(Some(size))
+            }
+        } else {
+            unreachable!()
+        }
+    }
 }
 
 #[cfg(all(test, feature = "alloc"))]

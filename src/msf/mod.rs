@@ -41,20 +41,21 @@ impl<'s, S: Source<'s> + 's> Msf<'s, S> {
     /// returns the appropriate implementation (`BigMSF` or `SmallMSF`).
     pub fn open(mut source: S) -> Result<Self> {
 
-        let mut header_location = PageList::new(4096);
-        header_location.push(0);
-        let header_view = match source.view_pages(&header_location) {
+        // We don't yet know the page size, so we can't use a PageList here.
+        // Read a fixed probe large enough for both magics and both fixed
+        // headers. 512 is the minimum valid Small MSF page size, so anything
+        // shorter than this isn't a valid MSF file regardless of format.
+        const PROBE_LEN: usize = 512;
+
+        let header_view = match source.view(&[SourceSlice { offset: 0, size: PROBE_LEN }]) {
             Ok(view) => view,
-            Err(e) => match e {
-                Error::IoError(x) => {
-                    if x.kind() == ErrorKind::UnexpectedEof {
-                        return Err(Error::UnrecognizedFileFormat);
-                    } else {
-                        return Err(Error::IoError(x));
-                    }
+            Err(err) => {
+                if err.kind() == ErrorKind::UnexpectedEof {
+                    return Err(Error::UnrecognizedFileFormat);
+                } else {
+                    return Err(Error::IoError(err));
                 }
-                _ => return Err(e),
-            },
+            }
         };
 
         if header_matches(&header_view, big::MAGIC) {
@@ -81,6 +82,12 @@ impl<'s, S: Source<'s> + 's> Msf<'s, S> {
     #[inline]
     pub fn stream_count(&mut self) -> Result<u32> {
         self.0.stream_count()
+    }
+
+    /// Returns the total number of streams in this MSF, including nil streams.
+    #[inline]
+    pub fn stream_size(&mut self, stream_number: u32) -> Result<Option<u32>> {
+        self.0.stream_size(stream_number)
     }
 
     /// Returns `true` if the stream exists and is not a nil stream.

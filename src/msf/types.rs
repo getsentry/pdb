@@ -143,6 +143,14 @@ pub trait MsfImpl<'s, S>: fmt::Debug {
     
     /// Returns true if the stream exists and is not nil.
     fn has_stream(&mut self, stream_number: u32) -> Result<bool>;
+
+    /// Returns the size in bytes of the given stream, or `None` if the
+    /// stream is a nil stream.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the stream number is out of range
+    fn stream_size(&mut self, stream_number: u32) -> Result<Option<u32>>;
 }
 
 /// MSF (Multi-Stream File) format version.

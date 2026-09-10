@@ -130,6 +130,18 @@ impl<'s, S: Source<'s> + 's> PDB<'s, S> {
         self.msf.has_stream(stream_number)
     }
 
+    /// Returns the size in bytes of the given stream, or `None` if the
+    /// stream is a nil stream.
+    ///
+    /// # Errors
+    ///
+    /// * `Error::StreamNotFound` if the PDB does not contain this stream
+    /// * `Error::IoError` if returned by the `Source`
+    /// * `Error::PageReferenceOutOfRange` if the PDB file seems corrupt
+    pub fn stream_size(&mut self, stream: u32) -> Result<Option<u32>> {
+        self.msf.stream_size(stream)
+    }
+
     /// Retrieve the `PDBInformation` for this PDB.
     ///
     /// The `PDBInformation` object contains the GUID and age fields that can be used to verify

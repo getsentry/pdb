@@ -137,7 +137,7 @@ impl<'s> PDBInformation<'s> {
         let age = buf.parse_u32()?;
 
         let guid = if version.has_guid() {
-            Some(Uuid::from_bytes(buf.take_array()?))
+            Some(Uuid::from_bytes_le(buf.take_array()?))
         } else {
             None
         };

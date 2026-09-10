@@ -86,6 +86,7 @@ pub struct SmallMSF<'s, S> {
 #[cfg(feature = "alloc")]
 impl<'s, S: Source<'s>> SmallMSF<'s, S> {
 
+    /// Creates a new SmallMSF instance by parsing the MSF header.
     pub fn new(source: S, header_view: SourceView<'_>) -> Result<Self> {
         let mut buf = ParseBuffer::from(header_view.as_slice());
         
@@ -96,6 +97,11 @@ impl<'s, S: Source<'s>> SmallMSF<'s, S> {
         }
 
         let page_size = raw_header.block_size as usize;
+
+        if page_size == 0 || !page_size.is_power_of_two() {
+            return Err(Error::InvalidPageSize(page_size as u32));
+        }
+
         let header = MSFHeader {
             page_size,
             maximum_valid_page_number: raw_header.total_alloc as u32,
@@ -120,6 +126,7 @@ impl<'s, S: Source<'s>> SmallMSF<'s, S> {
         })
     }
 
+    /// Looks up a stream by number and returns its page list.
     fn look_up_stream(&mut self, stream_number: u32) -> Result<PageList> {
         let directory_view = self.source.view_pages(&self.directory)?;
         let mut dir = ParseBuffer::from(directory_view.as_slice());
@@ -215,5 +222,26 @@ impl<'s, S: Source<'s>> MsfImpl<'s, S> for SmallMSF<'s, S> {
 
         let size = dir.parse_u32()?;
         Ok(size != u32::MAX)
+    }
+
+    #[inline]
+    fn stream_size(&mut self, stream_number: u32) -> Result<Option<u32>> {
+        let directory_view = self.source.view_pages(&self.directory)?;
+        let mut dir = ParseBuffer::from(directory_view.as_slice());
+
+        let stream_count = dir.parse_u32()?;
+        if stream_number >= stream_count {
+            return Err(Error::StreamNotFound(stream_number));
+        }
+
+        // Small MSF entries are 8 bytes: size u32 + reserved u32.
+        let _ = dir.take(stream_number as usize * 8)?;
+
+        let size = dir.parse_u32()?;
+        if size == u32::MAX {
+            Ok(None)
+        } else {
+            Ok(Some(size))
+        }
     }
 }

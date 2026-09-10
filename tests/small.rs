@@ -60,3 +60,22 @@ fn should_parse_small_pdb() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn small_stream_sizes_match_toc() -> Result<()> {
+    let data = std::fs::read(r#"C:\repos\pdb\fixtures\small1.pdb"#).unwrap();
+    let cursor = Cursor::new(data.as_slice());
+    let mut pdb = pdb::PDB::open(cursor)?;
+
+    assert_eq!(pdb.msf_kind(), MsfKind::Small);
+    assert_eq!(pdb.stream_count()?, 6);
+
+    assert_eq!(pdb.stream_size(0)?, Some(62));
+    assert_eq!(pdb.stream_size(1)?, Some(55));
+    assert_eq!(pdb.stream_size(2)?, Some(1104));
+    assert_eq!(pdb.stream_size(3)?, Some(0));
+    assert_eq!(pdb.stream_size(4)?, Some(132));
+    assert_eq!(pdb.stream_size(5)?, Some(25));
+
+    Ok(())
+}
