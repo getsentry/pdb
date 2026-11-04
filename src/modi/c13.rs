@@ -105,6 +105,11 @@ impl<'a> FallibleIterator for DebugSubsectionIterator<'a> {
         while !self.buf.is_empty() {
             let header = self.buf.parse::<DebugSubsectionHeader>()?;
             let data = self.buf.take(header.len())?;
+
+            // Padding is not included in the length of the subsection, skip.
+            let padding = (4 - header.len() % 4) % 4;
+            self.buf.take(padding.min(self.buf.len()))?;
+
             let kind = match header.kind()? {
                 Some(kind) => kind,
                 None => continue,
@@ -1420,6 +1425,54 @@ mod tests {
     use super::*;
 
     use crate::symbol::BinaryAnnotations;
+
+    fn subsection(kind: u32, data: &[u8], padded: bool) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(&kind.to_le_bytes());
+        bytes.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        bytes.extend_from_slice(data);
+        if padded {
+            while bytes.len() % 4 != 0 {
+                bytes.push(0);
+            }
+        }
+        bytes
+    }
+
+    #[test]
+    fn test_subsection_iterator_skips_padding() {
+        // The length of a subsection does not include its padding.
+        let mut data = subsection(0xfa, &[1, 2, 3, 4, 5], true);
+        data.extend(subsection(0xfb, &[6, 7, 8, 9, 10, 11], true));
+        data.extend(subsection(0xf4, &[12, 13, 14, 15], true));
+
+        let mut iter = DebugSubsectionIterator::new(&data);
+
+        let first = iter.next().unwrap().unwrap();
+        assert_eq!(first.kind, DebugSubsectionKind::FuncMDTokenMap);
+        assert_eq!(first.data, &[1, 2, 3, 4, 5]);
+
+        let second = iter.next().unwrap().unwrap();
+        assert_eq!(second.kind, DebugSubsectionKind::TypeMDTokenMap);
+        assert_eq!(second.data, &[6, 7, 8, 9, 10, 11]);
+
+        let third = iter.next().unwrap().unwrap();
+        assert_eq!(third.kind, DebugSubsectionKind::FileChecksums);
+        assert_eq!(third.data, &[12, 13, 14, 15]);
+
+        assert!(iter.next().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_subsection_iterator_last_subsection_without_padding() {
+        let mut data = subsection(0xfa, &[1, 2, 3], true);
+        data.extend(subsection(0xfb, &[4, 5, 6], false));
+
+        let mut iter = DebugSubsectionIterator::new(&data);
+        assert_eq!(iter.next().unwrap().unwrap().data, &[1, 2, 3]);
+        assert_eq!(iter.next().unwrap().unwrap().data, &[4, 5, 6]);
+        assert!(iter.next().unwrap().is_none());
+    }
 
     #[test]
     fn test_line_number_header() {
