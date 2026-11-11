@@ -137,7 +137,8 @@ impl<'s> PDBInformation<'s> {
         for _ in 0..count {
             let name_offset = buf.parse_u32()? as usize;
             let stream_id = StreamIndex(buf.parse_u32()? as u16);
-            let name = ParseBuffer::from(&names_buf[name_offset..]).parse_cstring()?;
+            let name = ParseBuffer::from(names_buf.get(name_offset..).ok_or(Error::UnexpectedEof)?)
+                .parse_cstring()?;
             names.push(StreamName { name, stream_id });
         }
 
